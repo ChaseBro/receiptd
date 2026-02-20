@@ -55,7 +55,7 @@ func runServerForeground() {
 	os.MkdirAll(dataDir, 0755)
 	
 	cfg := server.DefaultConfig()
-	cfg.CloudPRNTListen = ":3001"  // Use 3001 to avoid conflict
+	cfg.CloudPRNTListen = ":3000"  // Use 3001 to avoid conflict
 	cfg.CLIListen = "127.0.0.1:3099"
 	cfg.DataDir = dataDir
 	
@@ -86,7 +86,7 @@ func runServerDaemon() {
 	os.MkdirAll(dataDir, 0755)
 	
 	cfg := server.DefaultConfig()
-	cfg.CloudPRNTListen = ":3001"  // Use 3001 to avoid conflict
+	cfg.CloudPRNTListen = ":3000"  // Use 3001 to avoid conflict
 	cfg.CLIListen = "127.0.0.1:3099"
 	cfg.DataDir = dataDir
 	
