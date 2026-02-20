@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -14,14 +15,9 @@ import (
 
 // Config holds server configuration
 type Config struct {
-	// CLIListen is the address for CLI commands (e.g., "127.0.0.1:3099")
-	CLIListen string
-	
-	// CloudPRNTListen is the address for printer connections (e.g., ":3000")
+	CLIListen       string
 	CloudPRNTListen string
-	
-	// DataDir is where to store data
-	DataDir string
+	DataDir         string
 }
 
 // DefaultConfig returns sensible defaults
@@ -87,7 +83,7 @@ func (d *Daemon) Start() error {
 		}
 	}()
 	
-	// Start CLI listener (for receiptd print commands)
+	// Start CLI listener
 	var err error
 	d.cliListener, err = net.Listen("tcp", d.config.CLIListen)
 	if err != nil {
@@ -97,7 +93,6 @@ func (d *Daemon) Start() error {
 	d.wg.Add(1)
 	go d.serveCLI()
 	
-	// Signal ready
 	close(d.ready)
 	log.Printf("[Daemon] Ready")
 	
@@ -115,14 +110,14 @@ func (d *Daemon) serveCLI() {
 		default:
 		}
 		
-		d.cliListener.SetDeadline(time.Now().Add(1 * time.Second))
+		d.cliListener.(*net.TCPListener).SetDeadline(time.Now().Add(1 * time.Second))
 		conn, err := d.cliListener.Accept()
 		if err != nil {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-				continue // Normal timeout, keep looping
+				continue
 			}
 			if netErr, ok := err.(net.Error); ok && !netErr.Temporary() {
-				return // Not a temporary error, exit
+				return
 			}
 			continue
 		}
@@ -132,8 +127,20 @@ func (d *Daemon) serveCLI() {
 	}
 }
 
-// TODO: Implement CLI protocol handler
-// For now, this is a placeholder that echoes back what's sent
+// CLIRequest represents a CLI command request
+type CLIRequest struct {
+	Command string      `json:"command"`
+	Payload interface{} `json:"payload"`
+}
+
+// CLIResponse represents a CLI command response
+type CLIResponse struct {
+	Status string      `json:"status"`
+	Data   interface{} `json:"data,omitempty"`
+	Error  string      `json:"error,omitempty"`
+}
+
+// handleCLIConn handles a CLI connection
 func (d *Daemon) handleCLIConn(conn net.Conn) {
 	defer d.wg.Done()
 	defer conn.Close()
@@ -144,13 +151,48 @@ func (d *Daemon) handleCLIConn(conn net.Conn) {
 		return
 	}
 	
-	// Parse command (simple JSON for now)
-	// In real implementation, this would be a proper protocol
-	log.Printf("[Daemon] CLI command: %s", string(buf[:n]))
+	// Parse request
+	var req CLIRequest
+	if err := json.Unmarshal(buf[:n], &req); err != nil {
+		resp := CLIResponse{Status: "error", Error: "invalid request"}
+		json.NewEncoder(conn).Encode(resp)
+		return
+	}
 	
-	// Echo back a simple response for now
-	response := []byte(`{"status":"ok"}`)
-	conn.Write(response)
+	log.Printf("[Daemon] CLI command: %s", req.Command)
+	
+	var resp CLIResponse
+	switch req.Command {
+	case "status":
+		resp = CLIResponse{
+			Status: "ok",
+			Data: map[string]interface{}{
+				"running":    true,
+				"jobs_queued": d.queue.GetPendingCount(),
+			},
+		}
+	case "add_job":
+		payload, ok := req.Payload.(map[string]interface{})
+		if !ok {
+			resp = CLIResponse{Status: "error", Error: "invalid payload"}
+			break
+		}
+		printerID, _ := payload["printerId"].(string)
+		content, _ := payload["content"].(string)
+		
+		job := d.AddJob(printerID, content)
+		resp = CLIResponse{
+			Status: "ok",
+			Data:   job.ID,
+		}
+	case "get_jobs":
+		jobs := d.queue.GetAll()
+		resp = CLIResponse{Status: "ok", Data: jobs}
+	default:
+		resp = CLIResponse{Status: "error", Error: "unknown command"}
+	}
+	
+	json.NewEncoder(conn).Encode(resp)
 }
 
 // Stop stops the daemon gracefully
@@ -158,19 +200,15 @@ func (d *Daemon) Stop() error {
 	log.Printf("[Daemon] Stopping...")
 	close(d.stop)
 	
-	// Close HTTP server
 	if d.httpServer != nil {
 		d.httpServer.Close()
 	}
 	
-	// Close CLI listener
 	if d.cliListener != nil {
-		d.httpServer.Close()
+		d.cliListener.Close()
 	}
 	
-	// Wait for all goroutines
 	d.wg.Wait()
-	
 	log.Printf("[Daemon] Stopped")
 	return nil
 }
@@ -190,10 +228,10 @@ func (d *Daemon) Printers() *PrinterRegistry {
 	return d.printers
 }
 
-// AddJob adds a job to the queue (called by CLI)
+// AddJob adds a job to the queue
 func (d *Daemon) AddJob(printerID, content string) *Job {
 	job := &Job{
-		ID:        fmt.Sprintf("job-%d", time.Now().Unix()),
+		ID:        fmt.Sprintf("job-%d", time.Now().UnixNano()),
 		PrinterID: printerID,
 		Content:   content,
 		Status:    JobStatusPending,
@@ -210,7 +248,6 @@ func (d *Daemon) Run() error {
 		return err
 	}
 	
-	// Wait for interrupt signal
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 	

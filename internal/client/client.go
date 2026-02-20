@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"os"
-	"path/filepath"
 	"time"
 )
 
@@ -100,15 +98,4 @@ func (c *Client) IsServerRunning() bool {
 	}
 	conn.Close()
 	return true
-}
-
-// GetSocketPath returns the Unix socket path
-func GetSocketPath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".receiptd", "receiptd.sock")
-}
-
-// GetTCPAddress returns the default TCP address
-func GetTCPAddress() string {
-	return "127.0.0.1:3099"
 }

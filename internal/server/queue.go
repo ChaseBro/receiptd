@@ -116,3 +116,16 @@ func (q *Queue) Complete(token string, success bool, errMsg string) bool {
 	job.CompletedAt = &now
 	return true
 }
+// GetPendingCount returns the number of pending jobs
+func (q *Queue) GetPendingCount() int {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+	
+	count := 0
+	for _, job := range q.jobs {
+		if job.Status == JobStatusPending {
+			count++
+		}
+	}
+	return count
+}
