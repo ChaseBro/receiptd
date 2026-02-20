@@ -3,7 +3,9 @@ package cli
 import (
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/ChaseBro/receiptd/internal/client"
 	"github.com/ChaseBro/receiptd/internal/stub"
 	"github.com/spf13/cobra"
 )
@@ -26,42 +28,64 @@ Examples:
 	Run: func(cmd *cobra.Command, args []string) {
 		message := strings.Join(args, " ")
 		
-		result := stub.Print(message, printerID, waitTime)
+		// Wait if specified
+		if waitTime > 0 {
+			fmt.Printf("⏳ Waiting %d seconds...\n", waitTime)
+			time.Sleep(time.Duration(waitTime) * time.Second)
+		}
 		
-		if jsonOutput {
-			PrintJSON(result)
+		// Try to connect to real server first
+		c := client.NewClient()
+		
+		if !c.IsServerRunning() {
+			// Server not running - use stub
+			if jsonOutput {
+				fmt.Println(`{"error":"Server not running. Run 'receiptd server' first"}`)
+				return
+			}
+			fmt.Println("⚠️  Server not running. Using stub mode.")
+			result := stub.Print(message, printerID, 0)
+			printStubResult(result)
 			return
 		}
 		
-		// Human-readable output
+		// Try real server
+		resp, err := c.AddJob(printerID, message)
+		if err != nil {
+			// Server error - fall back to stub
+			if jsonOutput {
+				fmt.Println(`{"error":"Server error: ` + err.Error() + `"}`)
+				return
+			}
+			fmt.Println("⚠️  Server error, using stub mode:", err)
+			result := stub.Print(message, printerID, 0)
+			printStubResult(result)
+			return
+		}
+		
+		// Success!
+		if jsonOutput {
+			PrintJSON(resp)
+			return
+		}
+		
 		fmt.Printf("🖨️  Printing message...\n")
 		if printerID != "" {
 			fmt.Printf("   Printer: %s\n", printerID)
-		} else {
-			fmt.Printf("   Printer: %s (default)\n", result.PrinterID)
 		}
-		if waitTime > 0 {
-			fmt.Printf("   Wait: %d seconds\n", waitTime)
-		}
-		fmt.Printf("   Job ID: %s\n", result.JobID)
+		fmt.Printf("   Job ID: %s\n", resp.Data)
 		fmt.Println("\n✅ Print job submitted successfully")
-		fmt.Printf("   Track with: receiptd jobs\n")
-		
-		// TODO: Implement actual printing
-		// - Connect to receiptd server
-		// - Submit print job with message
-		// - Use specified printer or default
-		// - Handle wait/delay if specified
-		// - Return job ID for tracking
-		// - Error handling:
-		//   - Server not running → "Server not running. Run 'receiptd server'"
-		//   - No printer configured → "No printer configured. Run 'receiptd printer discover'"
-		//   - Printer offline → "Printer offline: <id>"
 	},
+}
+
+func printStubResult(result stub.PrintResult) {
+	fmt.Printf("   Printer: %s (stub)\n", result.PrinterID)
+	fmt.Printf("   Job ID: %s (stub)\n", result.JobID)
+	fmt.Println("\n✅ Stub: job would be submitted")
 }
 
 func init() {
 	rootCmd.AddCommand(printCmd)
 	printCmd.Flags().StringVar(&printerID, "printer", "", "Printer ID to use")
-	printCmd.Flags().IntVar(&waitTime, "wait", 0, "Wait time in seconds before printing")
+	printCmd.Flags().IntVarP(&waitTime, "wait", "w", 0, "Wait time in seconds before printing")
 }
