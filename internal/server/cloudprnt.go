@@ -48,7 +48,7 @@ func (h *CloudPRNTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CloudPRNTHandler) convertToStarPRNT(markup string) ([]byte, error) {
-	tmpFile, err := os.CreateTemp("", "markup-*.txt")
+	tmpFile, err := os.CreateTemp("", "markup-*.stm")
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +74,6 @@ func (h *CloudPRNTHandler) convertToStarPRNT(markup string) ([]byte, error) {
 	return output, nil
 }
 
-// CloudPRNTPollResponse is the response to a printer poll
 type CloudPRNTPollResponse struct {
 	JobReady     bool     `json:"jobReady"`
 	MediaTypes   []string `json:"mediaTypes"`
@@ -95,12 +94,14 @@ func (h *CloudPRNTHandler) handlePoll(w http.ResponseWriter, r *http.Request) {
 	if m, ok := bodyMap["printerMAC"].(string); ok {
 		mac = m
 	}
+	if mac == "" {
+		mac = r.Header.Get("X-Star-Mac")
+	}
 	
 	h.logger.Info().Str("mac", mac).Msg("Printer poll")
 	
 	job := h.queue.GetPendingForPrinter(h.printer)
 	
-	// Return discovery response if no job
 	if job == nil {
 		h.logger.Debug().Msg("No jobs")
 		w.Header().Set("Content-Type", "application/json")
@@ -113,15 +114,12 @@ func (h *CloudPRNTHandler) handlePoll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	// Mark job as processing
 	h.queue.StartProcessing(job.ID)
 	
-	// Generate a simple token (just use job ID)
 	token := job.ID
 	
 	h.logger.Info().Str("job_id", job.ID).Str("token", token).Msg("Job ready")
 	
-	// Return job token
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(CloudPRNTPollResponse{
 		JobReady:     true,
@@ -136,7 +134,9 @@ func (h *CloudPRNTHandler) handleGetJob(w http.ResponseWriter, r *http.Request) 
 	token := r.URL.Query().Get("token")
 	mediaType := r.URL.Query().Get("type")
 	
-	h.logger.Info().Str("token", token).Str("type", mediaType).Msg("GET job")
+	// Check Accept header for preference
+	acceptHeader := r.Header.Get("Accept")
+	h.logger.Info().Str("token", token).Str("type", mediaType).Str("accept", acceptHeader).Msg("GET job")
 	
 	job := h.queue.Get(token)
 	if job == nil {
@@ -145,39 +145,32 @@ func (h *CloudPRNTHandler) handleGetJob(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	
-	// Default media type
+	// Default to starprnt if no type specified
 	if mediaType == "" {
-		mediaType = "text/vnd.star.markup"
+		mediaType = "application/vnd.star.starprnt"
 	}
 	
 	h.logger.Info().Str("job_id", job.ID).Str("mediaType", mediaType).Msg("Serving job")
 	
-	// Handle different media types
-	if strings.Contains(mediaType, "text/vnd.star.markup") {
-		// For star markup, convert to binary using cputil
+	// For ANY text format, use cputil to convert to starprnt binary
+	if strings.Contains(mediaType, "text/") || mediaType == "application/vnd.star.starprnt" {
+		h.logger.Info().Msg("Converting to starprnt binary via cputil")
+		
 		binary, err := h.convertToStarPRNT(job.Content)
 		if err != nil {
-			h.logger.Error().Err(err).Msg("cputil failed for star markup")
+			h.logger.Error().Err(err).Msg("cputil failed, sending plain text")
 			w.Header().Set("Content-Type", "text/plain")
 			fmt.Fprint(w, job.Content)
 			return
 		}
 		
+		h.logger.Info().Int("binary_size", len(binary)).Msg("Serving starprnt binary")
 		w.Header().Set("Content-Type", "application/vnd.star.starprnt")
 		w.Write(binary)
 		return
 	}
 	
-	if strings.Contains(mediaType, "text/plain") {
-		// For plain text - DON'T convert, just send as-is
-		// The printer will handle it
-		h.logger.Info().Msg("Sending plain text")
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		fmt.Fprint(w, job.Content)
-		return
-	}
-	
-	// Default fallback
+	// Default
 	w.Header().Set("Content-Type", "text/plain")
 	fmt.Fprint(w, job.Content)
 }
@@ -185,7 +178,7 @@ func (h *CloudPRNTHandler) handleGetJob(w http.ResponseWriter, r *http.Request) 
 func (h *CloudPRNTHandler) handleComplete(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
 	code := r.URL.Query().Get("code")
-	success := code == "0" || code == ""
+	success := code == "0" || code == "" || strings.Contains(code, "200")
 	
 	h.logger.Info().Str("token", token).Bool("success", success).Str("code", code).Msg("Job complete")
 	
