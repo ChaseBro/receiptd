@@ -4,6 +4,8 @@
 
 receiptd is a self-hosted thermal printing tool designed for simplicity. Plug in a Star printer, run `receiptd print "hello"`, get a receipt. No config files, no cloud account, no RBAC — just printing.
 
+**⚡ Status**: CLI implementation complete with stubs. See [`CLI-README.md`](CLI-README.md) for the working CLI demonstration.
+
 Designed for:
 - **Home use** — A few prints a day (receipts, labels, notes)
 - **Small business** — Kitchens, shops, cafes — low-volume thermal printing
@@ -11,6 +13,26 @@ Designed for:
 
 [![Go Version](https://img.shields.io/github/go-mod/go-version/chasebro/receiptd)](https://github.com/chasebro/receiptd)
 [![License](https://img.shields.io/github/license/chasebro/receiptd)](LICENSE)
+
+## 🚀 Try It Now
+
+The CLI is fully implemented with working stubs:
+
+```bash
+# Build
+make build
+
+# Try it out
+./receiptd status
+./receiptd printer list
+./receiptd print "Hello, World!"
+./receiptd --json status
+
+# Run demo of all commands
+make demo
+```
+
+See [`CLI-README.md`](CLI-README.md) for complete CLI documentation.
 
 ## Features
 
@@ -38,7 +60,7 @@ go install github.com/chasebro/receiptd@latest
 # Or clone and build
 git clone https://github.com/chasebro/receiptd.git
 cd receiptd
-go build -o receiptd ./cmd/receiptd
+make build
 ```
 
 ## Quick Start
@@ -271,6 +293,12 @@ receiptd is designed for AI agents to call directly. Agents should:
    receiptd print --wait 15 "[bold:on]ORDER #123[bold:off][cut]"
    ```
 
+5. **Use `--json` for structured output:**
+   ```bash
+   receiptd --json status
+   receiptd --json printer list
+   ```
+
 ## Troubleshooting
 
 ### Printer not found
@@ -304,6 +332,14 @@ receiptd config set server.socket ""
 receiptd config set server.port 3099
 ```
 
+## Development
+
+See [`CLI-README.md`](CLI-README.md) for:
+- Complete CLI implementation details
+- Design decisions
+- Implementation roadmap
+- Development workflow
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
@@ -311,4 +347,4 @@ MIT — see [LICENSE](LICENSE).
 ## Credits
 
 - [Star Micronics](https://www.starmicronics.com/) for CloudPRNT
-- [modernc.org](https://modernc.org/sqlite/) for pure Go SQLite
+- [Cobra](https://github.com/spf13/cobra) for CLI framework
