@@ -3,14 +3,16 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/rs/zerolog"
 )
 
 // Config holds server configuration
@@ -39,6 +41,7 @@ type Daemon struct {
 	ready       chan struct{}
 	stop        chan struct{}
 	wg          sync.WaitGroup
+	logger     zerolog.Logger
 }
 
 // NewDaemon creates a new daemon
@@ -46,70 +49,83 @@ func NewDaemon(cfg *Config) *Daemon {
 	if cfg == nil {
 		cfg = DefaultConfig()
 	}
+
+	// Setup logger
+	logFile := filepath.Join(cfg.DataDir, "receiptd.log")
+	os.MkdirAll(filepath.Dir(logFile), 0755)
 	
+	f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	var logger zerolog.Logger
+	if err != nil {
+		logger = zerolog.New(os.Stderr).With().Timestamp().Str("module", "daemon").Logger()
+	} else {
+		logger = zerolog.New(f).With().Timestamp().Str("module", "daemon").Logger()
+	}
+
 	return &Daemon{
 		config:   cfg,
 		queue:    NewQueue(),
 		printers: NewPrinterRegistry(),
 		ready:    make(chan struct{}),
 		stop:     make(chan struct{}),
+		logger:   logger,
 	}
 }
 
 // Start starts the daemon
 func (d *Daemon) Start() error {
-	log.Printf("[Daemon] Starting receiptd server...")
-	log.Printf("[Daemon] CloudPRNT: %s", d.config.CloudPRNTListen)
-	log.Printf("[Daemon] CLI: %s", d.config.CLIListen)
-	
+	d.logger.Info().Msg("Starting receiptd server")
+	d.logger.Info().Str("cloudprnt", d.config.CloudPRNTListen).Msg("CloudPRNT listen address")
+	d.logger.Info().Str("cli", d.config.CLIListen).Msg("CLI listen address")
+
 	// Ensure data directory exists
 	if err := os.MkdirAll(d.config.DataDir, 0755); err != nil {
 		return fmt.Errorf("create data dir: %w", err)
 	}
-	
+
 	// Start CloudPRNT HTTP server
-	cloudprntHandler := NewCloudPRNTHandler(d.queue, "")
+	cloudprntHandler := NewCloudPRNTHandler(d.queue, "", d.logger)
 	d.httpServer = &http.Server{
 		Addr:    d.config.CloudPRNTListen,
 		Handler: cloudprntHandler,
 	}
-	
+
 	d.wg.Add(1)
 	go func() {
 		defer d.wg.Done()
-		log.Printf("[Daemon] CloudPRNT server listening on %s", d.config.CloudPRNTListen)
+		d.logger.Info().Str("addr", d.config.CloudPRNTListen).Msg("CloudPRNT server listening")
 		if err := d.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("[Daemon] CloudPRNT server error: %v", err)
+			d.logger.Error().Err(err).Msg("CloudPRNT server error")
 		}
 	}()
-	
+
 	// Start CLI listener
 	var err error
 	d.cliListener, err = net.Listen("tcp", d.config.CLIListen)
 	if err != nil {
 		return fmt.Errorf("listen on CLI address: %w", err)
 	}
-	
+
 	d.wg.Add(1)
 	go d.serveCLI()
-	
+
 	close(d.ready)
-	log.Printf("[Daemon] Ready")
-	
+	d.logger.Info().Msg("Server ready")
+
 	return nil
 }
 
 // serveCLI handles CLI command connections
 func (d *Daemon) serveCLI() {
 	defer d.wg.Done()
-	
+
 	for {
 		select {
 		case <-d.stop:
 			return
 		default:
 		}
-		
+
 		d.cliListener.(*net.TCPListener).SetDeadline(time.Now().Add(1 * time.Second))
 		conn, err := d.cliListener.Accept()
 		if err != nil {
@@ -121,7 +137,7 @@ func (d *Daemon) serveCLI() {
 			}
 			continue
 		}
-		
+
 		d.wg.Add(1)
 		go d.handleCLIConn(conn)
 	}
@@ -144,23 +160,25 @@ type CLIResponse struct {
 func (d *Daemon) handleCLIConn(conn net.Conn) {
 	defer d.wg.Done()
 	defer conn.Close()
-	
+
 	buf := make([]byte, 4096)
 	n, err := conn.Read(buf)
 	if err != nil {
+		d.logger.Error().Err(err).Msg("Failed to read CLI request")
 		return
 	}
-	
+
 	// Parse request
 	var req CLIRequest
 	if err := json.Unmarshal(buf[:n], &req); err != nil {
+		d.logger.Error().Err(err).Str("raw", string(buf[:n])).Msg("Failed to parse CLI request")
 		resp := CLIResponse{Status: "error", Error: "invalid request"}
 		json.NewEncoder(conn).Encode(resp)
 		return
 	}
-	
-	log.Printf("[Daemon] CLI command: %s", req.Command)
-	
+
+	d.logger.Info().Str("command", req.Command).Msg("CLI command received")
+
 	var resp CLIResponse
 	switch req.Command {
 	case "status":
@@ -179,37 +197,38 @@ func (d *Daemon) handleCLIConn(conn net.Conn) {
 		}
 		printerID, _ := payload["printerId"].(string)
 		content, _ := payload["content"].(string)
-		
+
 		job := d.AddJob(printerID, content)
 		resp = CLIResponse{
 			Status: "ok",
 			Data:   job.ID,
 		}
+		d.logger.Info().Str("job_id", job.ID).Str("content", content).Msg("Job added")
 	case "get_jobs":
 		jobs := d.queue.GetAll()
 		resp = CLIResponse{Status: "ok", Data: jobs}
 	default:
 		resp = CLIResponse{Status: "error", Error: "unknown command"}
 	}
-	
+
 	json.NewEncoder(conn).Encode(resp)
 }
 
 // Stop stops the daemon gracefully
 func (d *Daemon) Stop() error {
-	log.Printf("[Daemon] Stopping...")
+	d.logger.Info().Msg("Stopping server")
 	close(d.stop)
-	
+
 	if d.httpServer != nil {
 		d.httpServer.Close()
 	}
-	
+
 	if d.cliListener != nil {
 		d.cliListener.Close()
 	}
-	
+
 	d.wg.Wait()
-	log.Printf("[Daemon] Stopped")
+	d.logger.Info().Msg("Server stopped")
 	return nil
 }
 
@@ -238,7 +257,7 @@ func (d *Daemon) AddJob(printerID, content string) *Job {
 		CreatedAt: time.Now(),
 	}
 	d.queue.Add(job)
-	log.Printf("[Daemon] Job added: %s", job.ID)
+	d.logger.Info().Str("job_id", job.ID).Str("content", content).Msg("Job added to queue")
 	return job
 }
 
@@ -247,16 +266,16 @@ func (d *Daemon) Run() error {
 	if err := d.Start(); err != nil {
 		return err
 	}
-	
+
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-	
+
 	select {
 	case sig := <-sigCh:
-		log.Printf("[Daemon] Received signal: %v", sig)
+		d.logger.Info().Str("signal", sig.String()).Msg("Received signal")
 	case <-d.stop:
 	}
-	
+
 	return d.Stop()
 }
 

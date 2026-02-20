@@ -3,30 +3,36 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"io"
 	"net/http"
+	"os"
+	"os/exec"
 	"strings"
 	"sync"
-	"time"
+
+	"github.com/rs/zerolog"
 )
 
-// CloudPRNTHandler handles the CloudPRNT protocol
 type CloudPRNTHandler struct {
-	queue   *Queue
-	printer string // printer ID to use (empty = any)
+	queue       *Queue
+	printer     string
+	logger      zerolog.Logger
+	cputilPath  string
+	mediaTypes  []string
 }
 
-// NewCloudPRNTHandler creates a new CloudPRNT handler
-func NewCloudPRNTHandler(queue *Queue, printerID string) *CloudPRNTHandler {
+func NewCloudPRNTHandler(queue *Queue, printerID string, logger zerolog.Logger) *CloudPRNTHandler {
 	return &CloudPRNTHandler{
-		queue:   queue,
-		printer: printerID,
+		queue:      queue,
+		printer:    printerID,
+		logger:     logger,
+		cputilPath: "/Users/chase/.openclaw/workspace/projects/print-booth/cloudprnt-sdk/cputil-bin/cputil",
+		mediaTypes: []string{"text/vnd.star.markup", "text/plain"},
 	}
 }
 
-// ServeHTTP handles CloudPRNT requests
 func (h *CloudPRNTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	log.Printf("[CloudPRNT] %s %s", r.Method, r.URL.Path)
+	h.logger.Info().Str("method", r.Method).Str("url", r.URL.Path).Str("remote", r.RemoteAddr).Msg("CloudPRNT request")
 	
 	switch r.Method {
 	case http.MethodPost:
@@ -36,146 +42,169 @@ func (h *CloudPRNTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case http.MethodDelete:
 		h.handleComplete(w, r)
 	default:
+		h.logger.Warn().Str("method", r.Method).Msg("Method not allowed")
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
-// handlePoll handles POST /cloudprnt - printer polls for jobs
+func (h *CloudPRNTHandler) convertToStarPRNT(markup string) ([]byte, error) {
+	tmpFile, err := os.CreateTemp("", "markup-*.txt")
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(tmpFile.Name())
+
+	tmpFile.WriteString(markup)
+	tmpFile.Close()
+
+	cmd := exec.Command(
+		h.cputilPath,
+		"thermal3",
+		"decode",
+		"application/vnd.star.starprnt",
+		tmpFile.Name(),
+		"-",
+	)
+	output, err := cmd.Output()
+	if err != nil {
+		h.logger.Error().Err(err).Msg("cputil failed")
+		return nil, err
+	}
+	
+	return output, nil
+}
+
+// CloudPRNTPollResponse is the response to a printer poll
+type CloudPRNTPollResponse struct {
+	JobReady     bool     `json:"jobReady"`
+	MediaTypes   []string `json:"mediaTypes"`
+	JobToken     string   `json:"jobToken,omitempty"`
+	PollInterval int      `json:"pollInterval"`
+	DeleteMethod string   `json:"deleteMethod"`
+}
+
 func (h *CloudPRNTHandler) handlePoll(w http.ResponseWriter, r *http.Request) {
-	// Parse printer identification from headers
-	mac := r.Header.Get("X-Star-MAC-Address")
-	serial := r.Header.Get("X-Star-Serial-Number")
-	status := r.Header.Get("X-Star-Status")
+	body, _ := io.ReadAll(r.Body)
 	
-	log.Printf("[CloudPRNT] Poll from printer: MAC=%s Serial=%s Status=%s", mac, serial, status)
+	var bodyMap map[string]interface{}
+	if len(body) > 0 {
+		json.Unmarshal(body, &bodyMap)
+	}
 	
-	// Find pending job for this printer (or any if no specific printer)
+	mac := ""
+	if m, ok := bodyMap["printerMAC"].(string); ok {
+		mac = m
+	}
+	
+	h.logger.Info().Str("mac", mac).Msg("Printer poll")
+	
 	job := h.queue.GetPendingForPrinter(h.printer)
 	
+	// Return discovery response if no job
 	if job == nil {
-		// No job - tell printer to come back later
-		w.WriteHeader(http.StatusNoContent)
+		h.logger.Debug().Msg("No jobs")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(CloudPRNTPollResponse{
+			JobReady:     false,
+			MediaTypes:   h.mediaTypes,
+			PollInterval: 5,
+			DeleteMethod: "DELETE",
+		})
 		return
 	}
 	
 	// Mark job as processing
 	h.queue.StartProcessing(job.ID)
 	
-	// Return job token to printer
+	// Generate a simple token (just use job ID)
+	token := job.ID
+	
+	h.logger.Info().Str("job_id", job.ID).Str("token", token).Msg("Job ready")
+	
+	// Return job token
 	w.Header().Set("Content-Type", "application/json")
-	resp := map[string]string{
-		"token": job.ID,
-		"type":  "text/vnd.star.markup",
-	}
-	json.NewEncoder(w).Encode(resp)
-	log.Printf("[CloudPRNT] Job ready: %s", job.ID)
+	json.NewEncoder(w).Encode(CloudPRNTPollResponse{
+		JobReady:     true,
+		MediaTypes:   h.mediaTypes,
+		JobToken:     token,
+		PollInterval: 5,
+		DeleteMethod: "DELETE",
+	})
 }
 
-// handleGetJob handles GET /cloudprnt?token=X - printer fetches job content
 func (h *CloudPRNTHandler) handleGetJob(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
-	if token == "" {
-		http.Error(w, "Missing token", http.StatusBadRequest)
-		return
-	}
+	mediaType := r.URL.Query().Get("type")
+	
+	h.logger.Info().Str("token", token).Str("type", mediaType).Msg("GET job")
 	
 	job := h.queue.Get(token)
 	if job == nil {
+		h.logger.Warn().Str("token", token).Msg("Job not found")
 		http.Error(w, "Job not found", http.StatusNotFound)
 		return
 	}
 	
-	// Return the print content
-	w.Header().Set("Content-Type", "text/vnd.star.markup")
-	w.Header().Set("X-Job-ID", job.ID)
-	
-	// Add content length
-	content := job.Content
-	if !strings.HasSuffix(content, "\n") {
-		content += "\n"
+	// Default media type
+	if mediaType == "" {
+		mediaType = "text/vnd.star.markup"
 	}
 	
-	fmt.Fprint(w, content)
-	log.Printf("[CloudPRNT] Job content served: %s", token)
-}
-
-// handleComplete handles DELETE /cloudprnt?token=X&code=0 - printer confirms completion
-func (h *CloudPRNTHandler) handleComplete(w http.ResponseWriter, r *http.Request) {
-	token := r.URL.Query().Get("token")
-	code := r.URL.Query().Get("code")
+	h.logger.Info().Str("job_id", job.ID).Str("mediaType", mediaType).Msg("Serving job")
 	
-	if token == "" {
-		http.Error(w, "Missing token", http.StatusBadRequest)
+	// Handle different media types
+	if strings.Contains(mediaType, "text/vnd.star.markup") {
+		// For star markup, convert to binary using cputil
+		binary, err := h.convertToStarPRNT(job.Content)
+		if err != nil {
+			h.logger.Error().Err(err).Msg("cputil failed for star markup")
+			w.Header().Set("Content-Type", "text/plain")
+			fmt.Fprint(w, job.Content)
+			return
+		}
+		
+		w.Header().Set("Content-Type", "application/vnd.star.starprnt")
+		w.Write(binary)
 		return
 	}
 	
-	success := code == "0" || code == ""
-	errMsg := ""
-	if !success {
-		errMsg = fmt.Sprintf("Printer reported error code: %s", code)
+	if strings.Contains(mediaType, "text/plain") {
+		// For plain text - DON'T convert, just send as-is
+		// The printer will handle it
+		h.logger.Info().Msg("Sending plain text")
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		fmt.Fprint(w, job.Content)
+		return
 	}
 	
-	h.queue.Complete(token, success, errMsg)
+	// Default fallback
+	w.Header().Set("Content-Type", "text/plain")
+	fmt.Fprint(w, job.Content)
+}
+
+func (h *CloudPRNTHandler) handleComplete(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	code := r.URL.Query().Get("code")
+	success := code == "0" || code == ""
+	
+	h.logger.Info().Str("token", token).Bool("success", success).Str("code", code).Msg("Job complete")
+	
+	h.queue.Complete(token, success, "")
 	
 	w.WriteHeader(http.StatusNoContent)
-	log.Printf("[CloudPRNT] Job complete: %s success=%v", token, success)
 }
 
-// PrinterInfo holds printer information
-type PrinterInfo struct {
-	MACAddress     string    `json:"macAddress"`
-	SerialNumber   string    `json:"serialNumber"`
-	Status         string    `json:"status"`
-	LastSeen       time.Time `json:"lastSeen"`
-	Capabilities   []string  `json:"capabilities,omitempty"`
-}
-
-// PrinterRegistry manages known printers
 type PrinterRegistry struct {
-	printers map[string]*PrinterInfo
+	printers map[string]interface{}
 	mu       sync.RWMutex
 }
 
-// NewPrinterRegistry creates a new printer registry
 func NewPrinterRegistry() *PrinterRegistry {
-	return &PrinterRegistry{
-		printers: make(map[string]*PrinterInfo),
-	}
+	return &PrinterRegistry{printers: make(map[string]interface{})}
 }
 
-// Register records a printer from a CloudPRNT poll
-func (r *PrinterRegistry) Register(mac string, info *PrinterInfo) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	info.LastSeen = time.Now()
-	r.printers[mac] = info
-}
-
-// Get returns printer info by MAC
-func (r *PrinterRegistry) Get(mac string) *PrinterInfo {
+func (r *PrinterRegistry) Get(mac string) interface{} {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.printers[mac]
 }
-
-// List returns all known printers
-func (r *PrinterRegistry) List() []*PrinterInfo {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	
-	result := make([]*PrinterInfo, 0, len(r.printers))
-	for _, p := range r.printers {
-		result = append(result, p)
-	}
-	return result
-}
-
-// Required headers from CloudPRNT spec:
-// X-Star-MAC-Address
-// X-Star-Serial-Number
-// X-Star-Status
-// X-Star-Support-Protocols
-// X-Star-Paper-Width
-// X-Star-Print-Width
-// X-Star-Horizontal-Resolution
-// X-Star-Vertical-Resolution
