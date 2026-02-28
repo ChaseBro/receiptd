@@ -252,7 +252,7 @@ func (d *Daemon) AddJob(printerID, content string) *Job {
 	job := &Job{
 		ID:        fmt.Sprintf("job-%d", time.Now().UnixNano()),
 		PrinterID: printerID,
-		Content:   content + "[feed:2]",
+		Content:   content + "[feed:2][cut]",
 		Status:    JobStatusPending,
 		CreatedAt: time.Now(),
 	}
