@@ -3,10 +3,11 @@ You are generating content for a Star Micronics thermal receipt printer (80mm / 
 ## Your task
 
 1. Understand what the user wants to print
-2. Write Star Markup for it (see reference below)
+2. Write Star Markup for it — use ASCII art liberally when it adds character
 3. Run: `./receiptd print "<your markup>"`
 
 The daemon auto-appends `[feed:3][cut]` — do not include `[cut]` yourself.
+Emoji do not print — use ASCII art instead.
 
 ---
 
@@ -25,10 +26,173 @@ The daemon auto-appends `[feed:3][cut]` — do not include `[cut]` yourself.
 [image: url file:///abs/path.png; width 80%]   embed local image (B&W, rasterized by cputil)
 
 [feed: N]                feed N blank lines
+
+This is a simple markup example, using only the [fixedWidth] and [cut] commands.
+
+FixedWidth Sample
+
+- Limited to 10 characters.
+[fixedWidth: text 12345678901234567890; width 10]
+
+- Limited to 10 characters with ellipsis.
+[fixedWidth: text 12345678901234567890; width 10; et end]
+
+- Limited to 20 characters and right alignment.
+[fixedWidth: text Star Micronics; width 20; align right]
+
+- Inline fixed and normal text
+Normal Text : \
+[fixedWidth: text Fixed long text; width 12; et end]\
+: Normal Text\
+
+[cut]
 ```
 
 **No colors. No font families. No gradients. B&W only.**
-Normal line width ≈ 48 chars. Bold/magnify reduces chars per line.
+Normal line width ≈ 48 chars. Bold/magnify reduces chars per line (~24 at 2x).s
+
+---
+
+## Unicode that works on this printer
+
+These render correctly — use them freely:
+
+| Category | Characters |
+|---|---|
+| Box drawing (single) | `─ │ ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼` |
+| Block fill | `█ ▓` (solid/dark); `▒ ░ ▀ ▄ ▌ ▐` (partial) |
+| Geometric | `● ○ ◆ ◇ ▲ ▼ ◀ ▶ ► ★ ☆` |
+| Arrows | `→ ← ↑ ↓` |
+| Card suits | `♠ ♣ ♥ ♦` |
+| Music | `♩ ♪ ♫ ♬` |
+| Math | `± × ÷ ≤ ≥ ≠ ≈ ∞ √ ∑ ∏` |
+| Currency | `€ £ ¥ ¢` |
+| Fractions | `½ ¼ ¾ ⅓ ⅔` |
+| Superscript | `¹ ² ³` |
+| Misc | `© ® ™ ° § ¶ • …` |
+| Greek | full alphabet α–ω Α–Ω |
+| Cyrillic | full alphabet А–Я а–я |
+
+**Does NOT work:** emoji, dingbats (✓✗✈✉), double box-drawing (═║╔╗), compound arrows (⇒⇐↔), weather symbols (☀☁), ₿₹₩₽, superscripts ⁴⁺.
+
+---
+
+## ASCII art
+
+**Use ASCII art whenever it adds character** — a globe for "hello world", a star for celebrations, a rocket for deployments. The printer renders monospace perfectly; ASCII art looks great on receipts.
+**Bonus:** `█` and `▓` work as solid fills — mix them with ASCII art for shading effects.
+
+### Width constraints
+- Normal text: **48 chars per line**
+- `[magnify: width 2]`: **24 chars per line**
+- Always center ASCII art with `[align: center]`
+
+### Character rendering on thermal paper
+
+**Bold / visible (use for structure):**
+```
+= * # | / \ O o 0 @ M W H 8
+```
+
+**Medium (texture, fill, detail):**
+```
++ ~ ^ _ ( ) [ ] { } < > I l i
+```
+
+**Thin / barely visible (avoid for structure):**
+```
+- . , ' " ` ;   ← these render very faint — good for texture only, not outlines
+```
+
+**Key rule:** `-` looks dotted at receipt resolution. Use `=` for solid separator lines. Use `*` or `#` for emphasis.
+
+**Shading (light → dark):**
+```
+  . , : ; ` ~    (lightest — texture only)
+  - _ ( ) [ ] |
+  i l o a n
+  I H A U V T Y
+  W M 8 # @       (darkest — solid fill)
+```
+
+### Row technique (Rowan Crawford)
+Build shapes row by row. Every line should connect — no large gaps in outlines. Use bold characters (`|`, `/`, `\`, `*`, `=`) for structure. Reserve thin chars (`.`, `,`, `'`) for texture and anti-aliasing edges only. Shape correctness matters more than detail.
+
+### Examples
+
+**Globe (for "hello world", earth, global themes):**
+```
+    /=======\
+   /  * o *  \
+  |  o  |  o  |
+  |  *  |  *  |
+   \  o | o  /
+    \=======/
+```
+
+**Sparkle / celebration:**
+```
+  *   .   *   .   *
+    *   *   *   *
+  .   *   *   *   .
+    *   *   *   *
+  *   .   *   .   *
+```
+
+**Rocket (deploy / ship it):**
+```
+     /\
+    /  \
+   | ** |
+   |    |
+   |    |
+  /|    |\
+ / +----+ \
+   |    |
+   | || |
+```
+
+**Star:**
+```
+    *
+   ***
+  *****
+ *******
+*********
+ *******
+  *****
+   ***
+    *
+```
+
+**Simple face / bot:**
+```
+ /=========\
+ |  O   O  |
+ |    ^    |
+ |  \___/  |
+ \=========/
+```
+
+**Heart:**
+```
+ ***   ***
+*****V*****
+ *********
+  *******
+   *****
+    ***
+     *
+```
+
+**Diamond / gem:**
+```
+    ***
+  *******
+ *********
+  *******
+    ***
+```
 
 ---
 
@@ -44,40 +208,56 @@ Save the output to a local file, then reference it with `[image: url file:///pat
 
 ## Patterns to follow
 
-**Simple message:**
+**Simple message with art:**
 ```
-[align: center][magnify: width 2; height 2][bold: on]
-Hey Mom!
-[plain][feed: 1]Miss you lots.[feed: 1]— Chase
+[align: center]
+    /======\
+   /  * o *  \
+  |  o  |  o  |
+   \  o | o  /
+    \======/
+[feed: 1][magnify: width 2; height 2][bold: on]
+hello world
+[plain][feed: 2]
 ```
 
-**Agent status (PR merged):**
+**Celebration / PR merged:**
 ```
-[align: center][bold: on]PR MERGED[bold: off][feed: 1]
-[fixedWidth: text ----------------------------------------]
+[align: center][bold: on]PR MERGED[bold: off]
+────────────────────────────────────────────────
 [column: vl; left Repo; right myorg/myapp]
 [column: vl; left PR; right #42 Fix login bug]
 [column: vl; left Author; right chase]
-[fixedWidth: text ----------------------------------------]
-[align: center]Ship it!
+────────────────────────────────────────────────
+[align: center]
+   /\
+  /  \
+ | ** |
+ |    |
+  \  /
+   \/
+ship it!
+[feed: 2]
 ```
 
 **Bold header + body:**
 ```
-[align: center][magnify: width 2; height 2][bold: on]TITLE[plain][feed: 1]
-[fixedWidth: text ----------------------------------------][feed: 1]
+[align: center][magnify: width 2; height 2][bold: on]TITLE[plain]
+────────────────────────────────────────────────[feed: 1]
 Body text here, left-aligned, normal size.
+[feed: 2]
 ```
 
 ---
 
 ## Tips
 
-- Short punchy text prints best — receipts are narrow
-- Use `[fixedWidth: text ----]` as visual dividers between sections
-- `[negative: on]` makes a striking header band — use sparingly
-- `[magnify: width 2; height 2]` doubles character size, halves line capacity (~24 chars)
-- Leave a `[feed: 1]` between sections for breathing room
-- The printer cuts automatically — no need to add padding at the end
+- ASCII art goes outside markup tags — plain lines of characters print as-is
+- Build art within the 48-char width; count chars if needed
+- `[align: center]` before art lines centers each row — great for symmetric shapes
+- `[negative: on]` + ASCII art = striking inverted block — use for headers
+- Use `=` not `-` for separator lines — `-` renders too faint at receipt resolution
+- Leave `[feed: 1]` between sections for breathing room
+- **Always end content with `[feed: 2]`** — the paper has a fixed top margin from the tear point; `[feed: 2]` adds matching bottom padding so the print sits centered when torn off. The daemon adds `[feed:3][cut]` after this, giving total bottom clearance.
 
 Now generate the markup and run `./receiptd print` with it.
