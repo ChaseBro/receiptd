@@ -152,27 +152,16 @@ func (h *CloudPRNTHandler) handleGetJob(w http.ResponseWriter, r *http.Request) 
 	
 	h.logger.Info().Str("job_id", job.ID).Str("mediaType", mediaType).Msg("Serving job")
 	
-	// For ANY text format, use cputil to convert to starprnt binary
-	if strings.Contains(mediaType, "text/") || mediaType == "application/vnd.star.starprnt" {
-		h.logger.Info().Msg("Converting to starprnt binary via cputil")
-		
-		binary, err := h.convertToStarPRNT(job.Content)
-		if err != nil {
-			h.logger.Error().Err(err).Msg("cputil failed, sending plain text")
-			w.Header().Set("Content-Type", "text/plain")
-			fmt.Fprint(w, job.Content)
-			return
-		}
-		
-		h.logger.Info().Int("binary_size", len(binary)).Msg("Serving starprnt binary")
-		w.Header().Set("Content-Type", "application/vnd.star.starprnt")
-		w.Write(binary)
+	binary, err := h.convertToStarPRNT(job.Content)
+	if err != nil {
+		h.logger.Error().Err(err).Msg("cputil failed")
+		http.Error(w, fmt.Sprintf("cputil conversion failed: %v", err), http.StatusInternalServerError)
 		return
 	}
-	
-	// Default
-	w.Header().Set("Content-Type", "text/plain")
-	fmt.Fprint(w, job.Content)
+
+	h.logger.Info().Int("binary_size", len(binary)).Msg("Serving starprnt binary")
+	w.Header().Set("Content-Type", "application/vnd.star.starprnt")
+	w.Write(binary)
 }
 
 func (h *CloudPRNTHandler) handleComplete(w http.ResponseWriter, r *http.Request) {
