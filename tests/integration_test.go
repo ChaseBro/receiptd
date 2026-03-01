@@ -1,8 +1,12 @@
 package integration_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"io"
 	"net"
 	"net/http"
@@ -44,6 +48,29 @@ func fakeCputil(t *testing.T) string {
 	path := filepath.Join(t.TempDir(), "cputil")
 	os.WriteFile(path, []byte("#!/bin/sh\nprintf '\\x1b\\x40'\n"), 0755)
 	return path
+}
+
+// fakeCputilCapturing writes a shell script that captures the .stm input file
+// to captureFile and then outputs StarPRNT init bytes.
+func fakeCputilCapturing(t *testing.T, captureFile string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "cputil")
+	// $4 is the .stm file path (args: thermal3 decode <mediatype> <file> -)
+	script := "#!/bin/sh\ncat \"$4\" > " + captureFile + "\nprintf '\\x1b\\x40'\n"
+	os.WriteFile(path, []byte(script), 0755)
+	return path
+}
+
+// minimalPNG returns the bytes of a 1×1 white PNG, created with the stdlib.
+func minimalPNG(t *testing.T) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	img.Set(0, 0, color.White)
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatalf("encode PNG: %v", err)
+	}
+	return buf.Bytes()
 }
 
 // testEnv returns a minimal subprocess environment with an isolated HOME.
@@ -273,5 +300,91 @@ func TestPrinterJobLifecycle(t *testing.T) {
 	r3 := cloudprntPoll(t, poll)
 	if r3.JobReady {
 		t.Error("poll 3 post-DELETE: want jobReady=false after completion")
+	}
+}
+
+// TestPrintImageMissingFile verifies that --image with a non-existent path
+// exits non-zero with a clear error before contacting the server.
+func TestPrintImageMissingFile(t *testing.T) {
+	requirePortFree(t, "127.0.0.1:3099")
+
+	cmd := exec.Command(binary, "print", "--image", "/nonexistent/no-such-image.png", "caption")
+	cmd.Env = testEnv(t, "")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("want non-zero exit for missing image, got exit 0\noutput: %s", out)
+	}
+	if !strings.Contains(string(out), "not found") {
+		t.Errorf("want 'not found' in output, got:\n%s", out)
+	}
+}
+
+// TestPrintImageStaged verifies that --image with a valid file submits a job
+// successfully when a server is running.
+func TestPrintImageStaged(t *testing.T) {
+	env := testEnv(t, fakeCputil(t))
+	startServer(t, env)
+
+	imgPath := filepath.Join(t.TempDir(), "test.png")
+	if err := os.WriteFile(imgPath, minimalPNG(t), 0644); err != nil {
+		t.Fatalf("write test image: %v", err)
+	}
+
+	cmd := exec.Command(binary, "print", "--staged", "--image", imgPath, "photo caption")
+	cmd.Env = env
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("want exit 0, got %v\noutput: %s", err, out)
+	}
+	if !strings.Contains(string(out), "Job ID: job-") {
+		t.Errorf("want 'Job ID: job-' in output, got:\n%s", out)
+	}
+}
+
+// TestImageJobLifecycle verifies the full CloudPRNT polling sequence for an
+// image job, and asserts that the [image: url file://...] tag is present in
+// the Star Markup that reaches cputil.
+func TestImageJobLifecycle(t *testing.T) {
+	captureFile := filepath.Join(t.TempDir(), "cputil-capture.stm")
+	env := testEnv(t, fakeCputilCapturing(t, captureFile))
+	requirePortFree(t, "127.0.0.1:3099")
+	requirePortFree(t, "127.0.0.1:3000")
+	startServer(t, env)
+
+	imgPath := filepath.Join(t.TempDir(), "photo.png")
+	if err := os.WriteFile(imgPath, minimalPNG(t), 0644); err != nil {
+		t.Fatalf("write test image: %v", err)
+	}
+
+	printCmd := exec.Command(binary, "print", "--image", imgPath, "photo caption")
+	printCmd.Env = env
+	if err := printCmd.Run(); err != nil {
+		t.Fatalf("print: %v", err)
+	}
+
+	poll := `{"printerMAC":"aa:bb:cc:dd:ee:ff","statusCode":"NORMAL","clientAction":[]}`
+
+	r1 := cloudprntPoll(t, poll)
+	if !r1.JobReady {
+		t.Fatal("poll 1: want jobReady=true")
+	}
+
+	// GET triggers cputil; the capturing fake writes the .stm to captureFile.
+	body, code := cloudprntGet(t, r1.JobToken)
+	if code != 200 || len(body) == 0 {
+		t.Fatalf("GET: want 200 + non-empty body, got %d (%d bytes)", code, len(body))
+	}
+
+	// Verify the markup that reached cputil contains the image tag and caption.
+	captured, err := os.ReadFile(captureFile)
+	if err != nil {
+		t.Fatalf("read cputil capture: %v", err)
+	}
+	markup := string(captured)
+	if !strings.Contains(markup, "[image: url file://"+imgPath) {
+		t.Errorf("want [image: url file://%s] in markup, got:\n%s", imgPath, markup)
+	}
+	if !strings.Contains(markup, "photo caption") {
+		t.Errorf("want 'photo caption' in markup, got:\n%s", markup)
 	}
 }
