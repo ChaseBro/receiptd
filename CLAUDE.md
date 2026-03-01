@@ -31,7 +31,7 @@ The daemon (`internal/server/daemon.go`) runs two concurrent servers:
 
 1. **CloudPRNT HTTP server** (`:3000`) — implements the Star CloudPRNT polling protocol. Star printers poll this server periodically via POST, then GET job content, then DELETE to acknowledge completion.
 
-2. **CLI TCP server** (`127.0.0.1:3099`) — JSON-over-TCP for CLI commands (`status`, `add_job`, `get_jobs`).
+2. **CLI TCP server** (`127.0.0.1:3099`) — JSON-over-TCP for CLI commands (`status`, `add_job`, `get_jobs`, `stop`).
 
 ### Request flow
 
@@ -43,14 +43,22 @@ receiptd print "text"
   → Daemon returns jobReady=true with token
   → Printer fetches job content (GET /?token=...&type=...)
   → cloudprnt.go converts Star Markup (.stm) → StarPRNT binary via cputil
-  → Printer DELETEs token to confirm completion
+  → Printer DELETEs token (data-receipt ack, not print-complete)
+  → Printer polls again immediately; daemon gives next queued job
 ```
+
+### Job sequencing
+
+The Star printer fires two rapid polls per job: one immediately after GET (while still printing — ignored by the server) and one immediately after DELETE (printer is ready — server dispatches next job). `TakeNextJob()` in `queue.go` enforces this atomically:
+
+- Job is `processing` → return nil (post-GET poll; printer is still printing)
+- Job is `acknowledged` (DELETE received) → finalize to `completed`, then give next pending job (post-DELETE poll; printer is ready)
 
 ### Key files
 
-- `internal/server/daemon.go` — `Daemon` struct orchestrates both servers; `AddJob()` appends `[feed:3][cut]` to every job content
+- `internal/server/daemon.go` — `Daemon` struct orchestrates both servers; `AddJob()` appends `[feed:3][cut]` to every job content; `stop` CLI command triggers graceful shutdown
 - `internal/server/cloudprnt.go` — CloudPRNT HTTP handler + `convertToStarPRNT()` calls cputil binary at a hardcoded path
-- `internal/server/queue.go` — thread-safe in-memory job queue (no persistence)
+- `internal/server/queue.go` — thread-safe in-memory job queue (no persistence); `TakeNextJob()` is the atomic gate for job sequencing
 - `internal/client/client.go` — CLI-to-daemon TCP client using JSON encoding
 - `internal/cli/` — Cobra command implementations; `root.go` has `--json` and `--verbose` persistent flags, `OutputJSON`/`ErrorExit` helpers
 - `internal/stub/stub.go` — mock data stubs (used by CLI commands that aren't yet wired to the real client)

@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/rs/zerolog"
 )
@@ -84,12 +85,12 @@ type CloudPRNTPollResponse struct {
 
 func (h *CloudPRNTHandler) handlePoll(w http.ResponseWriter, r *http.Request) {
 	body, _ := io.ReadAll(r.Body)
-	
+
 	var bodyMap map[string]interface{}
 	if len(body) > 0 {
 		json.Unmarshal(body, &bodyMap)
 	}
-	
+
 	mac := ""
 	if m, ok := bodyMap["printerMAC"].(string); ok {
 		mac = m
@@ -97,29 +98,48 @@ func (h *CloudPRNTHandler) handlePoll(w http.ResponseWriter, r *http.Request) {
 	if mac == "" {
 		mac = r.Header.Get("X-Star-Mac")
 	}
-	
-	h.logger.Info().Str("mac", mac).Msg("Printer poll")
-	
-	job := h.queue.GetPendingForPrinter(h.printer)
-	
+
+	// Log the full poll body so we can see printer status fields
+	h.logger.Info().Str("mac", mac).RawJSON("body", body).Msg("Printer poll")
+
+	// Log queue state on every poll for debugging
+	pending, processing := h.queue.CountByStatus()
+	h.logger.Debug().Int("pending", pending).Int("processing", processing).Msg("Queue state")
+
+	// Warn about stale processing jobs (stuck > 30s means printer never DELETEd)
+	stale := h.queue.GetStaleProcessing(30 * time.Second)
+	for _, sj := range stale {
+		h.logger.Warn().Str("job_id", sj.ID).Dur("age", time.Since(*sj.StartedAt)).Msg("Stale processing job — printer may have missed it; resetting to pending")
+		h.queue.ResetToPending(sj.ID)
+	}
+
+	// Atomically check for in-flight jobs, find next pending, and mark it processing.
+	// This prevents the TOCTOU race where two concurrent polls both see processing=0
+	// and each grabs a different pending job.
+	job := h.queue.TakeNextJob(h.printer)
+
 	if job == nil {
-		h.logger.Debug().Msg("No jobs")
+		h.logger.Debug().Int("pending", pending).Int("processing", processing).Msg("No job available (busy or empty)")
+		// If jobs are waiting but we're holding off (in-flight/acknowledged), poll back quickly.
+		// Otherwise use the normal 5s idle interval.
+		pollInterval := 5
+		if pending > 0 {
+			pollInterval = 1
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(CloudPRNTPollResponse{
 			JobReady:     false,
 			MediaTypes:   h.mediaTypes,
-			PollInterval: 5,
+			PollInterval: pollInterval,
 			DeleteMethod: "DELETE",
 		})
 		return
 	}
-	
-	h.queue.StartProcessing(job.ID)
-	
+
 	token := job.ID
-	
-	h.logger.Info().Str("job_id", job.ID).Str("token", token).Msg("Job ready")
-	
+
+	h.logger.Info().Str("job_id", job.ID).Str("token", token).Msg("Job ready — returning to printer")
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(CloudPRNTPollResponse{
 		JobReady:     true,
@@ -168,11 +188,15 @@ func (h *CloudPRNTHandler) handleComplete(w http.ResponseWriter, r *http.Request
 	token := r.URL.Query().Get("token")
 	code := r.URL.Query().Get("code")
 	success := code == "0" || code == "" || strings.Contains(code, "200")
-	
-	h.logger.Info().Str("token", token).Bool("success", success).Str("code", code).Msg("Job complete")
-	
-	h.queue.Complete(token, success, "")
-	
+
+	// Log all query params so we can see exactly what the printer sends
+	h.logger.Info().Str("token", token).Bool("success", success).Str("code", code).Str("raw_query", r.URL.RawQuery).Msg("Job complete (DELETE)")
+
+	ok := h.queue.Acknowledge(token, success, "")
+	if !ok {
+		h.logger.Warn().Str("token", token).Msg("DELETE for unknown token — job may have already been removed")
+	}
+
 	w.WriteHeader(http.StatusNoContent)
 }
 

@@ -40,8 +40,9 @@ type Daemon struct {
 	cliListener net.Listener
 	ready       chan struct{}
 	stop        chan struct{}
+	stopOnce    sync.Once
 	wg          sync.WaitGroup
-	logger     zerolog.Logger
+	logger      zerolog.Logger
 }
 
 // NewDaemon creates a new daemon
@@ -207,6 +208,11 @@ func (d *Daemon) handleCLIConn(conn net.Conn) {
 	case "get_jobs":
 		jobs := d.queue.GetAll()
 		resp = CLIResponse{Status: "ok", Data: jobs}
+	case "stop":
+		resp = CLIResponse{Status: "ok"}
+		json.NewEncoder(conn).Encode(resp)
+		go d.Stop()
+		return
 	default:
 		resp = CLIResponse{Status: "error", Error: "unknown command"}
 	}
@@ -214,21 +220,23 @@ func (d *Daemon) handleCLIConn(conn net.Conn) {
 	json.NewEncoder(conn).Encode(resp)
 }
 
-// Stop stops the daemon gracefully
+// Stop stops the daemon gracefully. Safe to call multiple times.
 func (d *Daemon) Stop() error {
-	d.logger.Info().Msg("Stopping server")
-	close(d.stop)
+	d.stopOnce.Do(func() {
+		d.logger.Info().Msg("Stopping server")
+		close(d.stop)
 
-	if d.httpServer != nil {
-		d.httpServer.Close()
-	}
+		if d.httpServer != nil {
+			d.httpServer.Close()
+		}
 
-	if d.cliListener != nil {
-		d.cliListener.Close()
-	}
+		if d.cliListener != nil {
+			d.cliListener.Close()
+		}
 
-	d.wg.Wait()
-	d.logger.Info().Msg("Server stopped")
+		d.wg.Wait()
+		d.logger.Info().Msg("Server stopped")
+	})
 	return nil
 }
 

@@ -20,14 +20,11 @@ Designed for:
 # Build
 go build -o receiptd ./cmd/receiptd
 
-# Start server (or it auto-starts on first print)
-./receiptd server
-
-# Print!
+# Print — server starts automatically on first use
 ./receiptd print "Hello, World!"
 
 # With Star markup formatting
-./receiptd print "[bold:on]HELLO[bold:off][cut]"
+./receiptd print "[bold:on]HELLO[bold:off]"
 ```
 
 ## Features
@@ -90,14 +87,8 @@ receiptd/
 ## For Agents
 
 ```bash
-# Start server
-./receiptd server &
-
-# Wait for ready
-sleep 2
-
-# Print
-./receiptd print "[bold:on]ORDER #123[bold:off][cut]"
+# Just print — server auto-starts, no sleep needed
+./receiptd print "[bold:on]ORDER #123[bold:off]"
 ```
 
 ## License
