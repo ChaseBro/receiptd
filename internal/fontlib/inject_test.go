@@ -84,8 +84,11 @@ func TestInjectFont_InjectsBeforeHead(t *testing.T) {
 	if !strings.Contains(result, "-webkit-font-smoothing: none") {
 		t.Error("result missing anti-aliasing suppression")
 	}
-	if !strings.Contains(result, "file://") {
-		t.Error("result missing file:// URL for font")
+	if !strings.Contains(result, "data:font/") {
+		t.Error("result missing data URI for font")
+	}
+	if !strings.Contains(result, "base64,") {
+		t.Error("result missing base64 encoding")
 	}
 
 	// The <style> block must appear before </head>

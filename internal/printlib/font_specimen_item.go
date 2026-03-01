@@ -1,7 +1,9 @@
 package printlib
 
 import (
+	"encoding/base64"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/ChaseBro/receiptd/internal/fontlib"
@@ -35,14 +37,18 @@ func htmlFontSpecimen() string {
 			installedCount++
 		}
 
-		// @font-face block — only for installed fonts
+		// @font-face block — only for installed fonts; embed as base64 data URI
+		// to avoid file:// cross-origin restrictions in headless Chrome.
 		if installed {
-			fontPath := fontlib.FontPath(f, dataDir)
-			faceBlocks.WriteString(fmt.Sprintf(`
+			fontData, err := os.ReadFile(fontlib.FontPath(f, dataDir))
+			if err == nil {
+				encoded := base64.StdEncoding.EncodeToString(fontData)
+				faceBlocks.WriteString(fmt.Sprintf(`
 @font-face {
   font-family: '%s';
-  src: url('file://%s') format('%s');
-}`, f.Family, fontPath, f.Format))
+  src: url('data:%s;base64,%s') format('%s');
+}`, f.Family, fontlib.FontMIME(f.Format), encoded, fontlib.CSSFormatHint(f.Format)))
+			}
 		}
 
 		// Row for this font

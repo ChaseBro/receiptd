@@ -1,12 +1,15 @@
 package fontlib
 
 import (
+	"encoding/base64"
 	"fmt"
+	"os"
 	"strings"
 )
 
 // InjectFont injects a @font-face + body override CSS block for slug into html.
-// Returns the modified HTML or an error if the font is not installed.
+// Font bytes are embedded as a base64 data URI to avoid file:// cross-origin
+// restrictions in headless Chrome. Returns modified HTML or an error.
 func InjectFont(html, slug, dataDir string) (string, error) {
 	f, ok := Lookup(slug)
 	if !ok {
@@ -16,18 +19,23 @@ func InjectFont(html, slug, dataDir string) (string, error) {
 		return "", fmt.Errorf("font %s not installed; run: receiptd fonts install %s", f.DisplayName, f.Slug)
 	}
 
-	fontPath := FontPath(f, dataDir)
-	css := buildCSS(f, fontPath)
+	data, err := os.ReadFile(FontPath(f, dataDir))
+	if err != nil {
+		return "", fmt.Errorf("read font: %w", err)
+	}
 
+	css := buildCSS(f, data)
 	return injectCSS(html, css), nil
 }
 
-// buildCSS generates the @font-face + body override CSS for a font.
-func buildCSS(f Font, absPath string) string {
+// buildCSS generates the @font-face + body override CSS, embedding the font as
+// a base64 data URI so Chrome can load it regardless of file:// security policy.
+func buildCSS(f Font, fontData []byte) string {
+	encoded := base64.StdEncoding.EncodeToString(fontData)
 	return fmt.Sprintf(`<style>
 @font-face {
   font-family: '%s';
-  src: url('file://%s') format('%s');
+  src: url('data:%s;base64,%s') format('%s');
 }
 body {
   font-family: '%s', monospace;
@@ -36,17 +44,40 @@ body {
   font-smooth: never;
   text-rendering: optimizeSpeed;
 }
-</style>`, f.Family, absPath, f.Format, f.Family, f.DefaultSize)
+</style>`, f.Family, FontMIME(f.Format), encoded, CSSFormatHint(f.Format), f.Family, f.DefaultSize)
+}
+
+// FontMIME returns the MIME type for a font format string.
+func FontMIME(format string) string {
+	switch strings.ToLower(format) {
+	case "woff2":
+		return "font/woff2"
+	case "ttf":
+		return "font/ttf"
+	case "otf":
+		return "font/otf"
+	default:
+		return "font/" + format
+	}
+}
+
+// CSSFormatHint returns the CSS format() hint string for a font format.
+func CSSFormatHint(format string) string {
+	switch strings.ToLower(format) {
+	case "ttf":
+		return "truetype"
+	case "otf":
+		return "opentype"
+	default:
+		return format
+	}
 }
 
 // injectCSS inserts the <style> block before </head>. If no </head> is found,
 // prepends to the document.
 func injectCSS(html, cssBlock string) string {
 	if idx := strings.Index(strings.ToLower(html), "</head>"); idx != -1 {
-		// Find the actual position in the original (case-preserved) string.
-		// strings.ToLower preserves byte positions so idx is correct.
 		return html[:idx] + cssBlock + "\n" + html[idx:]
 	}
-	// No <head> tag — prepend.
 	return cssBlock + "\n" + html
 }
