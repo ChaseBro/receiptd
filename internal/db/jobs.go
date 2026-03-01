@@ -125,12 +125,12 @@ type rowScanner interface {
 
 func scanJob(row rowScanner) (*Job, error) {
 	var j Job
-	var printerID, errorMsg, startedAt, completedAt, acknowledgedAt sql.NullString
+	var printerID, errorMsg, createdAt, startedAt, completedAt, acknowledgedAt sql.NullString
 	var staged int
 
 	err := row.Scan(
 		&j.ID, &printerID, &j.Content, &j.Status, &staged, &errorMsg,
-		&j.CreatedAt, &startedAt, &completedAt, &acknowledgedAt,
+		&createdAt, &startedAt, &completedAt, &acknowledgedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -138,6 +138,9 @@ func scanJob(row rowScanner) (*Job, error) {
 	j.PrinterID = printerID.String
 	j.ErrorMsg = errorMsg.String
 	j.Staged = staged != 0
+	if t, err := time.Parse(time.RFC3339Nano, createdAt.String); err == nil {
+		j.CreatedAt = t
+	}
 	j.StartedAt = parseNullTime(startedAt)
 	j.CompletedAt = parseNullTime(completedAt)
 	j.AcknowledgedAt = parseNullTime(acknowledgedAt)
