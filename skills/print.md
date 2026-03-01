@@ -1,64 +1,74 @@
-You are generating content for a Star Micronics thermal receipt printer (80mm, 48 chars/line). Print the user's request with `./receiptd print "<markup>"`.
+You are generating a receipt to print on a Star Micronics thermal receipt printer (80mm, 576px wide).
 
-Daemon appends `[feed:3][cut]` — do not include `[cut]`. Emoji fail — use ASCII art.
+**Default approach: HTML via `--render`.** Renders through headless Chrome — emojis, CSS, web fonts, images all work.
 
-## Tags
+## Workflow
 
-```
-[bold: on/off]  [underline: on/off]  [plain]
-[mag: w 2; h 2]  (scale 1–4; [mag] or [plain] to reset — persists until explicitly reset)
-[negative: on/off]  [invert: on/off]
-[align: center/left/right]  (persists until reset — use [align] or [align: left] to return to left)
-[font: b]  (narrower; [font] resets)
-[linespacing: min]  ([linespacing] resets)
+```bash
+# Preview first (always)
+receiptd render --output /tmp/preview.png - <<'EOF'
+<html>...</html>
+EOF
+open /tmp/preview.png
 
-[col: left ITEM; right £9.99]
-[col: left LONG; vl; right £9.99]       vl = drop left if too narrow
-[col: left LONG; short SHORT; right £9.99]
-
-[fw: text LABEL; width 36][fw: text £9.99; width 12; align right]   48-char row
-[fw: text TEXT; width 36; et end]        et end = truncate with …
-[sp: c N]                                N non-breaking spaces
-
-[feed]  [feed: length 10mm]
-[image: url file:///path; width 80%; min-width 48mm]
+# Print when happy
+receiptd print --render - <<'EOF'
+<html>...</html>
+EOF
 ```
 
-Shorthands: `[col]`=column · `[fw]`=fixedWidth · `[mag]`=magnify · `[sp]`=space
+## Starter template
 
-## Unicode
+```html
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'Courier New', monospace;
+  font-size: 20px;
+  width: 576px;
+  background: white;
+  padding: 12px 14px;
+}
+.center { text-align: center; }
+.right  { text-align: right; }
+.rule   { border-top: 2px solid #000; margin: 8px 0; }
+.rule.dashed { border-style: dashed; }
+.row    { display: flex; justify-content: space-between; }
+.big    { font-size: 36px; font-weight: bold; }
+.small  { font-size: 15px; color: #444; }
+</style></head><body>
 
+  <p class="center big">🧾 RECEIPT</p>
+  <p class="center small">Shop Name · 123 Main St</p>
+  <div class="rule"></div>
+
+  <div class="row"><span>Item one</span><span>$10.00</span></div>
+  <div class="row"><span>Item two</span><span>$5.00</span></div>
+
+  <div class="rule dashed"></div>
+  <div class="row"><strong>Total</strong><strong>$15.00</strong></div>
+  <div class="rule"></div>
+
+  <p class="center">Thank you! 🙏</p>
+
+</body></html>
 ```
-Separator:  ────────────────────────────────────────────────  (48× ─)
-Box single: ─ │ ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼
-Box double: ═ ║ ╔ ╗ ╚ ╝ ╠ ╣ ╬    Curved: ╭ ╮ ╯ ╰
-Fills:      █ ▓ ▒ ░ ▀ ▄ ▌ ▐ ■ □
-Shapes:     ● ○ ◆ ▲ ▼ ★ ☆   Suits: ♠ ♣ ♥ ♦   Arrows: → ← ↑ ↓ ↔ ⇒ ⇔
-Currency:   € £ ¥ ¢     Misc: © ® ™ ° • … ℃ ℉ №
-```
 
-No emoji · no dingbats (✓✗✈✉) · no ₿₹₩₽
+## Layout rules
 
-## ASCII art
-
-Use liberally — 48 chars wide. Bold chars (`|/*=#@`) for structure; avoid `-.,'` for outlines.
-`[align: center]` centers each row. `█ ▓` work as solid fills.
-Multiple spaces collapse — use `\ ` (escaped space) or `[sp: c N]` for fixed gaps.
-`[fw: text …; width N]` for side-by-side art blocks.
-
-**Prefer full-width ASCII characters** — they are double-width and render boldly on thermal paper.
-Fit exactly 22 fullwidth chars per line. Use them for large headers, logos, and decorative elements.
-Fullwidth chars: `Ａ-Ｚ　０-９　！　＃　＄　％　＊　＋　－　／　＝　？　＠`
-Example: `[align: center]ＰＩＣＮＩＣ　ＤＡＹ` (10 fullwidth chars = full-width header)
-
-## Full reference
-
-For complex layouts, templates, or unicode details: `cat docs/star-markup.md`
+- **Width is always 576px** — set `body { width: 576px }`. Content wider than 576px is clipped.
+- **Height is unconstrained** — flows as long as needed.
+- **No margins needed at bottom** — daemon appends feed + cut automatically.
+- Emojis ✅, CSS ✅, flexbox ✅, `@import` web fonts ✅ (when network available).
+- `font-size: 20px` ≈ normal receipt text. `36px`+ for headers.
+- Monospace (Courier New) looks most receipt-like. System UI fonts also work.
+- `border-top: 2px solid #000` for separator lines; `border-style: dashed` for dashed rules.
 
 ## Design fast
 
-Commit to your first reasonable layout. Don't count characters unless a line is clearly going to overflow — trust `[align: center]` to handle centering.
+Preview → adjust → print. `open /tmp/preview.png` after each render to see the result before committing to paper. Use `--staged` if you want to inspect the job before the printer picks it up.
 
-## Always end with `[feed: 2]`
+## When to use Star Markup instead
 
-Bottom padding so the print sits centred at the tear point.
+Use `/star-markup-print` for: text-only layouts, when Chrome is unavailable, or when precise column/tab alignment matters more than visual richness.
