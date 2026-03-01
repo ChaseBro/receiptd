@@ -53,8 +53,8 @@ func HTMLToPNG(html string, width int) ([]byte, error) {
 		chromedp.Headless,
 		chromedp.NoSandbox,
 		chromedp.DisableGPU,
-		// Start with a 1px-tall window; FullScreenshot expands to content height.
-		chromedp.WindowSize(cssWidth, 1),
+		// Window size matches physical pixels (cssWidth × RenderScale = width).
+		chromedp.WindowSize(width, 1),
 		chromedp.Flag("hide-scrollbars", true),
 		// Suppress macOS "Keychain Not Found" dialog — use in-memory store.
 		chromedp.Flag("password-store", "basic"),
@@ -72,9 +72,11 @@ func HTMLToPNG(html string, width int) ([]byte, error) {
 
 	var buf []byte
 	if err := chromedp.Run(ctx,
-		// 1px viewport height prevents the root element from stretching to fill
-		// the window; FullScreenshot then captures actual content height only.
-		chromedp.EmulateViewport(int64(cssWidth), 1),
+		// CSS viewport is narrowed by RenderScale; EmulateScale multiplies each
+		// CSS pixel by RenderScale so the physical screenshot is exactly `width`
+		// pixels wide — no upscaling needed, no artifacts.
+		// 1px height prevents root element stretching; FullScreenshot expands to content height.
+		chromedp.EmulateViewport(int64(cssWidth), 1, chromedp.EmulateScale(RenderScale)),
 		chromedp.Navigate(fileURL),
 		// Full-page PNG (quality=100 selects PNG in chromedp).
 		chromedp.FullScreenshot(&buf, 100),
