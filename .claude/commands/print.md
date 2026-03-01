@@ -6,9 +6,9 @@ Daemon appends `[feed:3][cut]` — do not include `[cut]`. Emoji fail — use AS
 
 ```
 [bold: on/off]  [underline: on/off]  [plain]
-[mag: w 2; h 2]  (scale 1–4; [mag] resets)
+[mag: w 2; h 2]  (scale 1–4; [mag] or [plain] to reset — persists until explicitly reset)
 [negative: on/off]  [invert: on/off]
-[align: center/left/right]  ([align] resets to left)
+[align: center/left/right]  (persists until reset — use [align] or [align: left] to return to left)
 [font: b]  (narrower; [font] resets)
 [linespacing: min]  ([linespacing] resets)
 
@@ -46,9 +46,18 @@ Use liberally — 48 chars wide. Bold chars (`|/*=#@`) for structure; avoid `-.,
 Multiple spaces collapse — use `\ ` (escaped space) or `[sp: c N]` for fixed gaps.
 `[fw: text …; width N]` for side-by-side art blocks.
 
+**Prefer full-width ASCII characters** — they are double-width and render boldly on thermal paper.
+Fit exactly 22 fullwidth chars per line. Use them for large headers, logos, and decorative elements.
+Fullwidth chars: `Ａ-Ｚ　０-９　！　＃　＄　％　＊　＋　－　／　＝　？　＠`
+Example: `[align: center]ＰＩＣＮＩＣ　ＤＡＹ` (10 fullwidth chars = full-width header)
+
 ## Full reference
 
 For complex layouts, templates, or unicode details: `cat docs/star-markup.md`
+
+## Design fast
+
+Commit to your first reasonable layout. Don't count characters unless a line is clearly going to overflow — trust `[align: center]` to handle centering.
 
 ## Always end with `[feed: 2]`
 
