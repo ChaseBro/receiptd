@@ -63,7 +63,7 @@ func htmlFontSpecimen() string {
 			))
 		} else {
 			rows.WriteString(fmt.Sprintf(`
-<div class="font-row missing">
+<div class="font-row">
   <div class="meta">
     <span class="slug">%s</span>
     <span class="badge missing-badge">not installed</span>
@@ -97,9 +97,9 @@ body {
   padding-bottom: 8px;
 }
 .header h1 { font-size: 22px; font-weight: bold; letter-spacing: 2px; }
-.header .sub { font-size: 16px; color: #444; margin-top: 3px; }
+.header .sub { font-size: 16px; margin-top: 3px; }
 .font-row {
-  border-bottom: 1px solid #ccc;
+  border-bottom: 1px solid black;
   padding: 7px 0;
 }
 .meta {
@@ -108,21 +108,18 @@ body {
   gap: 6px;
   margin-bottom: 3px;
 }
-.slug {
-  font-family: monospace;
-  font-size: 12px;
-  color: #555;
-}
+.slug { font-family: monospace; font-size: 14px; }
 .badge {
   font-family: monospace;
-  font-size: 10px;
+  font-size: 12px;
   background: black;
   color: white;
   padding: 1px 4px;
 }
 .missing-badge {
-  background: #bbb;
-  color: #333;
+  background: white;
+  color: black;
+  border: 1px solid black;
 }
 .sample {
   color: black;
@@ -131,22 +128,18 @@ body {
   overflow: hidden;
 }
 .sample2 {
-  color: #555;
+  color: black;
   line-height: 1.1;
   white-space: nowrap;
   overflow: hidden;
 }
 .placeholder {
   font-family: monospace;
-  font-size: 14px;
-  color: #aaa;
-  font-style: italic;
+  font-size: 16px;
 }
-.missing { opacity: 0.6; }
 .footer {
   margin-top: 10px;
   font-size: 16px;
-  color: #555;
   text-align: center;
 }
 </style>

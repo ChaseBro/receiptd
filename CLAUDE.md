@@ -140,6 +140,7 @@ Star Markup syntax: `[align: center]`, `[bold: on]`/`[bold: off]`, `[col: left X
 
 `internal/render/render.go` wraps `chromedp` to launch headless Chrome and take a full-page PNG screenshot:
 
+- **Output is binary black/white** — gray values either drop out or print solid; use dithering (`--dither floyd-steinberg`) for gradients/photos, and keep HTML purely black-on-white
 - Viewport width: **576px** (80mm at 203 DPI — matches printer paper)
 - Viewport height: **1px** initially, so Chrome's root element doesn't stretch; `FullScreenshot` expands to actual content height
 - Flags: `--headless`, `--no-sandbox`, `--disable-gpu`, `--password-store=basic`, `--use-mock-keychain` (suppresses macOS Keychain dialog)
