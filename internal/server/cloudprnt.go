@@ -22,14 +22,30 @@ type CloudPRNTHandler struct {
 	mediaTypes  []string
 }
 
-func NewCloudPRNTHandler(queue *Queue, printerID string, logger zerolog.Logger) *CloudPRNTHandler {
+func resolveCputilPath() string {
+	// 1. Explicit env var
+	if p := os.Getenv("CPUTIL_PATH"); p != "" {
+		return p
+	}
+	// 2. cputil on PATH
+	if p, err := exec.LookPath("cputil"); err == nil {
+		return p
+	}
+	return ""
+}
+
+func NewCloudPRNTHandler(queue *Queue, printerID string, logger zerolog.Logger) (*CloudPRNTHandler, error) {
+	cputilPath := resolveCputilPath()
+	if cputilPath == "" {
+		return nil, fmt.Errorf("cputil not found: set CPUTIL_PATH or add cputil to PATH")
+	}
 	return &CloudPRNTHandler{
 		queue:      queue,
 		printer:    printerID,
 		logger:     logger,
-		cputilPath: "/Users/chase/.openclaw/workspace/projects/print-booth/cloudprnt-sdk/cputil-bin/cputil",
+		cputilPath: cputilPath,
 		mediaTypes: []string{"text/vnd.star.markup", "text/plain"},
-	}
+	}, nil
 }
 
 func (h *CloudPRNTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {

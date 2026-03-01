@@ -85,7 +85,10 @@ func (d *Daemon) Start() error {
 	}
 
 	// Start CloudPRNT HTTP server
-	cloudprntHandler := NewCloudPRNTHandler(d.queue, "", d.logger)
+	cloudprntHandler, err := NewCloudPRNTHandler(d.queue, "", d.logger)
+	if err != nil {
+		return err
+	}
 	d.httpServer = &http.Server{
 		Addr:    d.config.CloudPRNTListen,
 		Handler: cloudprntHandler,
@@ -101,7 +104,6 @@ func (d *Daemon) Start() error {
 	}()
 
 	// Start CLI listener
-	var err error
 	d.cliListener, err = net.Listen("tcp", d.config.CLIListen)
 	if err != nil {
 		return fmt.Errorf("listen on CLI address: %w", err)
