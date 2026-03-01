@@ -204,7 +204,18 @@ func (h *CloudPRNTHandler) handleGetJob(w http.ResponseWriter, r *http.Request) 
 
 	h.logger.Info().Str("job_id", job.ID).Str("mediaType", mediaType).Msg("Serving job")
 
-	binary, err := h.convertToStarPRNT(job.Content)
+	markup := job.Content
+	if job.ImagePath != "" {
+		// Prepend image tag; use file:// scheme for absolute local paths.
+		url := job.ImagePath
+		if !strings.HasPrefix(url, "file://") && !strings.HasPrefix(url, "http://") &&
+			!strings.HasPrefix(url, "https://") && !strings.HasPrefix(url, "data:") {
+			url = "file://" + url
+		}
+		markup = fmt.Sprintf("[image: url %s; width 100%%]\n", url) + markup
+	}
+
+	binary, err := h.convertToStarPRNT(markup)
 	if err != nil {
 		h.logger.Error().Err(err).Msg("cputil failed")
 		http.Error(w, fmt.Sprintf("cputil conversion failed: %v", err), http.StatusInternalServerError)

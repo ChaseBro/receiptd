@@ -11,6 +11,7 @@ type Job struct {
 	ID             string
 	PrinterID      string
 	Content        string
+	ImagePath      string
 	Status         string
 	Staged         bool
 	ErrorMsg       string
@@ -24,12 +25,13 @@ type Job struct {
 func (d *DB) SaveJob(j *Job) error {
 	_, err := d.Exec(`
 		INSERT OR REPLACE INTO jobs
-		    (id, printer_id, content, status, staged, error_msg,
+		    (id, printer_id, content, image_path, status, staged, error_msg,
 		     created_at, started_at, completed_at, acknowledged_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		j.ID,
 		nullString(j.PrinterID),
 		j.Content,
+		nullString(j.ImagePath),
 		j.Status,
 		boolToInt(j.Staged),
 		nullString(j.ErrorMsg),
@@ -71,7 +73,7 @@ func (d *DB) UpdateJob(j *Job) error {
 
 // GetJob retrieves a single job by ID.
 func (d *DB) GetJob(id string) (*Job, error) {
-	row := d.QueryRow(`SELECT id, printer_id, content, status, staged, error_msg,
+	row := d.QueryRow(`SELECT id, printer_id, content, image_path, status, staged, error_msg,
 	    created_at, started_at, completed_at, acknowledged_at FROM jobs WHERE id = ?`, id)
 	j, err := scanJob(row)
 	if err == sql.ErrNoRows {
@@ -84,7 +86,7 @@ func (d *DB) GetJob(id string) (*Job, error) {
 // All are reset to 'pending' so they can be re-dispatched.
 func (d *DB) GetPendingJobs() ([]*Job, error) {
 	rows, err := d.Query(`
-		SELECT id, printer_id, content, status, staged, error_msg,
+		SELECT id, printer_id, content, image_path, status, staged, error_msg,
 		       created_at, started_at, completed_at, acknowledged_at
 		FROM jobs
 		WHERE status IN ('pending', 'processing', 'acknowledged')
@@ -99,7 +101,7 @@ func (d *DB) GetPendingJobs() ([]*Job, error) {
 // GetAllJobs returns all jobs ordered by creation time descending.
 func (d *DB) GetAllJobs() ([]*Job, error) {
 	rows, err := d.Query(`
-		SELECT id, printer_id, content, status, staged, error_msg,
+		SELECT id, printer_id, content, image_path, status, staged, error_msg,
 		       created_at, started_at, completed_at, acknowledged_at
 		FROM jobs
 		ORDER BY created_at DESC`)
@@ -125,17 +127,18 @@ type rowScanner interface {
 
 func scanJob(row rowScanner) (*Job, error) {
 	var j Job
-	var printerID, errorMsg, createdAt, startedAt, completedAt, acknowledgedAt sql.NullString
+	var printerID, imagePath, errorMsg, createdAt, startedAt, completedAt, acknowledgedAt sql.NullString
 	var staged int
 
 	err := row.Scan(
-		&j.ID, &printerID, &j.Content, &j.Status, &staged, &errorMsg,
+		&j.ID, &printerID, &j.Content, &imagePath, &j.Status, &staged, &errorMsg,
 		&createdAt, &startedAt, &completedAt, &acknowledgedAt,
 	)
 	if err != nil {
 		return nil, err
 	}
 	j.PrinterID = printerID.String
+	j.ImagePath = imagePath.String
 	j.ErrorMsg = errorMsg.String
 	j.Staged = staged != 0
 	if t, err := time.Parse(time.RFC3339Nano, createdAt.String); err == nil {

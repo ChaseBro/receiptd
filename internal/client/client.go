@@ -73,13 +73,18 @@ func (c *Client) Status() (*Response, error) {
 }
 
 // AddJob adds a print job. If staged is true the job is held in the queue and
-// never dispatched to the printer.
-func (c *Client) AddJob(printerID, content string, staged bool) (*Response, error) {
-	return c.SendCommand("add_job", map[string]interface{}{
+// never dispatched to the printer. imagePath is an optional local file path or
+// URL (file://, https://, data:) to include as an image at the top of the print.
+func (c *Client) AddJob(printerID, content, imagePath string, staged bool) (*Response, error) {
+	payload := map[string]interface{}{
 		"printerId": printerID,
 		"content":   content,
 		"staged":    staged,
-	})
+	}
+	if imagePath != "" {
+		payload["imagePath"] = imagePath
+	}
+	return c.SendCommand("add_job", payload)
 }
 
 // GetJobs gets all jobs

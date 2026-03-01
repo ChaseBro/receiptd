@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -20,6 +21,7 @@ var (
 	waitTime  int
 	dryRun    bool
 	staged    bool
+	imagePath string
 )
 
 var printCmd = &cobra.Command{
@@ -63,8 +65,26 @@ Examples:
 			message = strings.Join(args, " ")
 		}
 
+		// Resolve image path to absolute before sending to server
+		resolvedImage := ""
+		if imagePath != "" {
+			abs, err := filepath.Abs(imagePath)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error resolving image path: %v\n", err)
+				os.Exit(1)
+			}
+			if _, err := os.Stat(abs); err != nil {
+				fmt.Fprintf(os.Stderr, "Image file not found: %s\n", abs)
+				os.Exit(1)
+			}
+			resolvedImage = abs
+		}
+
 		if dryRun {
 			fmt.Println(message)
+			if resolvedImage != "" {
+				fmt.Printf("[image: %s]\n", resolvedImage)
+			}
 			return
 		}
 
@@ -94,7 +114,7 @@ Examples:
 		}
 		
 		// Try real server
-		resp, err := c.AddJob(printerID, message, staged)
+		resp, err := c.AddJob(printerID, message, resolvedImage, staged)
 		if err != nil {
 			// Server error - fall back to stub
 			if jsonOutput {
@@ -167,4 +187,5 @@ func init() {
 	printCmd.Flags().IntVarP(&waitTime, "wait", "w", 0, "Wait time in seconds before printing")
 	printCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Resolve and print the message without contacting the server")
 	printCmd.Flags().BoolVar(&staged, "staged", false, "Queue the job on the server but do not send to printer")
+	printCmd.Flags().StringVar(&imagePath, "image", "", "Path to image file to print (PNG, JPEG, or BMP)")
 }

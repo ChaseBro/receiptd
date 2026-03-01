@@ -111,6 +111,7 @@ func (d *Daemon) loadPendingJobs() error {
 			ID:        dbJob.ID,
 			PrinterID: dbJob.PrinterID,
 			Content:   dbJob.Content,
+			ImagePath: dbJob.ImagePath,
 			Status:    JobStatusPending,
 			Staged:    dbJob.Staged,
 			CreatedAt: dbJob.CreatedAt,
@@ -246,14 +247,15 @@ func (d *Daemon) handleCLIConn(conn net.Conn) {
 		}
 		printerID, _ := payload["printerId"].(string)
 		content, _ := payload["content"].(string)
+		imagePath, _ := payload["imagePath"].(string)
 		staged, _ := payload["staged"].(bool)
 
-		job := d.AddJob(printerID, content, staged)
+		job := d.AddJob(printerID, content, imagePath, staged)
 		resp = CLIResponse{
 			Status: "ok",
 			Data:   job.ID,
 		}
-		d.logger.Info().Str("job_id", job.ID).Bool("staged", staged).Str("content", content).Msg("Job added")
+		d.logger.Info().Str("job_id", job.ID).Bool("staged", staged).Str("content", content).Str("image_path", imagePath).Msg("Job added")
 	case "get_jobs":
 		jobs := d.queue.GetAll()
 		resp = CLIResponse{Status: "ok", Data: jobs}
@@ -305,12 +307,14 @@ func (d *Daemon) Queue() *Queue {
 }
 
 // AddJob adds a job to the queue and persists it to the DB.
+// imagePath is an absolute local file path or a URL (file://, https://, data:).
 // If staged is true the job is held and never dispatched to the printer.
-func (d *Daemon) AddJob(printerID, content string, staged bool) *Job {
+func (d *Daemon) AddJob(printerID, content, imagePath string, staged bool) *Job {
 	job := &Job{
 		ID:        fmt.Sprintf("job-%d", time.Now().UnixNano()),
 		PrinterID: printerID,
 		Content:   content + "[feed:3][cut]",
+		ImagePath: imagePath,
 		Status:    JobStatusPending,
 		Staged:    staged,
 		CreatedAt: time.Now(),
@@ -322,7 +326,7 @@ func (d *Daemon) AddJob(printerID, content string, staged bool) *Job {
 		d.logger.Error().Err(err).Str("job_id", job.ID).Msg("Failed to persist job to DB")
 	}
 
-	d.logger.Info().Str("job_id", job.ID).Bool("staged", staged).Str("content", content).Msg("Job added to queue")
+	d.logger.Info().Str("job_id", job.ID).Bool("staged", staged).Str("content", content).Str("image_path", imagePath).Msg("Job added to queue")
 	return job
 }
 
@@ -413,6 +417,7 @@ func serverJobToDBJob(j *Job) *db.Job {
 		ID:          j.ID,
 		PrinterID:   j.PrinterID,
 		Content:     j.Content,
+		ImagePath:   j.ImagePath,
 		Status:      j.Status,
 		Staged:      j.Staged,
 		ErrorMsg:    j.ErrorMsg,

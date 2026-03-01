@@ -10,6 +10,7 @@ type Job struct {
 	ID          string     `json:"id"`
 	PrinterID   string     `json:"printerId"`
 	Content     string     `json:"content"`
+	ImagePath   string     `json:"imagePath,omitempty"` // absolute local path or file:// / https:// URL
 	Status      string     `json:"status"` // pending, processing, completed, failed
 	Staged      bool       `json:"staged,omitempty"` // held in queue, never dispatched to printer
 	CreatedAt   time.Time  `json:"createdAt"`

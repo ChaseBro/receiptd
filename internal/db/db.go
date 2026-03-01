@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     id               TEXT PRIMARY KEY,
     printer_id       TEXT,
     content          TEXT NOT NULL,
+    image_path       TEXT,
     status           TEXT NOT NULL DEFAULT 'pending',
     staged           INTEGER NOT NULL DEFAULT 0,
     error_msg        TEXT,
@@ -69,6 +70,10 @@ CREATE INDEX IF NOT EXISTS idx_printers_mac ON printers(mac_address);
 `
 
 func (d *DB) initSchema() error {
-	_, err := d.Exec(schema)
-	return err
+	if _, err := d.Exec(schema); err != nil {
+		return err
+	}
+	// Migration: add image_path column to existing databases (ignore error if already present).
+	_, _ = d.Exec(`ALTER TABLE jobs ADD COLUMN image_path TEXT`)
+	return nil
 }
