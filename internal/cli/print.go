@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ChaseBro/receiptd/internal/client"
+	"github.com/ChaseBro/receiptd/internal/imageproc"
 	"github.com/ChaseBro/receiptd/internal/render"
 	"github.com/ChaseBro/receiptd/internal/stub"
 	"github.com/spf13/cobra"
@@ -99,6 +100,26 @@ Examples:
 			resolvedImage = abs
 		}
 
+		// Apply image processing to --image file when any proc flag is set.
+		if resolvedImage != "" && procActive() {
+			raw, err := os.ReadFile(resolvedImage)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error reading image: %v\n", err)
+				os.Exit(1)
+			}
+			processed, err := imageproc.Process(raw, procOpts())
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error processing image: %v\n", err)
+				os.Exit(1)
+			}
+			savedPath, err := render.SaveRender(render.DataDir(), processed)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error saving processed image: %v\n", err)
+				os.Exit(1)
+			}
+			resolvedImage = savedPath
+		}
+
 		// Render HTML to PNG when --render is set.
 		if renderHTML != "" {
 			html := renderHTML
@@ -109,6 +130,11 @@ Examples:
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error: render failed: %v\n", err)
 				fmt.Fprintf(os.Stderr, "Make sure Chrome or Chromium is installed.\n")
+				os.Exit(1)
+			}
+			png, err = imageproc.Process(png, procOpts())
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error processing rendered image: %v\n", err)
 				os.Exit(1)
 			}
 			saved, err := render.SaveRender(render.DataDir(), png)
@@ -228,4 +254,5 @@ func init() {
 	printCmd.Flags().BoolVar(&staged, "staged", false, "Queue the job on the server but do not send to printer")
 	printCmd.Flags().StringVar(&imagePath, "image", "", "Path to image file to print (PNG, JPEG, or BMP)")
 	printCmd.Flags().StringVar(&renderHTML, "render", "", "HTML to render to an image and print (use - for stdin)")
+	addProcFlags(printCmd)
 }

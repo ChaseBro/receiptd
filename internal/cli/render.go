@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/ChaseBro/receiptd/internal/imageproc"
 	"github.com/ChaseBro/receiptd/internal/render"
 	"github.com/spf13/cobra"
 )
@@ -53,6 +54,12 @@ Requires Chrome or Chromium to be installed.`,
 				fmt.Fprintf(os.Stderr, "Error: render failed: %v\n", err)
 				fmt.Fprintf(os.Stderr, "Make sure Chrome or Chromium is installed.\n")
 			}
+			os.Exit(1)
+		}
+
+		png, err = imageproc.Process(png, procOpts())
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error processing image: %v\n", err)
 			os.Exit(1)
 		}
 
@@ -105,4 +112,5 @@ func init() {
 	rootCmd.AddCommand(renderCmd)
 	renderCmd.Flags().StringVarP(&renderOutput, "output", "o", "", "Output PNG path (default: ~/.receiptd/renders/<timestamp>.png)")
 	renderCmd.Flags().IntVar(&renderWidth, "width", 0, fmt.Sprintf("Viewport width in CSS pixels (default: %d)", render.PrinterWidth))
+	addProcFlags(renderCmd)
 }

@@ -24,6 +24,15 @@ go build -o receiptd ./cmd/receiptd
 # Print with image file
 ./receiptd print --image /path/to/photo.png "caption"
 
+# Image processing flags (work with --render and --image)
+./receiptd print --render '<html>...' --dither floyd-steinberg
+./receiptd print --image photo.png --dither atkinson --brightness 10 --contrast 20
+./receiptd render --dither hilbert --gamma 1.5 --output /tmp/out.png '<html>...'
+# Algorithms: none|threshold|floyd-steinberg|atkinson|bayer|hilbert|blue-noise
+# --brightness -100–100 (0 = no change)
+# --contrast   -100–100 (0 = no change)
+# --gamma      0.5–2.5  (1.0 = no change)
+
 # Test
 go test -v -count=1 ./...
 
@@ -86,6 +95,8 @@ The Star printer fires two rapid polls per job: one immediately after GET (while
 - `internal/cli/render.go` — standalone `render` subcommand for previewing HTML before printing
 - `internal/cli/` — other Cobra command implementations; `root.go` has `--json` and `--verbose` persistent flags
 - `internal/stub/stub.go` — mock data stubs (used by CLI commands that aren't yet wired to the real client)
+- `internal/imageproc/` — image-processing pipeline: `process.go` (public `Process()` API + `Options`/`Algorithm` types), `adjust.go` (brightness/contrast/gamma/grayscale), `dither.go` (threshold, Floyd-Steinberg, Atkinson, Bayer via dither/v2; Hilbert and blue-noise ported from photo-receipts)
+- `internal/cli/proc_flags.go` — shared `--dither`, `--brightness`, `--contrast`, `--gamma` flags registered on both `print` and `render` commands
 
 ### Star Markup / cputil
 
