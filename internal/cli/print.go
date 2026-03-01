@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -52,13 +51,10 @@ Examples:
 					return
 				}
 				fmt.Printf("⚠️  Could not start server: %v\n", err)
-				// Fall back to stub anyway
 				result := stub.Print(message, printerID, 0)
 				printStubResult(result)
 				return
 			}
-			// Give server a moment to start
-			time.Sleep(500 * time.Millisecond)
 		}
 		
 		// Try real server
@@ -90,29 +86,19 @@ Examples:
 	},
 }
 
-// startServerAuto starts the server if not running
+// startServerAuto starts the server daemon and waits until it's ready.
 func startServerAuto() error {
-	// Get the executable path
 	execPath, err := os.Executable()
 	if err != nil {
 		execPath = "receiptd"
 	}
-	
-	// Create data directory
-	home, _ := os.UserHomeDir()
-	dataDir := filepath.Join(home, ".receiptd")
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		return err
-	}
-	
-	// Start server in background, ignore output
+
+	// "server --daemon" forks the real server and only exits once the port is
+	// confirmed ready, so Run() here blocks until the server is accepting connections.
 	cmd := exec.Command(execPath, "server", "--daemon")
 	cmd.Stdout = nil
 	cmd.Stderr = nil
-	cmd.Start()
-	
-	// Don't wait - let it run in background
-	return nil
+	return cmd.Run()
 }
 
 func printStubResult(result stub.PrintResult) {
