@@ -200,13 +200,14 @@ func (d *Daemon) handleCLIConn(conn net.Conn) {
 		}
 		printerID, _ := payload["printerId"].(string)
 		content, _ := payload["content"].(string)
+		staged, _ := payload["staged"].(bool)
 
-		job := d.AddJob(printerID, content)
+		job := d.AddJob(printerID, content, staged)
 		resp = CLIResponse{
 			Status: "ok",
 			Data:   job.ID,
 		}
-		d.logger.Info().Str("job_id", job.ID).Str("content", content).Msg("Job added")
+		d.logger.Info().Str("job_id", job.ID).Bool("staged", staged).Str("content", content).Msg("Job added")
 	case "get_jobs":
 		jobs := d.queue.GetAll()
 		resp = CLIResponse{Status: "ok", Data: jobs}
@@ -257,17 +258,19 @@ func (d *Daemon) Printers() *PrinterRegistry {
 	return d.printers
 }
 
-// AddJob adds a job to the queue
-func (d *Daemon) AddJob(printerID, content string) *Job {
+// AddJob adds a job to the queue. If staged is true the job is held and never
+// dispatched to the printer.
+func (d *Daemon) AddJob(printerID, content string, staged bool) *Job {
 	job := &Job{
 		ID:        fmt.Sprintf("job-%d", time.Now().UnixNano()),
 		PrinterID: printerID,
 		Content:   content + "[feed:3][cut]",
 		Status:    JobStatusPending,
+		Staged:    staged,
 		CreatedAt: time.Now(),
 	}
 	d.queue.Add(job)
-	d.logger.Info().Str("job_id", job.ID).Str("content", content).Msg("Job added to queue")
+	d.logger.Info().Str("job_id", job.ID).Bool("staged", staged).Str("content", content).Msg("Job added to queue")
 	return job
 }
 

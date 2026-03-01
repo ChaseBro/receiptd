@@ -72,11 +72,13 @@ func (c *Client) Status() (*Response, error) {
 	return c.SendCommand("status", nil)
 }
 
-// AddJob adds a print job
-func (c *Client) AddJob(printerID, content string) (*Response, error) {
-	return c.SendCommand("add_job", map[string]string{
+// AddJob adds a print job. If staged is true the job is held in the queue and
+// never dispatched to the printer.
+func (c *Client) AddJob(printerID, content string, staged bool) (*Response, error) {
+	return c.SendCommand("add_job", map[string]interface{}{
 		"printerId": printerID,
 		"content":   content,
+		"staged":    staged,
 	})
 }
 

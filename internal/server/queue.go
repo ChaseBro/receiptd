@@ -7,14 +7,15 @@ import (
 
 // Job represents a print job in the queue
 type Job struct {
-	ID        string    `json:"id"`
-	PrinterID string    `json:"printerId"`
-	Content   string    `json:"content"`
-	Status    string    `json:"status"` // pending, processing, completed, failed
-	CreatedAt time.Time `json:"createdAt"`
-	StartedAt *time.Time `json:"startedAt,omitempty"`
+	ID          string     `json:"id"`
+	PrinterID   string     `json:"printerId"`
+	Content     string     `json:"content"`
+	Status      string     `json:"status"` // pending, processing, completed, failed
+	Staged      bool       `json:"staged,omitempty"` // held in queue, never dispatched to printer
+	CreatedAt   time.Time  `json:"createdAt"`
+	StartedAt   *time.Time `json:"startedAt,omitempty"`
 	CompletedAt *time.Time `json:"completedAt,omitempty"`
-	ErrorMsg  string    `json:"errorMsg,omitempty"`
+	ErrorMsg    string     `json:"errorMsg,omitempty"`
 }
 
 // Job status constants
@@ -102,7 +103,7 @@ func (q *Queue) TakeNextJob(printerID string) *Job {
 
 	var oldest *Job
 	for _, job := range q.jobs {
-		if job.Status == JobStatusPending && (printerID == "" || job.PrinterID == printerID) {
+		if job.Status == JobStatusPending && !job.Staged && (printerID == "" || job.PrinterID == printerID) {
 			if oldest == nil || job.CreatedAt.Before(oldest.CreatedAt) {
 				oldest = job
 			}

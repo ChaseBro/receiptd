@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -15,23 +16,56 @@ import (
 var (
 	printerID string
 	waitTime  int
+	dryRun    bool
+	staged    bool
 )
 
 var printCmd = &cobra.Command{
-	Use:   "print <message>",
+	Use:   "print [message|-]",
 	Short: "Print a message to the receipt printer",
 	Long: `Print a message to the configured receipt printer.
-	
+
 The server is started automatically if not running.
-	
+
+Use - or a pipe to read markup from stdin (avoids shell quoting issues):
+  receiptd print -
+  echo '[align: center]Hello' | receiptd print -
+  receiptd print - <<'EOF'
+  [align: center]Hello
+  EOF
+
 Examples:
-  receiptd print "Hello, World!"
-  receiptd print --printer tsp100-01 "Test print"
-  receiptd print --wait 5 "Delayed print"`,
-	Args: cobra.MinimumNArgs(1),
+  receiptd print 'Hello, World!'
+  receiptd print --printer tsp100-01 'Test print'
+  receiptd print '[bold: on]Important[bold: off]'`,
+	Args: cobra.ArbitraryArgs,
 	Run: func(cmd *cobra.Command, args []string) {
-		message := strings.Join(args, " ")
-		
+		var message string
+
+		readStdin := len(args) == 0 || (len(args) == 1 && args[0] == "-")
+		if !readStdin {
+			// Check if stdin is a pipe even without explicit "-"
+			if stat, err := os.Stdin.Stat(); err == nil {
+				readStdin = (stat.Mode() & os.ModeCharDevice) == 0
+			}
+		}
+
+		if readStdin {
+			data, err := io.ReadAll(os.Stdin)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error reading stdin: %v\n", err)
+				os.Exit(1)
+			}
+			message = strings.TrimRight(string(data), "\n")
+		} else {
+			message = strings.Join(args, " ")
+		}
+
+		if dryRun {
+			fmt.Println(message)
+			return
+		}
+
 		// Wait if specified
 		if waitTime > 0 {
 			fmt.Printf("⏳ Waiting %d seconds...\n", waitTime)
@@ -58,7 +92,7 @@ Examples:
 		}
 		
 		// Try real server
-		resp, err := c.AddJob(printerID, message)
+		resp, err := c.AddJob(printerID, message, staged)
 		if err != nil {
 			// Server error - fall back to stub
 			if jsonOutput {
@@ -77,12 +111,20 @@ Examples:
 			return
 		}
 		
-		fmt.Printf("🖨️  Printing message...\n")
+		if staged {
+			fmt.Printf("📋 Job staged (held in queue, not sent to printer)\n")
+		} else {
+			fmt.Printf("🖨️  Printing message...\n")
+		}
 		if printerID != "" {
 			fmt.Printf("   Printer: %s\n", printerID)
 		}
 		fmt.Printf("   Job ID: %s\n", resp.Data)
-		fmt.Println("\n✅ Print job submitted successfully")
+		if staged {
+			fmt.Println("\n✅ Job staged successfully")
+		} else {
+			fmt.Println("\n✅ Print job submitted successfully")
+		}
 	},
 }
 
@@ -111,4 +153,6 @@ func init() {
 	rootCmd.AddCommand(printCmd)
 	printCmd.Flags().StringVar(&printerID, "printer", "", "Printer ID to use")
 	printCmd.Flags().IntVarP(&waitTime, "wait", "w", 0, "Wait time in seconds before printing")
+	printCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Resolve and print the message without contacting the server")
+	printCmd.Flags().BoolVar(&staged, "staged", false, "Queue the job on the server but do not send to printer")
 }
