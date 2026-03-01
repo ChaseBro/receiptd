@@ -14,7 +14,7 @@ type Font struct {
 	FileName    string   // stored as: ~/.receiptd/fonts/spleen-8x16.woff2
 	Format      string   // "woff2", "ttf", "otf"
 	DesignSizes []int    // pixel sizes the font is designed for: [16]
-	DefaultSize int      // recommended font-size for thermal printing in CSS px (minimum 16)
+	DefaultSize int      // recommended font-size for thermal printing in CSS px (2× the design pixel grid)
 	License     string   // "BSD-2", "OFL", "Free (personal)", "GPL-2"
 	Attribution string   // author credit
 	SourceURL   string   // direct file download URL (AutoInstall=true) or homepage (AutoInstall=false)
