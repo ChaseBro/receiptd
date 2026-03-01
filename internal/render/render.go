@@ -41,6 +41,10 @@ func HTMLToPNG(html string, width int) ([]byte, error) {
 		// Start with a 1px-tall window; FullScreenshot will expand to content height.
 		chromedp.WindowSize(width, 1),
 		chromedp.Flag("hide-scrollbars", true),
+		// Suppress macOS "Keychain Not Found" dialog by using a basic in-memory
+		// password store instead of the system keychain.
+		chromedp.Flag("password-store", "basic"),
+		chromedp.Flag("use-mock-keychain", true),
 	)
 	defer cancelAlloc()
 
