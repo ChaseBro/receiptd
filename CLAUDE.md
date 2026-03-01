@@ -70,7 +70,7 @@ Job content is treated as **Star Markup** (`.stm` format). The CloudPRNT handler
 /Users/chase/.openclaw/workspace/projects/print-booth/cloudprnt-sdk/cputil-bin/cputil
 ```
 
-Star Markup syntax examples: `[align:center]`, `[bold:on]`/`[bold:off]`, `[feed:N]`, `[cut]`. `AddJob()` always appends `[feed:3][cut]` — callers should not include `[cut]` themselves. cputil conversion is required; there is no plain-text fallback (a cputil error returns HTTP 500).
+Star Markup syntax: `[align: center]`, `[bold: on]`/`[bold: off]`, `[col: left X; right Y]`, `[feed]`, `[cut]`. Full tag reference: https://star-m.jp/products/s_print/sdk/StarDocumentMarkup/manual/en/tag-reference/index.html. `AddJob()` always appends `[feed:3][cut]` — callers must not include `[cut]` themselves. cputil conversion is required; there is no plain-text fallback (a cputil error returns HTTP 500).
 
 ### Data / config
 

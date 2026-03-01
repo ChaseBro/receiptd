@@ -38,24 +38,18 @@ go build -o receiptd ./cmd/receiptd
 
 ## Print Syntax
 
-| Syntax | Description |
-|--------|-------------|
-| `[bold:on]` / `[bold:off]` | Bold text |
-| `[align:center]` | Center align |
-| `[align:left]` | Left align |
-| `[align:right]` | Right align |
-| `[cut]` | Cut paper |
-| `[feed:n]` | Feed n lines |
+receiptd uses **Star Document Markup** — full reference at [star-m.jp](https://star-m.jp/products/s_print/sdk/StarDocumentMarkup/manual/en/tag-reference/index.html).
 
-Example:
 ```
-[bold:on]RECEIPT[bold:off]
-[align:center]
----
-Item 1 ...... $10.00
----
-[align:right]Total: $10.00[cut]
+[align: center][bold: on]RECEIPT[bold: off][align: left]
+────────────────────────────────────────────────
+[col: left Item 1; right $10.00]
+[col: left Item 2; right $5.00]
+────────────────────────────────────────────────
+[col: left Total; right $15.00]
 ```
+
+The daemon auto-appends `[feed:3][cut]` — do not include `[cut]` in job content.
 
 ## Architecture
 
