@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ChaseBro/receiptd/internal/db"
 	"github.com/rs/zerolog"
 )
 
@@ -35,7 +36,7 @@ func DefaultConfig() *Config {
 type Daemon struct {
 	config      *Config
 	queue       *Queue
-	printers    *PrinterRegistry
+	db          *db.DB
 	httpServer  *http.Server
 	cliListener net.Listener
 	ready       chan struct{}
@@ -46,15 +47,18 @@ type Daemon struct {
 }
 
 // NewDaemon creates a new daemon
-func NewDaemon(cfg *Config) *Daemon {
+func NewDaemon(cfg *Config) (*Daemon, error) {
 	if cfg == nil {
 		cfg = DefaultConfig()
 	}
 
+	// Ensure data directory exists before opening log/db
+	if err := os.MkdirAll(cfg.DataDir, 0755); err != nil {
+		return nil, fmt.Errorf("create data dir: %w", err)
+	}
+
 	// Setup logger
 	logFile := filepath.Join(cfg.DataDir, "receiptd.log")
-	os.MkdirAll(filepath.Dir(logFile), 0755)
-	
 	f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	var logger zerolog.Logger
 	if err != nil {
@@ -63,14 +67,61 @@ func NewDaemon(cfg *Config) *Daemon {
 		logger = zerolog.New(f).With().Timestamp().Str("module", "daemon").Logger()
 	}
 
-	return &Daemon{
-		config:   cfg,
-		queue:    NewQueue(),
-		printers: NewPrinterRegistry(),
-		ready:    make(chan struct{}),
-		stop:     make(chan struct{}),
-		logger:   logger,
+	// Open database
+	database, err := db.Open(cfg.DataDir)
+	if err != nil {
+		return nil, fmt.Errorf("open database: %w", err)
 	}
+
+	d := &Daemon{
+		config: cfg,
+		queue:  NewQueue(),
+		db:     database,
+		ready:  make(chan struct{}),
+		stop:   make(chan struct{}),
+		logger: logger,
+	}
+
+	// Reload pending/in-flight jobs from DB into queue (crash recovery)
+	if err := d.loadPendingJobs(); err != nil {
+		database.Close()
+		return nil, fmt.Errorf("load pending jobs: %w", err)
+	}
+
+	return d, nil
+}
+
+// loadPendingJobs reads pending/processing/acknowledged jobs from the DB and
+// re-queues them as pending so they can be dispatched after a restart.
+func (d *Daemon) loadPendingJobs() error {
+	jobs, err := d.db.GetPendingJobs()
+	if err != nil {
+		return err
+	}
+	for _, dbJob := range jobs {
+		// Reset in-flight states to pending so they get re-dispatched
+		dbJob.Status = "pending"
+		dbJob.StartedAt = nil
+		dbJob.AcknowledgedAt = nil
+		if err := d.db.UpdateJob(dbJob); err != nil {
+			d.logger.Warn().Err(err).Str("job_id", dbJob.ID).Msg("Failed to reset job status in DB")
+		}
+
+		job := &Job{
+			ID:        dbJob.ID,
+			PrinterID: dbJob.PrinterID,
+			Content:   dbJob.Content,
+			Status:    JobStatusPending,
+			Staged:    dbJob.Staged,
+			CreatedAt: dbJob.CreatedAt,
+		}
+		d.queue.Add(job)
+		d.logger.Info().Str("job_id", job.ID).Msg("Recovered pending job from DB")
+	}
+	if len(jobs) > 0 {
+		d.logger.Info().Int("count", len(jobs)).Msg("Recovered pending jobs from DB")
+	}
+	return nil
 }
 
 // Start starts the daemon
@@ -79,13 +130,8 @@ func (d *Daemon) Start() error {
 	d.logger.Info().Str("cloudprnt", d.config.CloudPRNTListen).Msg("CloudPRNT listen address")
 	d.logger.Info().Str("cli", d.config.CLIListen).Msg("CLI listen address")
 
-	// Ensure data directory exists
-	if err := os.MkdirAll(d.config.DataDir, 0755); err != nil {
-		return fmt.Errorf("create data dir: %w", err)
-	}
-
 	// Start CloudPRNT HTTP server
-	cloudprntHandler, err := NewCloudPRNTHandler(d.queue, "", d.logger)
+	cloudprntHandler, err := NewCloudPRNTHandler(d, d.logger)
 	if err != nil {
 		return err
 	}
@@ -188,7 +234,7 @@ func (d *Daemon) handleCLIConn(conn net.Conn) {
 		resp = CLIResponse{
 			Status: "ok",
 			Data: map[string]interface{}{
-				"running":    true,
+				"running":     true,
 				"jobs_queued": d.queue.GetPendingCount(),
 			},
 		}
@@ -238,6 +284,11 @@ func (d *Daemon) Stop() error {
 		}
 
 		d.wg.Wait()
+
+		if d.db != nil {
+			d.db.Close()
+		}
+
 		d.logger.Info().Msg("Server stopped")
 	})
 	return nil
@@ -253,13 +304,8 @@ func (d *Daemon) Queue() *Queue {
 	return d.queue
 }
 
-// Printers returns the printer registry
-func (d *Daemon) Printers() *PrinterRegistry {
-	return d.printers
-}
-
-// AddJob adds a job to the queue. If staged is true the job is held and never
-// dispatched to the printer.
+// AddJob adds a job to the queue and persists it to the DB.
+// If staged is true the job is held and never dispatched to the printer.
 func (d *Daemon) AddJob(printerID, content string, staged bool) *Job {
 	job := &Job{
 		ID:        fmt.Sprintf("job-%d", time.Now().UnixNano()),
@@ -270,7 +316,66 @@ func (d *Daemon) AddJob(printerID, content string, staged bool) *Job {
 		CreatedAt: time.Now(),
 	}
 	d.queue.Add(job)
+
+	dbJob := serverJobToDBJob(job)
+	if err := d.db.SaveJob(dbJob); err != nil {
+		d.logger.Error().Err(err).Str("job_id", job.ID).Msg("Failed to persist job to DB")
+	}
+
 	d.logger.Info().Str("job_id", job.ID).Bool("staged", staged).Str("content", content).Msg("Job added to queue")
+	return job
+}
+
+// acknowledgeJob marks a job as acknowledged in the queue and updates the DB.
+func (d *Daemon) acknowledgeJob(token string, success bool, errMsg string) bool {
+	ok := d.queue.Acknowledge(token, success, errMsg)
+	if !ok {
+		return false
+	}
+	job := d.queue.Get(token)
+	if job != nil {
+		dbJob := serverJobToDBJob(job)
+		if err := d.db.UpdateJob(dbJob); err != nil {
+			d.logger.Error().Err(err).Str("job_id", token).Msg("Failed to update job in DB after acknowledge")
+		}
+	}
+	return true
+}
+
+// takeNextJob atomically picks the next pending job, updates the DB, and returns it.
+// printerID is written to the job record the first time it is dispatched.
+func (d *Daemon) takeNextJob(printerID string) *Job {
+	// Snapshot any jobs that were acknowledged before this call so we can
+	// persist their completion after TakeNextJob transitions them.
+	prevAcknowledged := d.queue.GetAll()
+	acknowledgedIDs := make(map[string]bool)
+	for _, j := range prevAcknowledged {
+		if j.Status == JobStatusAcknowledged {
+			acknowledgedIDs[j.ID] = true
+		}
+	}
+
+	job := d.queue.TakeNextJob(printerID)
+
+	// Persist any jobs that TakeNextJob finalized (acknowledged → completed)
+	for _, j := range d.queue.GetAll() {
+		if acknowledgedIDs[j.ID] && j.Status == JobStatusCompleted {
+			dbJob := serverJobToDBJob(j)
+			if err := d.db.UpdateJob(dbJob); err != nil {
+				d.logger.Error().Err(err).Str("job_id", j.ID).Msg("Failed to update completed job in DB")
+			}
+		}
+	}
+
+	if job != nil {
+		// Assign the printer ID now that we know which printer claimed this job
+		job.PrinterID = printerID
+		dbJob := serverJobToDBJob(job)
+		if err := d.db.UpdateJob(dbJob); err != nil {
+			d.logger.Error().Err(err).Str("job_id", job.ID).Msg("Failed to update dispatched job in DB")
+		}
+	}
+
 	return job
 }
 
@@ -300,4 +405,19 @@ func IsServerRunning(addr string) bool {
 	}
 	conn.Close()
 	return true
+}
+
+// serverJobToDBJob converts a server.Job to a db.Job.
+func serverJobToDBJob(j *Job) *db.Job {
+	return &db.Job{
+		ID:          j.ID,
+		PrinterID:   j.PrinterID,
+		Content:     j.Content,
+		Status:      j.Status,
+		Staged:      j.Staged,
+		ErrorMsg:    j.ErrorMsg,
+		CreatedAt:   j.CreatedAt,
+		StartedAt:   j.StartedAt,
+		CompletedAt: j.CompletedAt,
+	}
 }

@@ -116,7 +116,11 @@ func runServerForeground() {
 	cfg.CLIListen = "127.0.0.1:3099"
 	cfg.DataDir = dataDir
 
-	d := server.NewDaemon(cfg)
+	d, err := server.NewDaemon(cfg)
+	if err != nil {
+		fmt.Printf("❌ Failed to create daemon: %v\n", err)
+		os.Exit(1)
+	}
 
 	if err := d.Start(); err != nil {
 		fmt.Printf("❌ Failed to start: %v\n", err)
@@ -143,7 +147,10 @@ func runServerDaemon() {
 	cfg.CLIListen = "127.0.0.1:3099"
 	cfg.DataDir = dataDir
 
-	d := server.NewDaemon(cfg)
+	d, err := server.NewDaemon(cfg)
+	if err != nil {
+		os.Exit(1)
+	}
 	d.Run()
 }
 

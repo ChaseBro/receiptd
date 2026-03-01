@@ -61,7 +61,7 @@ func (c *Client) SendCommand(cmd string, payload interface{}) (*Response, error)
 	}
 	
 	if resp.Error != "" {
-		return &resp, fmt.Errorf(resp.Error)
+		return &resp, fmt.Errorf("%s", resp.Error)
 	}
 	
 	return &resp, nil

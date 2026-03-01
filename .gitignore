@@ -32,3 +32,6 @@ Thumbs.db
 
 # Claude Code local config
 .claude/
+
+# Local environment (contains paths to local binaries, never commit)
+.env
