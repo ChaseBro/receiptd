@@ -66,9 +66,10 @@ HTML is rendered at **576px wide** (80mm paper) via headless Chrome. Height is u
 body {
   font-family: 'Courier New', monospace;
   font-size: 20px;
-  width: 576px;
+  width: 100%;           /* fills the 384px CSS viewport */
   background: white;
   padding: 12px 14px;
+  box-sizing: border-box;
 }
 .center { text-align: center; }
 .rule   { border-top: 2px solid #000; margin: 8px 0; }

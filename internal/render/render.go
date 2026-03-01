@@ -3,6 +3,7 @@ package render
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"time"
@@ -10,8 +11,18 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-// PrinterWidth is the canonical viewport width for the Star TSP100IV (80mm paper).
+// PrinterWidth is the physical output width in pixels (80mm paper at 203 DPI ≈ 576px).
 const PrinterWidth = 576
+
+// RenderScale controls content size on the printed receipt.
+// The CSS viewport is narrowed by this factor so elements occupy RenderScale×
+// more of the paper when the image is printed at full width.
+// 1.5 makes a 20px font ≈ 4mm tall on paper instead of ~2.8mm.
+const RenderScale = 1.5
+
+// CSSPrinterWidth is the CSS viewport width for HTML templates.
+// Use width: 100% or this value for body/container width.
+const CSSPrinterWidth = int(PrinterWidth / RenderScale) // 384
 
 // HTMLToPNG renders html to a full-page PNG at the given viewport width.
 // width <= 0 defaults to PrinterWidth.
@@ -34,15 +45,18 @@ func HTMLToPNG(html string, width int) ([]byte, error) {
 	}
 	tmp.Close()
 
+	// Narrow the CSS viewport by RenderScale so that content fills proportionally
+	// more of the paper when the image is printed at full width (width 100%).
+	cssWidth := int(math.Round(float64(width) / RenderScale))
+
 	allocCtx, cancelAlloc := chromedp.NewExecAllocator(context.Background(),
 		chromedp.Headless,
 		chromedp.NoSandbox,
 		chromedp.DisableGPU,
-		// Start with a 1px-tall window; FullScreenshot will expand to content height.
-		chromedp.WindowSize(width, 1),
+		// Start with a 1px-tall window; FullScreenshot expands to content height.
+		chromedp.WindowSize(cssWidth, 1),
 		chromedp.Flag("hide-scrollbars", true),
-		// Suppress macOS "Keychain Not Found" dialog by using a basic in-memory
-		// password store instead of the system keychain.
+		// Suppress macOS "Keychain Not Found" dialog — use in-memory store.
 		chromedp.Flag("password-store", "basic"),
 		chromedp.Flag("use-mock-keychain", true),
 	)
@@ -60,7 +74,7 @@ func HTMLToPNG(html string, width int) ([]byte, error) {
 	if err := chromedp.Run(ctx,
 		// 1px viewport height prevents the root element from stretching to fill
 		// the window; FullScreenshot then captures actual content height only.
-		chromedp.EmulateViewport(int64(width), 1),
+		chromedp.EmulateViewport(int64(cssWidth), 1),
 		chromedp.Navigate(fileURL),
 		// Full-page PNG (quality=100 selects PNG in chromedp).
 		chromedp.FullScreenshot(&buf, 100),

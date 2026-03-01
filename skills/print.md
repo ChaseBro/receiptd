@@ -26,9 +26,10 @@ EOF
 body {
   font-family: 'Courier New', monospace;
   font-size: 20px;
-  width: 576px;
+  width: 100%;          /* fills the 384px CSS viewport */
   background: white;
   padding: 12px 14px;
+  box-sizing: border-box;
 }
 .center { text-align: center; }
 .right  { text-align: right; }
@@ -57,7 +58,7 @@ body {
 
 ## Layout rules
 
-- **Width is always 576px** — set `body { width: 576px }`. Content wider than 576px is clipped.
+- **CSS viewport is 384px** (RenderScale=1.5 narrows it so content prints 1.5× larger). Use `body { width: 100% }` — don't hardcode 576px.
 - **Height is unconstrained** — flows as long as needed.
 - **No margins needed at bottom** — daemon appends feed + cut automatically.
 - Emojis ✅, CSS ✅, flexbox ✅, `@import` web fonts ✅ (when network available).
