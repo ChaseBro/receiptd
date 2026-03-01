@@ -63,9 +63,9 @@ func htmlFontSpecimen() string {
   <div class="sample2" style="font-family:'%s',monospace;font-size:%dpx;-webkit-font-smoothing:none;font-smooth:never;text-rendering:optimizeSpeed;">0123456789 !@#$%%&amp;</div>
 </div>`,
 				htmlEscapeStr(f.Slug),
-				f.Family, f.DefaultSize,
+				f.Family, f.DefaultSize*2,
 				htmlEscapeStr(f.DisplayName),
-				f.Family, f.DefaultSize,
+				f.Family, f.DefaultSize*2,
 			))
 		} else {
 			rows.WriteString(fmt.Sprintf(`
