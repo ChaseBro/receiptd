@@ -3,9 +3,11 @@ package cli
 import (
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/ChaseBro/receiptd/internal/client"
@@ -128,19 +130,29 @@ Examples:
 	},
 }
 
-// startServerAuto starts the server daemon and waits until it's ready.
+// startServerAuto starts the server in the background and waits until it's ready.
 func startServerAuto() error {
 	execPath, err := os.Executable()
 	if err != nil {
 		execPath = "receiptd"
 	}
 
-	// "server --daemon" forks the real server and only exits once the port is
-	// confirmed ready, so Run() here blocks until the server is accepting connections.
-	cmd := exec.Command(execPath, "server", "--daemon")
+	cmd := exec.Command(execPath, "server")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	cmd.Stdout = nil
 	cmd.Stderr = nil
-	return cmd.Run()
+	cmd.Stdin = nil
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	for i := 0; i < 15; i++ {
+		time.Sleep(200 * time.Millisecond)
+		if c, err := net.DialTimeout("tcp", "127.0.0.1:3099", 100*time.Millisecond); err == nil {
+			c.Close()
+			return nil
+		}
+	}
+	return fmt.Errorf("server did not start in time")
 }
 
 func printStubResult(result stub.PrintResult) {

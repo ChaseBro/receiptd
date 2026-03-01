@@ -103,7 +103,7 @@ func (q *Queue) TakeNextJob(printerID string) *Job {
 
 	var oldest *Job
 	for _, job := range q.jobs {
-		if job.Status == JobStatusPending && !job.Staged && (printerID == "" || job.PrinterID == printerID) {
+		if job.Status == JobStatusPending && !job.Staged && (printerID == "" || job.PrinterID == "" || job.PrinterID == printerID) {
 			if oldest == nil || job.CreatedAt.Before(oldest.CreatedAt) {
 				oldest = job
 			}
