@@ -406,6 +406,7 @@ func TestPrintRenderStaged(t *testing.T) {
 	html := `<!DOCTYPE html><html><body style="margin:0;width:576px;font-size:24px">
 <h1 style="text-align:center">Render Test</h1></body></html>`
 
+	// Test with --render value as flag argument (not stdin).
 	cmd := exec.Command(binary, "print", "--staged", "--render", html)
 	cmd.Env = env
 	out, err := cmd.CombinedOutput()
@@ -414,6 +415,35 @@ func TestPrintRenderStaged(t *testing.T) {
 	}
 	if !strings.Contains(string(out), "Job ID: job-") {
 		t.Errorf("want 'Job ID: job-' in output, got:\n%s", out)
+	}
+}
+
+// TestPrintRenderStdin verifies that `receiptd print --render -` reads HTML
+// from stdin (not the message text) and submits a staged job with an image.
+// This guards against the regression where stdin was consumed by the message
+// reader before the render handler could claim it.
+func TestPrintRenderStdin(t *testing.T) {
+	requireChrome(t)
+
+	env := testEnv(t, fakeCputil(t))
+	startServer(t, env)
+
+	html := `<!DOCTYPE html><html><body style="margin:0;width:576px;font-size:24px">
+<h1>Stdin Render Test 🎉</h1></body></html>`
+
+	cmd := exec.Command(binary, "print", "--staged", "--render", "-")
+	cmd.Env = env
+	cmd.Stdin = strings.NewReader(html)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("want exit 0, got %v\noutput: %s", err, out)
+	}
+	if !strings.Contains(string(out), "Job ID: job-") {
+		t.Errorf("want 'Job ID: job-' in output, got:\n%s", out)
+	}
+	// Confirm the HTML wasn't printed as literal text (the old bug).
+	if strings.Contains(string(out), "<html>") || strings.Contains(string(out), "<h1>") {
+		t.Errorf("HTML markup leaked into output (stdin consumed by message reader):\n%s", out)
 	}
 }
 

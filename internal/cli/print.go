@@ -46,25 +46,38 @@ Examples:
   receiptd print '[bold: on]Important[bold: off]'`,
 	Args: cobra.ArbitraryArgs,
 	Run: func(cmd *cobra.Command, args []string) {
-		var message string
-
-		readStdin := len(args) == 0 || (len(args) == 1 && args[0] == "-")
-		if !readStdin {
-			// Check if stdin is a pipe even without explicit "-"
-			if stat, err := os.Stdin.Stat(); err == nil {
-				readStdin = (stat.Mode() & os.ModeCharDevice) == 0
-			}
-		}
-
-		if readStdin {
+		// Claim stdin for --render before the message reader can consume it.
+		if renderHTML == "-" {
 			data, err := io.ReadAll(os.Stdin)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error reading stdin: %v\n", err)
+				fmt.Fprintf(os.Stderr, "Error reading stdin for --render: %v\n", err)
 				os.Exit(1)
 			}
-			message = strings.TrimRight(string(data), "\n")
-		} else {
+			renderHTML = strings.TrimRight(string(data), "\n")
+		}
+
+		var message string
+		// When --render is set, message comes from positional args only (not stdin).
+		if renderHTML != "" {
 			message = strings.Join(args, " ")
+		} else {
+			readStdin := len(args) == 0 || (len(args) == 1 && args[0] == "-")
+			if !readStdin {
+				// Check if stdin is a pipe even without explicit "-"
+				if stat, err := os.Stdin.Stat(); err == nil {
+					readStdin = (stat.Mode() & os.ModeCharDevice) == 0
+				}
+			}
+			if readStdin {
+				data, err := io.ReadAll(os.Stdin)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error reading stdin: %v\n", err)
+					os.Exit(1)
+				}
+				message = strings.TrimRight(string(data), "\n")
+			} else {
+				message = strings.Join(args, " ")
+			}
 		}
 
 		// Resolve image path to absolute before sending to server
@@ -89,14 +102,6 @@ Examples:
 		// Render HTML to PNG when --render is set.
 		if renderHTML != "" {
 			html := renderHTML
-			if html == "-" {
-				data, err := io.ReadAll(os.Stdin)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Error reading stdin for --render: %v\n", err)
-					os.Exit(1)
-				}
-				html = strings.TrimRight(string(data), "\n")
-			}
 			if !jsonOutput {
 				fmt.Fprintf(os.Stderr, "Rendering HTML at %dpx...\n", render.PrinterWidth)
 			}
