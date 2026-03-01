@@ -39,6 +39,24 @@ open /tmp/preview.png
 # --contrast   -100–100 (0 = no change)
 # --gamma      0.5–2.5  (1.0 = no change)
 
+# Bitmap fonts (eliminate anti-aliasing on thermal paper)
+./receiptd fonts list                              # all fonts in registry (16 total)
+./receiptd fonts list --installed                  # only installed fonts
+./receiptd fonts list --tag receipt                # filter by tag
+./receiptd fonts info press-start-2p               # show metadata + install instructions
+./receiptd fonts install press-start-2p            # auto-install (AutoInstall fonts only)
+./receiptd fonts install press-start-2p --yes      # skip license prompt
+./receiptd fonts add ~/Downloads/myfont.ttf        # copy a manually downloaded font
+./receiptd fonts remove vcr-osd-mono               # delete installed font
+
+# --font flag: injects font into HTML before Chrome renders it
+./receiptd render --font press-start-2p --output /tmp/out.png '<html>...'
+./receiptd print --render '<html>...' --font press-start-2p
+./receiptd lib preview html-basic --font press-start-2p
+./receiptd lib run html-basic --font press-start-2p
+# Missing font = hard fail with install hint (no silent fallback)
+# Font sizing guide: 8px (ultra-compact), 16px (body), 24px (headers)
+
 # Test
 go test -v -count=1 ./...
 
@@ -103,6 +121,9 @@ The Star printer fires two rapid polls per job: one immediately after GET (while
 - `internal/stub/stub.go` — mock data stubs (used by CLI commands that aren't yet wired to the real client)
 - `internal/imageproc/` — image-processing pipeline: `process.go` (public `Process()` API + `Options`/`Algorithm` types), `adjust.go` (brightness/contrast/gamma/grayscale), `dither.go` (threshold, Floyd-Steinberg, Atkinson, Bayer via dither/v2; Hilbert and blue-noise ported from photo-receipts)
 - `internal/cli/proc_flags.go` — shared `--dither`, `--brightness`, `--contrast`, `--gamma` flags registered on both `print` and `render` commands
+- `internal/cli/font_flags.go` — shared `--font` flag registered on `render`, `print`, `lib run`, `lib preview`
+- `internal/cli/fonts.go` — `receiptd fonts` subcommands (list, info, install, add, remove)
+- `internal/fontlib/` — font registry and tooling: `fontlib.go` (Font struct, All/Lookup/Installed), `inject.go` (InjectFont — injects @font-face CSS before Chrome render), `install.go` (Install/Add/Remove), `bitmap_fonts.go` (6 receipt-optimized fonts), `fun_fonts.go` (10 fun/specialty fonts)
 
 ### Star Markup / cputil
 

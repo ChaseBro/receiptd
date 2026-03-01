@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ChaseBro/receiptd/internal/fontlib"
 	"github.com/ChaseBro/receiptd/internal/imageproc"
 	"github.com/ChaseBro/receiptd/internal/render"
 	"github.com/spf13/cobra"
@@ -37,6 +38,15 @@ Requires Chrome or Chromium to be installed.`,
 	Args: cobra.ArbitraryArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		html := readHTMLInput(args)
+
+		if fontFlag != "" {
+			var err error
+			html, err = fontlib.InjectFont(html, fontFlag, render.DataDir())
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+		}
 
 		width := renderWidth
 		if width <= 0 {
@@ -123,4 +133,5 @@ func init() {
 	renderCmd.Flags().StringVarP(&renderOutput, "output", "o", "", "Output PNG path (default: ~/.receiptd/renders/render-<id>.png)")
 	renderCmd.Flags().IntVar(&renderWidth, "width", 0, fmt.Sprintf("Viewport width in CSS pixels (default: %d)", render.PrinterWidth))
 	addProcFlags(renderCmd)
+	addFontFlag(renderCmd)
 }

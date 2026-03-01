@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ChaseBro/receiptd/internal/client"
+	"github.com/ChaseBro/receiptd/internal/fontlib"
 	"github.com/ChaseBro/receiptd/internal/imageproc"
 	"github.com/ChaseBro/receiptd/internal/printlib"
 	"github.com/ChaseBro/receiptd/internal/render"
@@ -158,6 +159,13 @@ func runItem(it printlib.Item) error {
 
 	case printlib.ModeRender:
 		html := it.HTMLFn()
+		if fontFlag != "" {
+			var err error
+			html, err = fontlib.InjectFont(html, fontFlag, render.DataDir())
+			if err != nil {
+				return fmt.Errorf("font: %w", err)
+			}
+		}
 		if !jsonOutput {
 			fmt.Fprintf(os.Stderr, "  Rendering %s...\n", it.Name)
 		}
@@ -286,6 +294,13 @@ func previewItem(it printlib.Item) ([]byte, error) {
 
 	case printlib.ModeRender:
 		html := it.HTMLFn()
+		if fontFlag != "" {
+			var err error
+			html, err = fontlib.InjectFont(html, fontFlag, render.DataDir())
+			if err != nil {
+				return nil, fmt.Errorf("font: %w", err)
+			}
+		}
 		if !jsonOutput {
 			fmt.Fprintf(os.Stderr, "Rendering HTML preview...\n")
 		}
@@ -380,4 +395,6 @@ func init() {
 	libPreviewCmd.Flags().StringVarP(&libPreviewOutput, "output", "o", "", "Output PNG path")
 	addProcFlags(libRunCmd)
 	addProcFlags(libPreviewCmd)
+	addFontFlag(libRunCmd)
+	addFontFlag(libPreviewCmd)
 }

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ChaseBro/receiptd/internal/client"
+	"github.com/ChaseBro/receiptd/internal/fontlib"
 	"github.com/ChaseBro/receiptd/internal/imageproc"
 	"github.com/ChaseBro/receiptd/internal/render"
 	"github.com/ChaseBro/receiptd/internal/stub"
@@ -123,6 +124,14 @@ Examples:
 		// Render HTML to PNG when --render is set.
 		if renderHTML != "" {
 			html := renderHTML
+			if fontFlag != "" {
+				var err error
+				html, err = fontlib.InjectFont(html, fontFlag, render.DataDir())
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+					os.Exit(1)
+				}
+			}
 			if !jsonOutput {
 				fmt.Fprintf(os.Stderr, "Rendering HTML at %dpx...\n", render.PrinterWidth)
 			}
@@ -255,4 +264,5 @@ func init() {
 	printCmd.Flags().StringVar(&imagePath, "image", "", "Path to image file to print (PNG, JPEG, or BMP)")
 	printCmd.Flags().StringVar(&renderHTML, "render", "", "HTML to render to an image and print (use - for stdin)")
 	addProcFlags(printCmd)
+	addFontFlag(printCmd)
 }
