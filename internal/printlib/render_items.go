@@ -45,21 +45,21 @@ func htmlBasic() string {
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
-  width: 384px;
+  width: 576px;
   font-family: monospace;
-  font-size: 14px;
-  padding: 8px;
+  font-size: 21px;
+  padding: 12px;
   background: white;
   color: black;
 }
-.header { text-align: center; margin-bottom: 8px; }
-.header h1 { font-size: 22px; font-weight: bold; letter-spacing: 2px; }
-.header p { font-size: 12px; color: #333; }
-.sep { border-top: 2px solid black; margin: 6px 0; }
-.sep-thin { border-top: 1px solid #888; margin: 4px 0; }
-.row { display: flex; justify-content: space-between; margin: 2px 0; }
-.total { font-weight: bold; font-size: 15px; }
-.footer { text-align: center; margin-top: 8px; font-size: 11px; color: #555; }
+.header { text-align: center; margin-bottom: 12px; }
+.header h1 { font-size: 33px; font-weight: bold; letter-spacing: 2px; }
+.header p { font-size: 18px; color: #333; }
+.sep { border-top: 2px solid black; margin: 9px 0; }
+.sep-thin { border-top: 1px solid #888; margin: 6px 0; }
+.row { display: flex; justify-content: space-between; margin: 3px 0; }
+.total { font-weight: bold; font-size: 22px; }
+.footer { text-align: center; margin-top: 12px; font-size: 16px; color: #555; }
 </style>
 </head>
 <body>
@@ -95,23 +95,23 @@ func htmlEmoji() string {
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
-  width: 384px;
+  width: 576px;
   font-family: -apple-system, sans-serif;
-  font-size: 14px;
-  padding: 12px 8px;
+  font-size: 21px;
+  padding: 18px 12px;
   background: white;
   color: black;
 }
-.header { text-align: center; margin-bottom: 10px; }
-.header .title { font-size: 24px; font-weight: bold; }
-.sep { border-top: 2px solid black; margin: 8px 0; }
-.row { display: flex; justify-content: space-between; align-items: center; margin: 4px 0; }
-.emoji { font-size: 18px; margin-right: 6px; }
+.header { text-align: center; margin-bottom: 15px; }
+.header .title { font-size: 36px; font-weight: bold; }
+.sep { border-top: 2px solid black; margin: 12px 0; }
+.row { display: flex; justify-content: space-between; align-items: center; margin: 6px 0; }
+.emoji { font-size: 27px; margin-right: 9px; }
 .label { flex: 1; }
 .price { font-variant-numeric: tabular-nums; }
-.total { font-weight: bold; font-size: 16px; }
-.footer { text-align: center; margin-top: 10px; font-size: 20px; letter-spacing: 4px; }
-.thanks { text-align: center; font-size: 13px; margin-top: 6px; }
+.total { font-weight: bold; font-size: 24px; }
+.footer { text-align: center; margin-top: 15px; font-size: 30px; letter-spacing: 4px; }
+.thanks { text-align: center; font-size: 20px; margin-top: 9px; }
 </style>
 </head>
 <body>
@@ -155,24 +155,24 @@ func htmlGradients() string {
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
-  width: 384px;
+  width: 576px;
   font-family: monospace;
-  font-size: 13px;
-  padding: 8px;
+  font-size: 20px;
+  padding: 12px;
   background: white;
   color: black;
 }
-h2 { text-align: center; font-size: 16px; margin-bottom: 6px; }
-.label { font-size: 11px; text-align: center; color: #444; margin: 4px 0 2px; }
-.sep { border-top: 1px solid #aaa; margin: 6px 0; }
+h2 { text-align: center; font-size: 24px; margin-bottom: 9px; }
+.label { font-size: 16px; text-align: center; color: #444; margin: 6px 0 3px; }
+.sep { border-top: 1px solid #aaa; margin: 9px 0; }
 .grad {
   width: 100%;
-  height: 40px;
+  height: 60px;
   border: 1px solid #ccc;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
-.row2 { display: flex; gap: 4px; margin-bottom: 4px; }
-.row2 .grad { flex: 1; height: 40px; }
+.row2 { display: flex; gap: 6px; margin-bottom: 6px; }
+.row2 .grad { flex: 1; height: 60px; }
 .radial { background: radial-gradient(circle, white 0%, black 100%); }
 .radial2 { background: radial-gradient(circle at top left, white, black); }
 </style>
@@ -210,29 +210,29 @@ func htmlTables() string {
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
-  width: 384px;
+  width: 576px;
   font-family: monospace;
-  font-size: 13px;
-  padding: 8px;
+  font-size: 20px;
+  padding: 12px;
   background: white;
   color: black;
 }
-h2 { text-align: center; font-size: 16px; margin-bottom: 8px; letter-spacing: 1px; }
+h2 { text-align: center; font-size: 24px; margin-bottom: 12px; letter-spacing: 1px; }
 table {
   width: 100%;
   border-collapse: collapse;
-  margin-bottom: 10px;
+  margin-bottom: 15px;
 }
 th, td {
   border: 1px solid black;
-  padding: 3px 5px;
-  font-size: 12px;
+  padding: 4px 7px;
+  font-size: 18px;
 }
 th { background: black; color: white; font-weight: bold; text-align: left; }
 tr:nth-child(even) td { background: #eee; }
 .right { text-align: right; }
 .total-row td { font-weight: bold; border-top: 2px solid black; }
-.section { font-size: 11px; font-weight: bold; background: #ddd !important; }
+.section { font-size: 16px; font-weight: bold; background: #ddd !important; }
 </style>
 </head>
 <body>

@@ -328,10 +328,10 @@ func markupToPreviewHTML(markup string) string {
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
-  width: 384px;
+  width: 576px;
   font-family: 'Courier New', Courier, monospace;
-  font-size: 13px;
-  padding: 8px;
+  font-size: 20px;
+  padding: 12px;
   background: white;
   color: black;
   white-space: pre-wrap;

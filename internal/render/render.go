@@ -18,12 +18,12 @@ const PrinterWidth = 576
 // RenderScale controls content size on the printed receipt.
 // The CSS viewport is narrowed by this factor so elements occupy RenderScale×
 // more of the paper when the image is printed at full width.
-// 1.5 makes a 20px font ≈ 4mm tall on paper instead of ~2.8mm.
-const RenderScale = 1.5
+// 1.0 = no scaling: CSS pixels map 1:1 to printer pixels.
+const RenderScale = 1.0
 
 // CSSPrinterWidth is the CSS viewport width for HTML templates.
 // Use width: 100% or this value for body/container width.
-const CSSPrinterWidth = int(PrinterWidth / RenderScale) // 384
+const CSSPrinterWidth = int(PrinterWidth / RenderScale) // 576
 
 // HTMLToPNG renders html to a full-page PNG at the given viewport width.
 // width <= 0 defaults to PrinterWidth.
@@ -46,8 +46,8 @@ func HTMLToPNG(html string, width int) ([]byte, error) {
 	}
 	tmp.Close()
 
-	// Narrow the CSS viewport by RenderScale so that content fills proportionally
-	// more of the paper when the image is printed at full width (width 100%).
+	// cssWidth = physical printer pixels / RenderScale. At RenderScale=1.0 this
+	// is a no-op; increase RenderScale to shrink the CSS viewport and upscale content.
 	cssWidth := int(math.Round(float64(width) / RenderScale))
 
 	allocCtx, cancelAlloc := chromedp.NewExecAllocator(context.Background(),
@@ -73,9 +73,7 @@ func HTMLToPNG(html string, width int) ([]byte, error) {
 
 	var buf []byte
 	if err := chromedp.Run(ctx,
-		// CSS viewport is narrowed by RenderScale; EmulateScale multiplies each
-		// CSS pixel by RenderScale so the physical screenshot is exactly `width`
-		// pixels wide — no upscaling needed, no artifacts.
+		// EmulateViewport at cssWidth×RenderScale = physical width px.
 		// 1px height prevents root element stretching; FullScreenshot expands to content height.
 		chromedp.EmulateViewport(int64(cssWidth), 1, chromedp.EmulateScale(RenderScale)),
 		chromedp.Navigate(fileURL),

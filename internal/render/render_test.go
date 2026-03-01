@@ -57,7 +57,7 @@ func requireChrome(t *testing.T) {
 }
 
 // TestHTMLToPNGDimensions verifies that the rendered PNG is exactly PrinterWidth
-// pixels wide, regardless of the CSS viewport narrowing applied by RenderScale.
+// pixels wide, regardless of the RenderScale value.
 func TestHTMLToPNGDimensions(t *testing.T) {
 	requireChrome(t)
 
