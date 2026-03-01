@@ -341,6 +341,82 @@ func TestPrintImageStaged(t *testing.T) {
 	}
 }
 
+// requireChrome skips the test if Chrome or Chromium is not installed.
+func requireChrome(t *testing.T) {
+	t.Helper()
+	// Check macOS app bundles first, then PATH.
+	knownPaths := []string{
+		"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+		"/Applications/Chromium.app/Contents/MacOS/Chromium",
+	}
+	for _, p := range knownPaths {
+		if _, err := os.Stat(p); err == nil {
+			return
+		}
+	}
+	for _, name := range []string{"google-chrome", "chromium-browser", "chromium", "chrome"} {
+		if _, err := exec.LookPath(name); err == nil {
+			return
+		}
+	}
+	t.Skip("Chrome or Chromium not found — skipping render tests (install Chrome to enable)")
+}
+
+// TestRenderCommand verifies that `receiptd render` produces a valid PNG file.
+func TestRenderCommand(t *testing.T) {
+	requireChrome(t)
+
+	outFile := filepath.Join(t.TempDir(), "out.png")
+	html := `<!DOCTYPE html><html><body style="margin:0;background:#fff;font-size:24px;width:576px">
+<h1 style="text-align:center">Test Receipt</h1>
+<p>Integration test render</p>
+</body></html>`
+
+	cmd := exec.Command(binary, "render", "--output", outFile, html)
+	cmd.Env = testEnv(t, "")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("render command failed: %v\noutput: %s", err, out)
+	}
+
+	// Verify the output file exists and is a valid PNG.
+	data, err := os.ReadFile(outFile)
+	if err != nil {
+		t.Fatalf("output file not found: %v", err)
+	}
+	if len(data) < 8 {
+		t.Fatalf("output file too small (%d bytes)", len(data))
+	}
+	// PNG magic bytes: \x89PNG\r\n\x1a\n
+	pngMagic := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
+	if !bytes.HasPrefix(data, pngMagic) {
+		t.Errorf("output is not a PNG (bad magic bytes): %x", data[:8])
+	}
+	t.Logf("Rendered PNG: %d bytes at %s", len(data), outFile)
+}
+
+// TestPrintRenderStaged verifies that `receiptd print --render --staged`
+// renders HTML to a PNG and submits a staged job with an image.
+func TestPrintRenderStaged(t *testing.T) {
+	requireChrome(t)
+
+	env := testEnv(t, fakeCputil(t))
+	startServer(t, env)
+
+	html := `<!DOCTYPE html><html><body style="margin:0;width:576px;font-size:24px">
+<h1 style="text-align:center">Render Test</h1></body></html>`
+
+	cmd := exec.Command(binary, "print", "--staged", "--render", html)
+	cmd.Env = env
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("want exit 0, got %v\noutput: %s", err, out)
+	}
+	if !strings.Contains(string(out), "Job ID: job-") {
+		t.Errorf("want 'Job ID: job-' in output, got:\n%s", out)
+	}
+}
+
 // TestImageJobLifecycle verifies the full CloudPRNT polling sequence for an
 // image job, and asserts that the [image: url file://...] tag is present in
 // the Star Markup that reaches cputil.

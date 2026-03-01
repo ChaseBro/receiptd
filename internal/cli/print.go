@@ -12,16 +12,18 @@ import (
 	"time"
 
 	"github.com/ChaseBro/receiptd/internal/client"
+	"github.com/ChaseBro/receiptd/internal/render"
 	"github.com/ChaseBro/receiptd/internal/stub"
 	"github.com/spf13/cobra"
 )
 
 var (
-	printerID string
-	waitTime  int
-	dryRun    bool
-	staged    bool
-	imagePath string
+	printerID  string
+	waitTime   int
+	dryRun     bool
+	staged     bool
+	imagePath  string
+	renderHTML string
 )
 
 var printCmd = &cobra.Command{
@@ -67,6 +69,10 @@ Examples:
 
 		// Resolve image path to absolute before sending to server
 		resolvedImage := ""
+		if imagePath != "" && renderHTML != "" {
+			fmt.Fprintf(os.Stderr, "Error: --image and --render are mutually exclusive\n")
+			os.Exit(1)
+		}
 		if imagePath != "" {
 			abs, err := filepath.Abs(imagePath)
 			if err != nil {
@@ -78,6 +84,34 @@ Examples:
 				os.Exit(1)
 			}
 			resolvedImage = abs
+		}
+
+		// Render HTML to PNG when --render is set.
+		if renderHTML != "" {
+			html := renderHTML
+			if html == "-" {
+				data, err := io.ReadAll(os.Stdin)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error reading stdin for --render: %v\n", err)
+					os.Exit(1)
+				}
+				html = strings.TrimRight(string(data), "\n")
+			}
+			if !jsonOutput {
+				fmt.Fprintf(os.Stderr, "Rendering HTML at %dpx...\n", render.PrinterWidth)
+			}
+			png, err := render.HTMLToPNG(html, render.PrinterWidth)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: render failed: %v\n", err)
+				fmt.Fprintf(os.Stderr, "Make sure Chrome or Chromium is installed.\n")
+				os.Exit(1)
+			}
+			saved, err := render.SaveRender(render.DataDir(), png)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error saving rendered image: %v\n", err)
+				os.Exit(1)
+			}
+			resolvedImage = saved
 		}
 
 		if dryRun {
@@ -188,4 +222,5 @@ func init() {
 	printCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Resolve and print the message without contacting the server")
 	printCmd.Flags().BoolVar(&staged, "staged", false, "Queue the job on the server but do not send to printer")
 	printCmd.Flags().StringVar(&imagePath, "image", "", "Path to image file to print (PNG, JPEG, or BMP)")
+	printCmd.Flags().StringVar(&renderHTML, "render", "", "HTML to render to an image and print (use - for stdin)")
 }
