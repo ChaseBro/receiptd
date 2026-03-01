@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ChaseBro/receiptd/internal/db"
+	"github.com/ChaseBro/receiptd/internal/shortid"
 	"github.com/rs/zerolog"
 )
 
@@ -311,7 +312,7 @@ func (d *Daemon) Queue() *Queue {
 // If staged is true the job is held and never dispatched to the printer.
 func (d *Daemon) AddJob(printerID, content, imagePath string, staged bool) *Job {
 	job := &Job{
-		ID:        fmt.Sprintf("job-%d", time.Now().UnixNano()),
+		ID:        "job-" + shortid.New(time.Now()),
 		PrinterID: printerID,
 		Content:   content + "[feed:3][cut]",
 		ImagePath: imagePath,

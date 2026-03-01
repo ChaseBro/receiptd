@@ -11,10 +11,10 @@ receiptd render --output /tmp/preview.png - <<'EOF'
 EOF
 open /tmp/preview.png
 
-# Print when happy
-receiptd print --render - <<'EOF'
-<html>...</html>
-EOF
+# Print when happy — reuse the saved render, no second Chrome launch:
+receiptd renders print a3f2c [--dither floyd-steinberg]
+# (use the short ID shown after render, or /tmp/preview.png if --output was set)
+receiptd print --image /tmp/preview.png [--dither floyd-steinberg]
 ```
 
 ## Starter template

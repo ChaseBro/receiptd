@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/ChaseBro/receiptd/internal/imageproc"
@@ -82,8 +83,17 @@ Requires Chrome or Chromium to be installed.`,
 		if jsonOutput {
 			fmt.Printf(`{"path":%q,"width":%d,"bytes":%d}`, outPath, width, len(png))
 		} else {
-			fmt.Printf("Rendered PNG: %s (%d bytes)\n", outPath, len(png))
-			fmt.Printf("Open with: open %q\n", outPath)
+			fname := filepath.Base(outPath)
+			fmt.Printf("Rendered PNG: %s (%d bytes)\n", fname, len(png))
+			fmt.Printf("Preview: open %q\n", outPath)
+			// Only show the renders print hint when we saved to the renders dir
+			// (i.e. --output was not used), so the short ID is valid.
+			if renderOutput == "" {
+				id := rendersIDFromName(fname)
+				fmt.Printf("Print:   receiptd renders print %s [--dither floyd-steinberg]\n", id)
+			} else {
+				fmt.Printf("Print:   receiptd print --image %q [--dither floyd-steinberg]\n", outPath)
+			}
 		}
 	},
 }
@@ -110,7 +120,7 @@ func readHTMLInput(args []string) string {
 
 func init() {
 	rootCmd.AddCommand(renderCmd)
-	renderCmd.Flags().StringVarP(&renderOutput, "output", "o", "", "Output PNG path (default: ~/.receiptd/renders/<timestamp>.png)")
+	renderCmd.Flags().StringVarP(&renderOutput, "output", "o", "", "Output PNG path (default: ~/.receiptd/renders/render-<id>.png)")
 	renderCmd.Flags().IntVar(&renderWidth, "width", 0, fmt.Sprintf("Viewport width in CSS pixels (default: %d)", render.PrinterWidth))
 	addProcFlags(renderCmd)
 }

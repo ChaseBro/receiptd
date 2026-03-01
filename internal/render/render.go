@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/ChaseBro/receiptd/internal/shortid"
 	"github.com/chromedp/chromedp"
 )
 
@@ -87,13 +88,13 @@ func HTMLToPNG(html string, width int) ([]byte, error) {
 	return buf, nil
 }
 
-// SaveRender saves png bytes to <dataDir>/renders/<timestamp>.png and returns the path.
+// SaveRender saves png bytes to <dataDir>/renders/render-<id>.png and returns the path.
 func SaveRender(dataDir string, png []byte) (string, error) {
 	dir := filepath.Join(dataDir, "renders")
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", fmt.Errorf("create renders dir: %w", err)
 	}
-	name := fmt.Sprintf("render-%d.png", time.Now().UnixNano())
+	name := fmt.Sprintf("render-%s.png", shortid.New(time.Now()))
 	path := filepath.Join(dir, name)
 	if err := os.WriteFile(path, png, 0644); err != nil {
 		return "", fmt.Errorf("write render: %w", err)

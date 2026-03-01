@@ -13,10 +13,16 @@ go build -o receiptd ./cmd/receiptd
 ./receiptd server               # start server in foreground (Ctrl+C to stop)
 ./receiptd server stop
 
-# Print (HTML rendering — preferred, supports emojis/CSS/images)
-./receiptd render --output /tmp/preview.png '<html>...'   # preview
-./receiptd print --render '<html>...'                     # print
-./receiptd print --render - < file.html                   # from file
+# Render (saves to ~/.receiptd/renders/render-<id>.png)
+./receiptd render '<html>...'                             # saves + shows ID + preview hint
+./receiptd render --output /tmp/preview.png '<html>...'   # save to specific path
+open /tmp/preview.png
+
+# Print the saved render — no re-render, add dithering here
+./receiptd renders print a3f2c --dither floyd-steinberg   # by short ID (shown after render)
+./receiptd renders list                                   # list all renders with IDs
+# or by path (when --output was used):
+./receiptd print --image /tmp/preview.png --dither floyd-steinberg
 
 # Print (Star Markup — text-only)
 ./receiptd print '[bold:on]Hello[bold:off]'
