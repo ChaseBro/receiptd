@@ -43,7 +43,8 @@ func (c *Client) SendCommand(cmd string, payload interface{}) (*Response, error)
 		return nil, err
 	}
 	defer conn.Close()
-	
+	conn.SetDeadline(time.Now().Add(10 * time.Second))
+
 	// Send command
 	req := map[string]interface{}{
 		"command": cmd,
