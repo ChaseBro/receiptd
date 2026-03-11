@@ -26,6 +26,7 @@ var (
 	staged     bool
 	imagePath  string
 	renderHTML string
+	renderFile string
 )
 
 var printCmd = &cobra.Command{
@@ -48,6 +49,16 @@ Examples:
   receiptd print '[bold: on]Important[bold: off]'`,
 	Args: cobra.ArbitraryArgs,
 	Run: func(cmd *cobra.Command, args []string) {
+		// Load --render-file into renderHTML before any other processing.
+		if renderFile != "" {
+			data, err := os.ReadFile(renderFile)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error reading --render-file: %v\n", err)
+				os.Exit(1)
+			}
+			renderHTML = string(data)
+		}
+
 		// Claim stdin for --render before the message reader can consume it.
 		if renderHTML == "-" {
 			data, err := io.ReadAll(os.Stdin)
@@ -85,7 +96,7 @@ Examples:
 		// Resolve image path to absolute before sending to server
 		resolvedImage := ""
 		if imagePath != "" && renderHTML != "" {
-			fmt.Fprintf(os.Stderr, "Error: --image and --render are mutually exclusive\n")
+			fmt.Fprintf(os.Stderr, "Error: --image, --render, and --render-file are mutually exclusive\n")
 			os.Exit(1)
 		}
 		if imagePath != "" {
@@ -263,6 +274,7 @@ func init() {
 	printCmd.Flags().BoolVar(&staged, "staged", false, "Queue the job on the server but do not send to printer")
 	printCmd.Flags().StringVar(&imagePath, "image", "", "Path to image file to print (PNG, JPEG, or BMP)")
 	printCmd.Flags().StringVar(&renderHTML, "render", "", "HTML to render to an image and print (use - for stdin)")
+	printCmd.Flags().StringVar(&renderFile, "render-file", "", "Path to HTML file to render and print")
 	addProcFlags(printCmd)
 	addFontFlag(printCmd)
 }

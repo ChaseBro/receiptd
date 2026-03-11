@@ -14,8 +14,9 @@ import (
 )
 
 var (
-	renderOutput string
-	renderWidth  int
+	renderOutput    string
+	renderWidth     int
+	renderInputFile string
 )
 
 var renderCmd = &cobra.Command{
@@ -37,7 +38,17 @@ Save to a specific file:
 Requires Chrome or Chromium to be installed.`,
 	Args: cobra.ArbitraryArgs,
 	Run: func(cmd *cobra.Command, args []string) {
-		html := readHTMLInput(args)
+		var html string
+		if renderInputFile != "" {
+			data, err := os.ReadFile(renderInputFile)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error reading --file: %v\n", err)
+				os.Exit(1)
+			}
+			html = string(data)
+		} else {
+			html = readHTMLInput(args)
+		}
 
 		if fontFlag != "" {
 			var err error
@@ -132,6 +143,7 @@ func init() {
 	rootCmd.AddCommand(renderCmd)
 	renderCmd.Flags().StringVarP(&renderOutput, "output", "o", "", "Output PNG path (default: ~/.receiptd/renders/render-<id>.png)")
 	renderCmd.Flags().IntVar(&renderWidth, "width", 0, fmt.Sprintf("Viewport width in CSS pixels (default: %d)", render.PrinterWidth))
+	renderCmd.Flags().StringVarP(&renderInputFile, "file", "f", "", "Path to HTML file to render")
 	addProcFlags(renderCmd)
 	addFontFlag(renderCmd)
 }
