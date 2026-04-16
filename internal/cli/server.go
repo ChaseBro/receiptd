@@ -11,10 +11,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	serverRequireAuth bool
+)
+
 var serverCmd = &cobra.Command{
 	Use:   "server",
 	Short: "Start the receiptd server (foreground)",
-	Long:  `Start the receiptd CloudPRNT server in the foreground. Use a process manager (launchd, systemd, etc.) to run it as a background service.`,
+	Long: `Start the receiptd CloudPRNT server in the foreground. Use a process manager (launchd, systemd, etc.) to run it as a background service.
+
+By default loopback callers (127.0.0.1, ::1) bypass auth — preserves zero-friction local UX. Pass --require-auth to force bearer-token auth on every /v1 request, which is what cloud deployments use.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		runServer()
 	},
@@ -53,6 +59,7 @@ func runServer() {
 	home, _ := os.UserHomeDir()
 	cfg := server.DefaultConfig()
 	cfg.DataDir = filepath.Join(home, ".receiptd")
+	cfg.RequireAuthOnLoopback = serverRequireAuth
 
 	d, err := server.NewDaemon(cfg)
 	if err != nil {
@@ -75,4 +82,5 @@ func runServer() {
 func init() {
 	rootCmd.AddCommand(serverCmd)
 	serverCmd.AddCommand(serverStopCmd)
+	serverCmd.Flags().BoolVar(&serverRequireAuth, "require-auth", false, "Require bearer-token auth even for loopback callers (public-mode simulation)")
 }

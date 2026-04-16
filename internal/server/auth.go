@@ -83,19 +83,26 @@ func IdentityFromContext(ctx context.Context) *Identity {
 }
 
 // AuthMiddleware validates bearer tokens on protected routes. Loopback callers
-// skip validation (unless RequireAuthOnLoopback is set) and receive a synthetic
-// Identity{Kind: "loopback"} for handlers to inspect.
+// get a synthetic Identity{Kind: "loopback", Scopes: ["admin"]} IFF they omit
+// the Authorization header — preserving today's zero-friction local UX. When
+// a loopback caller DOES send a bearer header it is validated normally, so
+// a logged-in CLI exercises the real APIKeyVerifier path.
+//
+// RequireAuthOnLoopback disables the header-less bypass entirely — every
+// request must present a valid token. Used by cloud deployments.
 func AuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !cfg.RequireAuthOnLoopback && isLoopback(r.RemoteAddr) {
+			token := extractBearer(r)
+
+			// Loopback + no token = synthesize the local admin identity.
+			if !cfg.RequireAuthOnLoopback && token == "" && isLoopback(r.RemoteAddr) {
 				id := &Identity{Kind: "loopback", Subject: "local", Scopes: []string{"admin"}}
 				r = r.WithContext(context.WithValue(r.Context(), identityContextKey{}, id))
 				next.ServeHTTP(w, r)
 				return
 			}
 
-			token := extractBearer(r)
 			if token == "" {
 				writeAuthError(w, http.StatusUnauthorized, "missing_token", "bearer token required")
 				return
