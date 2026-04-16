@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -13,7 +14,8 @@ import (
 	"time"
 
 	"github.com/ChaseBro/receiptd/internal/db"
-	"github.com/ChaseBro/receiptd/internal/shortid"
+	"github.com/ChaseBro/receiptd/internal/jobs"
+	"github.com/ChaseBro/receiptd/internal/services"
 	"github.com/rs/zerolog"
 )
 
@@ -22,6 +24,16 @@ type Config struct {
 	CLIListen       string
 	CloudPRNTListen string
 	DataDir         string
+
+	// Verifier validates bearer tokens on /v1/* routes from non-loopback
+	// callers. If nil, non-loopback calls are rejected — local mode is
+	// unaffected because loopback bypasses auth.
+	Verifier TokenVerifier
+
+	// RequireAuthOnLoopback forces token auth even for 127.0.0.1/::1. Used by
+	// public-mode deployments where loopback could be attacker-controlled.
+	// Default false preserves today's local UX.
+	RequireAuthOnLoopback bool
 }
 
 // DefaultConfig returns sensible defaults
@@ -33,11 +45,16 @@ func DefaultConfig() *Config {
 	}
 }
 
-// Daemon is the main receiptd server
+// Daemon is the main receiptd server. Transport glue only — business logic
+// lives in internal/services.
 type Daemon struct {
 	config      *Config
-	queue       *Queue
+	queue       *jobs.Queue
 	db          *db.DB
+	jobs        *services.Jobs
+	render      *services.Render
+	apiKeys     *services.APIKeys
+	deviceFlow  *services.DeviceFlow
 	httpServer  *http.Server
 	cliListener net.Listener
 	ready       chan struct{}
@@ -74,13 +91,25 @@ func NewDaemon(cfg *Config) (*Daemon, error) {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
 
+	queue := jobs.NewQueue()
+	apiKeys := services.NewAPIKeys(database, "live", logger)
+	deviceFlow := services.NewDeviceFlow(database, apiKeys, "", logger)
 	d := &Daemon{
-		config: cfg,
-		queue:  NewQueue(),
-		db:     database,
-		ready:  make(chan struct{}),
-		stop:   make(chan struct{}),
-		logger: logger,
+		config:     cfg,
+		queue:      queue,
+		db:         database,
+		jobs:       services.NewJobs(queue, database, logger),
+		render:     services.NewRender(cfg.DataDir, logger),
+		apiKeys:    apiKeys,
+		deviceFlow: deviceFlow,
+		ready:      make(chan struct{}),
+		stop:       make(chan struct{}),
+		logger:     logger,
+	}
+	// If no verifier was configured, default to the DB-backed API-key verifier.
+	// Local mode still bypasses via loopback; public mode uses this.
+	if d.config.Verifier == nil {
+		d.config.Verifier = NewAPIKeyVerifier(apiKeys)
 	}
 
 	// Reload pending/in-flight jobs from DB into queue (crash recovery)
@@ -95,11 +124,11 @@ func NewDaemon(cfg *Config) (*Daemon, error) {
 // loadPendingJobs reads pending/processing/acknowledged jobs from the DB and
 // re-queues them as pending so they can be dispatched after a restart.
 func (d *Daemon) loadPendingJobs() error {
-	jobs, err := d.db.GetPendingJobs()
+	pending, err := d.db.GetPendingJobs()
 	if err != nil {
 		return err
 	}
-	for _, dbJob := range jobs {
+	for _, dbJob := range pending {
 		// Reset in-flight states to pending so they get re-dispatched
 		dbJob.Status = "pending"
 		dbJob.StartedAt = nil
@@ -108,20 +137,20 @@ func (d *Daemon) loadPendingJobs() error {
 			d.logger.Warn().Err(err).Str("job_id", dbJob.ID).Msg("Failed to reset job status in DB")
 		}
 
-		job := &Job{
+		job := &jobs.Job{
 			ID:        dbJob.ID,
 			PrinterID: dbJob.PrinterID,
 			Content:   dbJob.Content,
 			ImagePath: dbJob.ImagePath,
-			Status:    JobStatusPending,
+			Status:    jobs.JobStatusPending,
 			Staged:    dbJob.Staged,
 			CreatedAt: dbJob.CreatedAt,
 		}
 		d.queue.Add(job)
 		d.logger.Info().Str("job_id", job.ID).Msg("Recovered pending job from DB")
 	}
-	if len(jobs) > 0 {
-		d.logger.Info().Int("count", len(jobs)).Msg("Recovered pending jobs from DB")
+	if len(pending) > 0 {
+		d.logger.Info().Int("count", len(pending)).Msg("Recovered pending jobs from DB")
 	}
 	return nil
 }
@@ -132,14 +161,32 @@ func (d *Daemon) Start() error {
 	d.logger.Info().Str("cloudprnt", d.config.CloudPRNTListen).Msg("CloudPRNT listen address")
 	d.logger.Info().Str("cli", d.config.CLIListen).Msg("CLI listen address")
 
-	// Start CloudPRNT HTTP server
+	// Start HTTP server: CloudPRNT polling at "/" plus v1 REST API at "/v1/*".
+	// ServeMux's longest-match rule keeps printer polls routed to CloudPRNT while
+	// /v1/* calls reach the REST handlers.
 	cloudprntHandler, err := NewCloudPRNTHandler(d, d.logger)
 	if err != nil {
 		return err
 	}
+	apiHandler := NewAPIHandler(d, d.logger)
+
+	// /v1/* goes through auth middleware; loopback bypasses by default so
+	// today's local CLI keeps working without a token.
+	apiMux := http.NewServeMux()
+	apiHandler.Register(apiMux)
+	authedAPI := AuthMiddleware(AuthConfig{
+		Verifier:              d.config.Verifier,
+		RequireAuthOnLoopback: d.config.RequireAuthOnLoopback,
+		Logger:                d.logger,
+	})(apiMux)
+
+	mux := http.NewServeMux()
+	mux.Handle("/v1/", authedAPI)
+	mux.Handle("/", cloudprntHandler)
+
 	d.httpServer = &http.Server{
 		Addr:    d.config.CloudPRNTListen,
-		Handler: cloudprntHandler,
+		Handler: mux,
 	}
 
 	d.wg.Add(1)
@@ -303,31 +350,28 @@ func (d *Daemon) WaitForReady() {
 }
 
 // Queue returns the job queue
-func (d *Daemon) Queue() *Queue {
+func (d *Daemon) Queue() *jobs.Queue {
 	return d.queue
 }
 
-// AddJob adds a job to the queue and persists it to the DB.
+// AddJob is a thin pass-through to the Jobs service. Kept for the TCP handler
+// which will migrate to calling d.jobs.Create directly as it moves off TCP.
 // imagePath is an absolute local file path or a URL (file://, https://, data:).
 // If staged is true the job is held and never dispatched to the printer.
-func (d *Daemon) AddJob(printerID, content, imagePath string, staged bool) *Job {
-	job := &Job{
-		ID:        "job-" + shortid.New(time.Now()),
+func (d *Daemon) AddJob(printerID, content, imagePath string, staged bool) *jobs.Job {
+	job, err := d.jobs.Create(context.Background(), services.CreateInput{
 		PrinterID: printerID,
-		Content:   content + "[feed:3][cut]",
+		Content:   content,
 		ImagePath: imagePath,
-		Status:    JobStatusPending,
 		Staged:    staged,
-		CreatedAt: time.Now(),
+	})
+	if err != nil {
+		// The only error services.Jobs.Create returns today is ErrEmptyJob.
+		// TCP callers never hit this path with empty input, but return a
+		// nil-safe placeholder rather than panicking to keep the contract.
+		d.logger.Error().Err(err).Msg("AddJob: service rejected input")
+		return nil
 	}
-	d.queue.Add(job)
-
-	dbJob := serverJobToDBJob(job)
-	if err := d.db.SaveJob(dbJob); err != nil {
-		d.logger.Error().Err(err).Str("job_id", job.ID).Msg("Failed to persist job to DB")
-	}
-
-	d.logger.Info().Str("job_id", job.ID).Bool("staged", staged).Str("content", content).Str("image_path", imagePath).Msg("Job added to queue")
 	return job
 }
 
@@ -349,13 +393,13 @@ func (d *Daemon) acknowledgeJob(token string, success bool, errMsg string) bool 
 
 // takeNextJob atomically picks the next pending job, updates the DB, and returns it.
 // printerID is written to the job record the first time it is dispatched.
-func (d *Daemon) takeNextJob(printerID string) *Job {
+func (d *Daemon) takeNextJob(printerID string) *jobs.Job {
 	// Snapshot any jobs that were acknowledged before this call so we can
 	// persist their completion after TakeNextJob transitions them.
 	prevAcknowledged := d.queue.GetAll()
 	acknowledgedIDs := make(map[string]bool)
 	for _, j := range prevAcknowledged {
-		if j.Status == JobStatusAcknowledged {
+		if j.Status == jobs.JobStatusAcknowledged {
 			acknowledgedIDs[j.ID] = true
 		}
 	}
@@ -364,7 +408,7 @@ func (d *Daemon) takeNextJob(printerID string) *Job {
 
 	// Persist any jobs that TakeNextJob finalized (acknowledged → completed)
 	for _, j := range d.queue.GetAll() {
-		if acknowledgedIDs[j.ID] && j.Status == JobStatusCompleted {
+		if acknowledgedIDs[j.ID] && j.Status == jobs.JobStatusCompleted {
 			dbJob := serverJobToDBJob(j)
 			if err := d.db.UpdateJob(dbJob); err != nil {
 				d.logger.Error().Err(err).Str("job_id", j.ID).Msg("Failed to update completed job in DB")
@@ -412,8 +456,8 @@ func IsServerRunning(addr string) bool {
 	return true
 }
 
-// serverJobToDBJob converts a server.Job to a db.Job.
-func serverJobToDBJob(j *Job) *db.Job {
+// serverJobToDBJob converts an in-memory jobs.Job to a db.Job for persistence.
+func serverJobToDBJob(j *jobs.Job) *db.Job {
 	return &db.Job{
 		ID:          j.ID,
 		PrinterID:   j.PrinterID,

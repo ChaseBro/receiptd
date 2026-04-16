@@ -67,6 +67,33 @@ CREATE TABLE IF NOT EXISTS printers (
     registered_at    TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_printers_mac ON printers(mac_address);
+
+CREATE TABLE IF NOT EXISTS api_keys (
+    id              TEXT PRIMARY KEY,      -- public prefix (first 12 chars of the secret)
+    hash            TEXT NOT NULL UNIQUE,  -- SHA-256 of the full secret
+    subject         TEXT NOT NULL,         -- user ID this key belongs to
+    label           TEXT,                  -- human description
+    scopes          TEXT,                  -- space-separated list
+    created_at      TEXT NOT NULL,
+    last_used_at    TEXT,
+    revoked_at      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_apikeys_subject ON api_keys(subject);
+CREATE INDEX IF NOT EXISTS idx_apikeys_hash    ON api_keys(hash);
+
+CREATE TABLE IF NOT EXISTS device_codes (
+    device_code_hash  TEXT PRIMARY KEY,      -- SHA-256 of the opaque device code
+    user_code         TEXT NOT NULL UNIQUE,  -- short human-enterable code, e.g. "WXYZ-1234"
+    subject           TEXT,                  -- filled on approval
+    scopes            TEXT,                  -- granted on approval
+    expires_at        TEXT NOT NULL,
+    interval_seconds  INTEGER NOT NULL DEFAULT 5,
+    approved_at       TEXT,
+    issued_secret     TEXT,                  -- the minted api-key plaintext, cleared after first poll
+    created_at        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_devcodes_user ON device_codes(user_code);
+CREATE INDEX IF NOT EXISTS idx_devcodes_exp  ON device_codes(expires_at);
 `
 
 func (d *DB) initSchema() error {

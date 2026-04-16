@@ -179,10 +179,14 @@ Examples:
 			time.Sleep(time.Duration(waitTime) * time.Second)
 		}
 		
-		c := client.NewClient()
-		
+		c := NewClient()
+
 		if !c.IsServerRunning() {
-			// Server not running - start it automatically
+			// In HTTP mode we cannot auto-start a remote daemon — fail fast.
+			if c.CurrentMode() == client.ModeHTTP {
+				ErrorExit("remote API not reachable (check --api / RECEIPTD_API)", 1)
+			}
+			// Server not running - start it automatically (local only)
 			if !jsonOutput {
 				fmt.Println("🚀 Starting server...")
 			}

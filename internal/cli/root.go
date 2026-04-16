@@ -5,13 +5,26 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/ChaseBro/receiptd/internal/client"
 	"github.com/spf13/cobra"
 )
 
 var (
 	jsonOutput bool
 	verbose    bool
+	apiURL     string // --api flag
+	apiKey     string // --api-key flag
 )
+
+// NewClient builds a client using the active CLI flags + env fallbacks +
+// cached auth state. Resolution order: --api flag, RECEIPTD_API env,
+// ~/.receiptd/auth.json. Same for the API key.
+func NewClient() *client.Client {
+	return client.NewClientFromConfig(client.ClientConfig{
+		APIURL: ResolvedAPIURL(),
+		APIKey: ResolvedAPIKey(),
+	})
+}
 
 var rootCmd = &cobra.Command{
 	Use:   "receiptd",
@@ -29,6 +42,8 @@ func Execute() error {
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "Output in JSON format")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
+	rootCmd.PersistentFlags().StringVar(&apiURL, "api", "", "Remote receiptd API URL (overrides RECEIPTD_API). When set, bypasses the local daemon.")
+	rootCmd.PersistentFlags().StringVar(&apiKey, "api-key", "", "Bearer token for remote API (overrides RECEIPTD_API_KEY).")
 }
 
 // OutputJSON outputs data as JSON if --json flag is set, otherwise uses human-readable format

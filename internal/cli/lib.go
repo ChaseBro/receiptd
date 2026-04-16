@@ -139,9 +139,13 @@ var libRunCmd = &cobra.Command{
 }
 
 func ensureServer() error {
-	c := client.NewClient()
+	c := NewClient()
 	if c.IsServerRunning() {
 		return nil
+	}
+	// Remote APIs can't be auto-started — user needs to point --api somewhere live.
+	if c.CurrentMode() == client.ModeHTTP {
+		return fmt.Errorf("remote API not reachable (check --api / RECEIPTD_API)")
 	}
 	if !jsonOutput {
 		fmt.Println("Starting server...")
@@ -150,7 +154,7 @@ func ensureServer() error {
 }
 
 func runItem(it printlib.Item) error {
-	c := client.NewClient()
+	c := NewClient()
 	switch it.Mode {
 	case printlib.ModeMarkup:
 		markup := it.MarkupFn()

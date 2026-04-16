@@ -1,4 +1,7 @@
-package server
+// Package jobs owns the in-memory queue of print jobs and the Job struct.
+// Split out from internal/server so the services layer can depend on queue
+// primitives without creating an import cycle with the HTTP/TCP transports.
+package jobs
 
 import (
 	"sync"

@@ -208,8 +208,11 @@ var rendersPrintCmd = &cobra.Command{
 			imagePath = savedPath
 		}
 
-		c := client.NewClient()
+		c := NewClient()
 		if !c.IsServerRunning() {
+			if c.CurrentMode() == client.ModeHTTP {
+				ErrorExit("remote API not reachable (check --api / RECEIPTD_API)", 1)
+			}
 			if !jsonOutput {
 				fmt.Println("Starting server...")
 			}
