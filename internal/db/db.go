@@ -21,8 +21,17 @@ func Open(dataDir string) (*DB, error) {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
 
-	// SQLite best-practice pragmas
-	if _, err := sqldb.Exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;`); err != nil {
+	// SQLite best-practice pragmas.
+	//
+	// busy_timeout=5000 (ms) matters when a second process briefly opens the
+	// DB alongside the daemon — notably `receiptd auth bootstrap-key`, which
+	// writes a row directly from SSH. WAL lets them coexist, but without a
+	// generous timeout a transient write lock would surface as "database
+	// is locked" on either side. 5s is plenty for the daemon's tiny writes
+	// to complete.
+	if _, err := sqldb.Exec(`PRAGMA journal_mode=WAL;
+PRAGMA foreign_keys=ON;
+PRAGMA busy_timeout=5000;`); err != nil {
 		sqldb.Close()
 		return nil, fmt.Errorf("set pragmas: %w", err)
 	}

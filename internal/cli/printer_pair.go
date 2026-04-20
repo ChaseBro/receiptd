@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ChaseBro/receiptd/internal/cloudcprnt"
 	"github.com/ChaseBro/receiptd/internal/printerconfig"
 	"github.com/spf13/cobra"
 )
@@ -25,6 +26,7 @@ var (
 	pairNoRestart  bool
 	pairPrinterID  string
 	pairDryRun     bool
+	pairSkipVerify bool
 )
 
 var printerPairCmd = &cobra.Command{
@@ -105,14 +107,63 @@ func runPair(ctx context.Context) error {
 
 	if pairNoRestart {
 		fmt.Println("  (skipped save+restart per --no-restart; run save from the printer UI to apply)")
-	} else {
-		fmt.Printf("✓ save+restart triggered — printer will reboot in ~10s\n")
+		fmt.Printf("\nPaired printer %s.\n", printerID)
+		fmt.Printf("  Check status in 30–60s with:\n")
+		fmt.Printf("    receiptd printer status %s\n", printerID)
+		return nil
+	}
+
+	fmt.Printf("✓ save+restart triggered — printer will reboot in ~10s\n")
+
+	// The printer CGI returns 200 regardless of whether the values were
+	// accepted. Wait for a first poll against the worker to confirm the
+	// config actually took — if no status within the window, surface a
+	// helpful fallback rather than a false "paired" success.
+	if !pairSkipVerify {
+		if ok := waitForFirstPoll(ctx, worker, printerID, 90*time.Second); ok {
+			fmt.Printf("✓ verified — printer is polling %s\n", worker.BaseURL())
+		} else {
+			fmt.Fprintln(os.Stderr, "\n⚠ no poll from the printer within 90s")
+			fmt.Fprintln(os.Stderr, "  The CGI accepted the config but the printer may have rejected a field")
+			fmt.Fprintln(os.Stderr, "  (or the save+restart cycle is still in progress). Fallback:")
+			fmt.Fprintln(os.Stderr)
+			printPasteFallback(printerconfig.CloudPRNTSettings{
+				Enable:         true,
+				ServerURL:      serverURL,
+				PollingSec:     pairPollSec,
+				HTTPTimeoutSec: 60,
+				Username:       printerID,
+				Password:       secret,
+			})
+			return fmt.Errorf("printer did not poll within 90s")
+		}
 	}
 
 	fmt.Printf("\nPaired printer %s.\n", printerID)
-	fmt.Printf("  Check status in 30–60s with:\n")
+	fmt.Printf("  Check status anytime with:\n")
 	fmt.Printf("    receiptd printer status %s\n", printerID)
 	return nil
+}
+
+// waitForFirstPoll polls the worker for the printer's status until a
+// record appears (meaning the printer has sent at least one POST to the
+// worker and the config took effect) or the timeout elapses.
+func waitForFirstPoll(ctx context.Context, worker *cloudcprnt.Client, printerID string, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		pollCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		_, err := worker.GetPrinterStatus(pollCtx, printerID)
+		cancel()
+		if err == nil {
+			return true
+		}
+		if !errors.Is(err, cloudcprnt.ErrNoStatus) {
+			// Non-404 errors (network, 500) aren't fatal for verify —
+			// keep polling, the printer is still rebooting.
+		}
+		time.Sleep(5 * time.Second)
+	}
+	return false
 }
 
 func pushToPrinter(ctx context.Context, settings printerconfig.CloudPRNTSettings) error {
@@ -200,5 +251,6 @@ func init() {
 	printerPairCmd.Flags().IntVar(&pairPollSec, "poll-interval", 5, "Polling interval (seconds, 1-7200)")
 	printerPairCmd.Flags().BoolVar(&pairNoRestart, "no-restart", false, "Apply config but don't reboot the printer")
 	printerPairCmd.Flags().BoolVar(&pairDryRun, "dry-run", false, "Print the plan without making any changes")
+	printerPairCmd.Flags().BoolVar(&pairSkipVerify, "skip-verify", false, "Don't wait for the printer's first poll to confirm the config took")
 	printerCmd.AddCommand(printerPairCmd)
 }

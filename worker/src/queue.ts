@@ -100,10 +100,11 @@ export async function peek(kv: KVNamespace, printerId: string): Promise<JobSigna
 }
 
 /**
- * Pop the head if its jobId matches `token`. If `token` is null/undefined,
- * pop unconditionally. If the head doesn't match the token, the ack is
- * dropped silently — this prevents a slow printer's DELETE for an older
- * job from wiping a newer one.
+ * Pop the head if its jobId matches `token`. If `token` is missing
+ * (null, undefined, or empty string), pop unconditionally. If the head
+ * doesn't match a non-empty token, the ack is dropped silently — this
+ * prevents a slow printer's DELETE for an older job from wiping a newer
+ * one.
  */
 export async function ackPop(
   kv: KVNamespace,
@@ -113,7 +114,10 @@ export async function ackPop(
   const q = await loadQueue(kv, printerId);
   if (q.jobs.length === 0) return null;
   const head = q.jobs[0]!;
-  if (token && head.jobId !== token) return null;
+  // Only enforce the token check when the printer actually sent one.
+  // Empty string is treated the same as absent, matching JS falsy
+  // convention so the guard's intent is obvious on inspection.
+  if (token !== null && token !== "" && head.jobId !== token) return null;
   q.jobs.shift();
   await saveQueue(kv, printerId, q);
   return head;
