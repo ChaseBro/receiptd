@@ -1,0 +1,32 @@
+.git
+.gitignore
+.github
+.vscode
+.idea
+.claude
+.DS_Store
+
+# Local build artifacts — rebuilt inside the image
+receiptd
+/dist
+/build
+/.wrangler
+*.test
+*.out
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Local data / secrets
+.env
+.env.*
+tests/testdata/*.db
+tests/testdata/*.log
+
+# Docs + tooling not needed at runtime
+README.md
+CLI-README.md
+docs
+scripts
+skills

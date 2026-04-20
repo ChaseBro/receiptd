@@ -34,4 +34,19 @@ Thumbs.db
 .claude/
 
 # Local environment (contains paths to local binaries, never commit)
+
+# Vendored Star cputil SDK — proprietary, must be sourced locally. See
+# `make vendor-cputil`. The Dockerfile expects this directory to exist.
+/cputil-bin/
+
+# Vendored bitmap fonts — copied from ~/.receiptd/fonts via `make vendor-fonts`
+# and baked into the image. The Dockerfile expects this directory to exist.
+/fonts-seed/
+
+# Wrangler build/deploy cache — regenerated on each deploy
+/.wrangler/
+
+.projects/cache
+.projects/vault
 .env
+.env.local
