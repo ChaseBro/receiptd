@@ -63,7 +63,70 @@ Implement RFC 8628 (~200 lines of Go). `receiptd login` / `logout` / `whoami`. A
 New tables: `users`, `printers`, `api_keys`, `printer_secrets`. Existing single-user installs auto-migrate to a "default" user + default printer on first start. Job queue keyed by `printer_id`. CloudPRNT routes by `/cprnt/:printerId` with HTTP Basic validated against `printer_secrets`.
 
 ### Step 7 — Public deploy on Fly.io
-Dockerfile bundling the binary + `cputil-bin/` + headless Chrome (chromedp/headless-shell base or similar). `fly launch`. Persistent SQLite on a Fly Volume. HTTPS via Fly's default cert. After this step, `receiptd login --api https://api.receiptd.app` works end-to-end from any machine.
+Dockerfile bundling the binary + `cputil-bin/` + headless Chrome (chromedp/headless-shell base) + bitmap fonts. `fly launch`. Persistent SQLite on a Fly Volume. HTTPS via Fly's default cert. After this step, `receiptd login --api https://api.receiptd.app` works end-to-end from any machine.
+
+**Files (landed 2026-04-19):**
+- `Dockerfile` — multi-stage: `golang:1.24-bookworm` build → `chromedp/headless-shell` runtime. `PATH=/headless-shell:$PATH` so the existing chromedp PATH lookup in `internal/render/render.go` finds Chrome with no code change. `HOME=/data`, `CPUTIL_PATH=/app/cputil-bin/cputil`. Runs `receiptd server --require-auth` under `tini`.
+- `fly.toml` — 1 GB `shared-cpu-1x`, `receiptd_data` volume → `/data`, `internal_port=3000`, `auto_stop=stop` (scale-to-zero; the printer's CloudPRNT poll keeps it warm during use).
+- `.dockerignore`, `.gitignore` entries for `/cputil-bin/` and `/fonts-seed/`.
+- `Makefile` — `vendor-cputil` (extracts the Star SDK Linux tarball — proprietary, sourced from `$CPUTIL_TARBALL`), `vendor-fonts` (copies `~/.receiptd/fonts/*` into `./fonts-seed/`), `docker-build` (chains both and builds `linux/amd64`).
+
+**Font-seeding design note:** fonts live at `$HOME/.receiptd/fonts`, but `HOME=/data` is the Fly volume mount point — anything baked into that path in the image is shadowed at runtime. So fonts ship in `/app/fonts-seed/` and a small `/app/entrypoint.sh` runs `cp -n /app/fonts-seed/* $HOME/.receiptd/fonts/` before `exec`ing the server. `-n` preserves any user-added fonts on the volume. Same trick would apply to any other seed data that needs to live on the volume.
+
+Smoke-tested 2026-04-19: Press Start 2P, Spleen 8×16, Alagard all rendered cleanly inside the container; Floyd-Steinberg dither on a black→white gradient verified `internal/imageproc` runs fine alongside chromedp.
+
+### Step 7b — CloudPRNT edge proxy (Cloudflare Worker)
+
+Decided 2026-04-20 before first Fly deploy. The scale-to-zero story on Fly
+alone is broken: the printer polls every 5–60 s, so the Fly machine never
+idles and we pay ~$5/mo per printer for 99.9% no-op responses. Splitting the
+CloudPRNT surface onto a Cloudflare Worker fixes this without a CF rewrite
+of the whole app.
+
+**Shape:**
+
+```
+printer  → cprnt.receiptd.app    → CF Worker + KV + R2    (handles all polls)
+                                        │
+CLI/API  → api.receiptd.app      → Fly (Go, unchanged)
+                                        │
+                                        └── on job create:
+                                              • render HTML → PNG
+                                              • cputil markup → StarPRNT binary
+                                              • PUT binary → R2
+                                              • SET KV: "job ready for printer X"
+```
+
+**Runtime flow:**
+- Printer POSTs poll → Worker reads `KV:printer:<id>:job` → returns
+  `{jobReady: false}` 99.9% of the time. Fly stays asleep.
+- When a job is queued: Worker returns `{jobReady: true, mediaTypes: ...}`.
+  Printer GETs → Worker streams directly from R2 (still no Fly touch).
+  Printer DELETEs → Worker updates KV, optionally fires a webhook to Fly
+  for completion accounting.
+- Fly only wakes when a human/agent creates a job (CLI → `POST /v1/jobs`),
+  so `auto_stop_machines = "stop"` actually works. Idle cost: near zero.
+
+**Scope (~2 days):**
+- New: `worker/` TypeScript project (~200 lines), Hono or bare Workers.
+- CF resources: KV namespace `receiptd_jobs`, R2 bucket `receiptd_jobs`.
+- Signing: Fly signs `R2 upload URL + KV write` with a shared secret;
+  Worker verifies on read. Or: Fly uses a scoped R2 token; Worker uses a
+  read-only token. No Worker-side auth needed for printer polls beyond
+  HTTP Basic on `cprnt.receiptd.app/cprnt/:printerId`.
+- Fly code change: after `services.Jobs.Create` renders/converts, PUT to R2
+  and POST to Worker admin endpoint (or write KV directly via CF API) to
+  mark job ready. Delete on ack.
+
+**What stays on Fly:**
+- REST API (`/v1/*`), device flow, render pipeline, cputil.
+- SQLite DAO and auth store (`internal/db/`, `internal/services/*`).
+- No Go code rewrite; Fly remains the single source of truth for job state.
+  KV is a cache/signal, not authoritative.
+
+**What's NOT on CF:** chromedp rendering, cputil subprocess, dithering. Those
+stay on Fly — CF Browser Rendering + a Container is still too much surface
+for their benefit at this scale.
 
 ### Step 8 — Printer pairing UX
 Minimal web page (Go templates, served by the same binary) or CLI-only flow. Pair a printer → get the CloudPRNT URL + Basic-auth secret to paste into the printer's web config. Existing local users who want cloud mode can re-pair an existing printer.
@@ -83,7 +146,8 @@ Defer until the REST API + CLI story is stable and we've learned what tools agen
 
 ## Out of scope until proven necessary
 
-- Cloudflare Workers, D1, R2, Containers, Browser Rendering
+- Cloudflare D1, Containers, Browser Rendering (Workers + KV + R2 are in scope
+  as of step 7b; the rest stays on Fly)
 - Postgres / libSQL (SQLite + Fly Volume is fine until it isn't)
 - Web UI beyond the pairing page
 - Mobile apps / browser extensions
