@@ -156,11 +156,23 @@ func NewDaemon(cfg *Config) (*Daemon, error) {
 
 // loadPendingJobs reads pending/processing/acknowledged jobs from the DB and
 // re-queues them as pending so they can be dispatched after a restart.
+//
+// Cloud mode (dispatcher configured): each recovered job is re-POSTed to
+// the worker. Without this, jobs that were pending at shutdown — including
+// any whose original Dispatch failed — would sit in the local queue
+// forever, invisible to the printer. Re-dispatch is idempotent at the
+// user-visible level: the worker's FIFO may end up with an extra entry for
+// the same binary, which prints one extra copy; strictly better than
+// silently losing the job.
+//
+// Local mode (no dispatcher): the printer polls this daemon's CloudPRNT
+// handler directly, so re-queuing alone is sufficient.
 func (d *Daemon) loadPendingJobs() error {
 	pending, err := d.db.GetPendingJobs()
 	if err != nil {
 		return err
 	}
+	ctx := context.Background()
 	for _, dbJob := range pending {
 		// Reset in-flight states to pending so they get re-dispatched
 		dbJob.Status = "pending"
@@ -181,6 +193,12 @@ func (d *Daemon) loadPendingJobs() error {
 		}
 		d.queue.Add(job)
 		d.logger.Info().Str("job_id", job.ID).Msg("Recovered pending job from DB")
+
+		// Re-dispatch for cloud mode. Errors are logged + marked inside
+		// Redispatch; we keep processing the rest of the backlog.
+		if err := d.jobs.Redispatch(ctx, job); err != nil {
+			d.logger.Warn().Err(err).Str("job_id", job.ID).Msg("Recovery re-dispatch failed — job marked failed")
+		}
 	}
 	if len(pending) > 0 {
 		d.logger.Info().Int("count", len(pending)).Msg("Recovered pending jobs from DB")

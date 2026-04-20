@@ -131,12 +131,49 @@ func (s *Jobs) Create(ctx context.Context, in CreateInput) (*jobs.Job, error) {
 	if s.dispatcher != nil && !in.Staged {
 		if err := s.dispatcher.Dispatch(ctx, job); err != nil {
 			s.logger.Error().Err(err).Str("job_id", job.ID).Msg("dispatch to worker failed")
+			s.markFailed(job, fmt.Errorf("dispatch: %w", err))
 			return job, fmt.Errorf("dispatch: %w", err)
 		}
 		s.logger.Info().Str("job_id", job.ID).Msg("Job dispatched to worker")
 	}
 
 	return job, nil
+}
+
+// Redispatch re-runs the dispatcher for a previously persisted job. Used
+// during daemon startup recovery — a job whose dispatch was interrupted
+// (crash, scale-to-zero bounce, or initial failure) is re-queued from the
+// DB, then pushed to the worker again. If dispatch still fails, the job is
+// marked "failed" so it doesn't accumulate as a ghost pending entry.
+//
+// Safe to call on already-dispatched jobs: the worker's /admin/jobs append
+// is idempotent at the printer level (a duplicate just becomes an extra
+// FIFO entry with the same R2 key), and the user is better off with one
+// extra print than a silently dropped one.
+func (s *Jobs) Redispatch(ctx context.Context, job *jobs.Job) error {
+	if s.dispatcher == nil || job == nil || job.Staged {
+		return nil
+	}
+	if err := s.dispatcher.Dispatch(ctx, job); err != nil {
+		s.logger.Error().Err(err).Str("job_id", job.ID).Msg("re-dispatch failed")
+		s.markFailed(job, fmt.Errorf("dispatch: %w", err))
+		return err
+	}
+	s.logger.Info().Str("job_id", job.ID).Msg("Job re-dispatched on recovery")
+	return nil
+}
+
+// markFailed transitions a pending job to Failed status, records the
+// error, and persists to DB. Failures in persistence are logged but not
+// re-returned — the caller already has the primary error to surface.
+func (s *Jobs) markFailed(job *jobs.Job, cause error) {
+	job.Status = jobs.JobStatusFailed
+	job.ErrorMsg = cause.Error()
+	now := time.Now()
+	job.CompletedAt = &now
+	if err := s.db.UpdateJob(jobToDB(job)); err != nil {
+		s.logger.Error().Err(err).Str("job_id", job.ID).Msg("persist failed status")
+	}
 }
 
 // resolveInputs turns the public CreateInput shape into the internal
