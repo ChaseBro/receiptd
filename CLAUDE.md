@@ -98,3 +98,7 @@ Tag reference: https://star-m.jp/products/s_print/sdk/StarDocumentMarkup/manual/
 ## Exit codes
 
 `0` success · `1` general error · `2` server not running · `3` printer error · `4` config error
+
+<!-- stripe-projects-cli managed:claude-md:start -->
+look at AGENTS.md for your rules
+<!-- stripe-projects-cli managed:claude-md:end -->
