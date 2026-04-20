@@ -37,6 +37,17 @@ async function sha256Hex(data: ArrayBuffer | Uint8Array): Promise<string> {
  * Headers: `X-Timestamp` (unix ms), `X-Signature` (hex hmac-sha256)
  *
  * Rejects if timestamp drift > 5 minutes (replay protection).
+ *
+ * Path invariant: `url.pathname` must return the same string Fly signed.
+ * Go signs the pre-request path with `url.PathEscape(printerID)` already
+ * applied, e.g. `/admin/printers/p%2Fwith%20slash/secret`. WHATWG URL
+ * (and Workers runtime) preserve percent-encoding in `pathname`, so a
+ * printer ID containing `/` or space round-trips. If a future printer-ID
+ * scheme introduces characters Go's PathEscape and JS URL normalize
+ * differently, this function's signature check will silently fail on
+ * those IDs. The Go regression test `TestClient_PutPrinterSecret`
+ * exercises the `p/with slash` case; extend that test if the ID scheme
+ * changes.
  */
 export async function verifyAdminSignature(
   req: Request,

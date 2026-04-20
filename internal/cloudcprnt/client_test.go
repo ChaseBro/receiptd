@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -111,6 +112,52 @@ func TestClient_PutPrinterSecret(t *testing.T) {
 	c := NewClient(srv.URL, secret)
 	if err := c.PutPrinterSecret(context.Background(), "p/with slash", printerSecret); err != nil {
 		t.Fatalf("PutPrinterSecret: %v", err)
+	}
+}
+
+// TestClient_SignsAgainstLiveWorker is an opt-in integration test that
+// exercises the full Go client ↔ Hono worker signing contract against a
+// real `wrangler dev` instance. The concern it guards against: Hono or
+// the Workers runtime could in principle normalize percent-encoded path
+// segments (e.g. %2F → /) before the route handler sees them, breaking
+// signatures on any printer ID that contains those characters.
+//
+// Run with:
+//
+//	cd worker && npx wrangler dev --local --port 8787 &
+//	RECEIPTD_WORKER_URL=http://127.0.0.1:8787 \
+//	RECEIPTD_WORKER_HMAC_SECRET=<matches .dev.vars> \
+//	go test -run TestClient_SignsAgainstLiveWorker ./internal/cloudcprnt/
+func TestClient_SignsAgainstLiveWorker(t *testing.T) {
+	url := os.Getenv("RECEIPTD_WORKER_URL")
+	secret := os.Getenv("RECEIPTD_WORKER_HMAC_SECRET")
+	if url == "" || secret == "" {
+		t.Skip("set RECEIPTD_WORKER_URL + RECEIPTD_WORKER_HMAC_SECRET (point at wrangler dev)")
+	}
+	c := NewClient(url, secret)
+	if c == nil {
+		t.Fatal("client nil despite env set")
+	}
+	ctx := context.Background()
+
+	// Plain printer ID — baseline. Should verify.
+	if err := c.PutPrinterSecret(ctx, "sign-smoke-plain", "dummy-secret-0123456789ab"); err != nil {
+		t.Fatalf("plain printer ID: %v", err)
+	}
+	if err := c.DeletePrinterSecret(ctx, "sign-smoke-plain"); err != nil {
+		t.Fatalf("cleanup plain: %v", err)
+	}
+
+	// Percent-encoded printer ID — this is the fragility the review
+	// called out. If Hono normalizes %2F → /, url.pathname in the
+	// worker won't match the Go-signed path, and the signature check
+	// fails with 401.
+	quirky := "smoke/slash smoke"
+	if err := c.PutPrinterSecret(ctx, quirky, "dummy-secret-0123456789ab"); err != nil {
+		t.Fatalf("percent-encoded printer ID (%q) failed: %v — Hono may be normalizing the path", quirky, err)
+	}
+	if err := c.DeletePrinterSecret(ctx, quirky); err != nil {
+		t.Fatalf("cleanup quirky: %v", err)
 	}
 }
 
