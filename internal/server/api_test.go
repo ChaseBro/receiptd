@@ -30,7 +30,7 @@ func newTestDaemon(t *testing.T) *Daemon {
 		config: &Config{DataDir: dir},
 		queue:  queue,
 		db:     database,
-		jobs:   services.NewJobs(queue, database, log),
+		jobs:   services.NewJobs(queue, database, nil, dir, log),
 		render: services.NewRender(dir, log),
 		logger: log,
 	}
@@ -69,8 +69,8 @@ func TestAPI_CreateJob_Then_Get(t *testing.T) {
 	srv, d := newTestAPI(t)
 
 	reqBody, _ := json.Marshal(createJobRequest{
-		Content: "hello world",
-		Staged:  true,
+		Text:   "hello world",
+		Staged: true,
 	})
 	resp, err := http.Post(srv.URL+"/v1/jobs", "application/json", bytes.NewReader(reqBody))
 	if err != nil {
@@ -149,7 +149,7 @@ func TestAPI_ListJobs(t *testing.T) {
 	srv, _ := newTestAPI(t)
 	// Seed two jobs.
 	for _, c := range []string{"a", "b"} {
-		reqBody, _ := json.Marshal(createJobRequest{Content: c, Staged: true})
+		reqBody, _ := json.Marshal(createJobRequest{Text: c, Staged: true})
 		resp, err := http.Post(srv.URL+"/v1/jobs", "application/json", bytes.NewReader(reqBody))
 		if err != nil {
 			t.Fatalf("post: %v", err)

@@ -3,6 +3,14 @@
 Survey of how other projects provision Star CloudPRNT printers and what's
 realistic for us. Compiled 2026-04-20.
 
+> **Update 2026-04-20 (same day):** After probing our TSP100IV directly we
+> found the web UI is a plain cookie-gated CGI form — no CSRF, no JS-only
+> widgets. Automating it is ~50 lines of `net/http` in Go; we implemented
+> this as `internal/printerconfig/`. The Playwright path below is retained
+> for reference but is no longer the recommended progression. Direct HTTP
+> is strictly smaller, has no runtime dependency, and fails open to manual
+> paste just as easily.
+
 ## What Star officially supports
 
 **Config is web-UI only.** Star's official docs do not document any remote
@@ -111,15 +119,15 @@ This is true for every similar product (Square Reader, HP Smart setup, etc.) —
 they all rely on a local app or a local QR-code + manual step. We're not
 missing some industry trick.
 
-### Recommended progression
+### Recommended progression (revised 2026-04-20)
 
-1. **Now:** implement `receiptd printer pair` that returns a pasteable config
-   block. Roadmap step 8 (per-printer secrets) enables this.
-2. **When inviting other users:** ship `receiptd printer pair --auto` with a
-   bundled Playwright script. Falls back to manual paste on failure.
-3. **Only if scaling to hundreds of tenants:** invest in reverse-engineering
-   Star's Quick Setup app. Probably still not worth it at that scale — the
-   `--auto` Playwright path is good enough.
+1. **Now:** `receiptd printer pair --ip --admin-pass` uses the direct HTTP
+   path in `internal/printerconfig/`. Pasteable fallback auto-emitted if
+   the push fails (network, firmware variant, whatever).
+2. **If/when Star ships firmware that breaks the form:** detect and fall back
+   to Playwright. We don't need it pre-emptively.
+3. **Reverse-engineering the mobile app:** skip indefinitely — direct HTTP
+   is cheaper and equally effective.
 
 ## MQTT-mode aside
 

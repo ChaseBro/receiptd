@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
-	"os/exec"
 	"strings"
 	"time"
 
+	"github.com/ChaseBro/receiptd/internal/cputil"
 	"github.com/ChaseBro/receiptd/internal/db"
 	"github.com/rs/zerolog"
 )
@@ -21,20 +20,8 @@ type CloudPRNTHandler struct {
 	mediaTypes []string
 }
 
-func resolveCputilPath() string {
-	// 1. Explicit env var
-	if p := os.Getenv("CPUTIL_PATH"); p != "" {
-		return p
-	}
-	// 2. cputil on PATH
-	if p, err := exec.LookPath("cputil"); err == nil {
-		return p
-	}
-	return ""
-}
-
 func NewCloudPRNTHandler(daemon *Daemon, logger zerolog.Logger) (*CloudPRNTHandler, error) {
-	cputilPath := resolveCputilPath()
+	cputilPath := cputil.ResolvePath()
 	if cputilPath == "" {
 		return nil, fmt.Errorf("cputil not found: set CPUTIL_PATH or add cputil to PATH")
 	}
@@ -63,30 +50,12 @@ func (h *CloudPRNTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CloudPRNTHandler) convertToStarPRNT(markup string) ([]byte, error) {
-	tmpFile, err := os.CreateTemp("", "markup-*.stm")
-	if err != nil {
-		return nil, err
-	}
-	defer os.Remove(tmpFile.Name())
-
-	tmpFile.WriteString(markup)
-	tmpFile.Close()
-
-	cmd := exec.Command(
-		h.cputilPath,
-		"thermal3",
-		"decode",
-		"application/vnd.star.starprnt",
-		tmpFile.Name(),
-		"-",
-	)
-	output, err := cmd.Output()
+	out, err := cputil.Convert(h.cputilPath, markup)
 	if err != nil {
 		h.logger.Error().Err(err).Msg("cputil failed")
 		return nil, err
 	}
-
-	return output, nil
+	return out, nil
 }
 
 type CloudPRNTPollResponse struct {
@@ -204,16 +173,7 @@ func (h *CloudPRNTHandler) handleGetJob(w http.ResponseWriter, r *http.Request) 
 
 	h.logger.Info().Str("job_id", job.ID).Str("mediaType", mediaType).Msg("Serving job")
 
-	markup := job.Content
-	if job.ImagePath != "" {
-		// Prepend image tag; use file:// scheme for absolute local paths.
-		url := job.ImagePath
-		if !strings.HasPrefix(url, "file://") && !strings.HasPrefix(url, "http://") &&
-			!strings.HasPrefix(url, "https://") && !strings.HasPrefix(url, "data:") {
-			url = "file://" + url
-		}
-		markup = fmt.Sprintf("[image: url %s; width 100%%]\n", url) + markup
-	}
+	markup := cputil.BuildMarkup(job.Content, job.ImagePath)
 
 	binary, err := h.convertToStarPRNT(markup)
 	if err != nil {

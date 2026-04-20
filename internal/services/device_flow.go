@@ -21,7 +21,7 @@ type DeviceFlow struct {
 	db      *db.DB
 	keys    *APIKeys
 	logger  zerolog.Logger
-	baseURL string // verification URL shown to the user, e.g. https://receiptd.app/activate
+	baseURL string // verification URL shown to the user, e.g. https://receiptd.sh/activate
 }
 
 // NewDeviceFlow builds a DeviceFlow service.

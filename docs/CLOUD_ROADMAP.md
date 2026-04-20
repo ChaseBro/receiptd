@@ -63,7 +63,7 @@ Implement RFC 8628 (~200 lines of Go). `receiptd login` / `logout` / `whoami`. A
 New tables: `users`, `printers`, `api_keys`, `printer_secrets`. Existing single-user installs auto-migrate to a "default" user + default printer on first start. Job queue keyed by `printer_id`. CloudPRNT routes by `/cprnt/:printerId` with HTTP Basic validated against `printer_secrets`.
 
 ### Step 7 — Public deploy on Fly.io
-Dockerfile bundling the binary + `cputil-bin/` + headless Chrome (chromedp/headless-shell base) + bitmap fonts. `fly launch`. Persistent SQLite on a Fly Volume. HTTPS via Fly's default cert. After this step, `receiptd login --api https://api.receiptd.app` works end-to-end from any machine.
+Dockerfile bundling the binary + `cputil-bin/` + headless Chrome (chromedp/headless-shell base) + bitmap fonts. `fly launch`. Persistent SQLite on a Fly Volume. HTTPS via Fly's default cert. After this step, `receiptd login --api https://api.receiptd.sh` works end-to-end from any machine.
 
 **Files (landed 2026-04-19):**
 - `Dockerfile` — multi-stage: `golang:1.24-bookworm` build → `chromedp/headless-shell` runtime. `PATH=/headless-shell:$PATH` so the existing chromedp PATH lookup in `internal/render/render.go` finds Chrome with no code change. `HOME=/data`, `CPUTIL_PATH=/app/cputil-bin/cputil`. Runs `receiptd server --require-auth` under `tini`.
@@ -77,6 +77,8 @@ Smoke-tested 2026-04-19: Press Start 2P, Spleen 8×16, Alagard all rendered clea
 
 ### Step 7b — CloudPRNT edge proxy (Cloudflare Worker)
 
+**Status (2026-04-20): scaffolded, Go client wired, smoke-tested end-to-end against `wrangler dev --local`.** KV namespace (`receiptd-cprnt-receiptd_jobs`) and R2 bucket (`receiptd-jobs`) exist in CF. `FLY_HMAC_SECRET` not yet set; worker not yet deployed; custom domain (`cprnt.receiptd.sh`) not yet attached. See `worker/` for the Hono app and `internal/cloudcprnt/` for the Fly-side client.
+
 Decided 2026-04-20 before first Fly deploy. The scale-to-zero story on Fly
 alone is broken: the printer polls every 5–60 s, so the Fly machine never
 idles and we pay ~$5/mo per printer for 99.9% no-op responses. Splitting the
@@ -86,9 +88,9 @@ of the whole app.
 **Shape:**
 
 ```
-printer  → cprnt.receiptd.app    → CF Worker + KV + R2    (handles all polls)
+printer  → cprnt.receiptd.sh     → CF Worker + KV + R2    (handles all polls)
                                         │
-CLI/API  → api.receiptd.app      → Fly (Go, unchanged)
+CLI/API  → api.receiptd.sh       → Fly (Go, unchanged)
                                         │
                                         └── on job create:
                                               • render HTML → PNG
@@ -113,7 +115,7 @@ CLI/API  → api.receiptd.app      → Fly (Go, unchanged)
 - Signing: Fly signs `R2 upload URL + KV write` with a shared secret;
   Worker verifies on read. Or: Fly uses a scoped R2 token; Worker uses a
   read-only token. No Worker-side auth needed for printer polls beyond
-  HTTP Basic on `cprnt.receiptd.app/cprnt/:printerId`.
+  HTTP Basic on `cprnt.receiptd.sh/cprnt/:printerId`.
 - Fly code change: after `services.Jobs.Create` renders/converts, PUT to R2
   and POST to Worker admin endpoint (or write KV directly via CF API) to
   mark job ready. Delete on ack.
@@ -128,8 +130,17 @@ CLI/API  → api.receiptd.app      → Fly (Go, unchanged)
 stay on Fly — CF Browser Rendering + a Container is still too much surface
 for their benefit at this scale.
 
+**Printer status capture (landed 2026-04-20):** each poll parses
+`printerMAC`, `statusCode`, `printingInProgress`, and the `clientAction[]`
+entries (PageInfo / ClientType / ClientVersion) into `KV:printer:<id>:status`.
+Writes are gated by change-detection + a 60-second liveness heartbeat, so a
+5-second poll cadence costs ~1 KV read per poll and ~1 KV write per minute at
+steady state (well inside the paid tier). Fly reads the snapshot via signed
+`GET /admin/printers/:id/status`; no push path required.
+
 ### Step 8 — Printer pairing UX
-Minimal web page (Go templates, served by the same binary) or CLI-only flow. Pair a printer → get the CloudPRNT URL + Basic-auth secret to paste into the printer's web config. Existing local users who want cloud mode can re-pair an existing printer.
+
+**TSP100IV web UI is fully scriptable** (learned 2026-04-20 by probing 192.168.1.38 directly — form auth + cookie-gated CGI POSTs, no CSRF). `receiptd printer pair --ip --admin-pass --label` logs in via `/auth/form_authentication.cgi`, POSTs config to `/html/cloudprnt_cgi`, triggers save+restart via `/html/save_cgi`. See `internal/printerconfig/`. Zero manual paste needed. Pasteable fallback still emitted if the LAN push fails.
 
 ### Step 9 — MCP transport (deferred)
 Bolt on `/mcp` using `mark3labs/mcp-go` or the official Anthropic Go MCP SDK. Tools wrap the same `services/` calls. Reuse the OAuth provider from step 5. Expected effort: ~1 day because step 2 did all the structural work.

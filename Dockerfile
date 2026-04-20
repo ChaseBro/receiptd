@@ -22,10 +22,16 @@ FROM chromedp/headless-shell:latest
 
 ENV PATH="/headless-shell:${PATH}" \
     HOME="/data" \
-    CPUTIL_PATH="/app/cputil-bin/cputil"
+    CPUTIL_PATH="/app/cputil-bin/cputil" \
+    # cputil is a self-contained .NET binary that requires ICU by default.
+    # Rather than install ~40MB of libicu into the image, run .NET in
+    # invariant-culture mode — cputil only does byte-level Star Markup →
+    # StarPRNT conversion, no locale-sensitive string ops.
+    DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
 
-# Fonts + CA roots + tini (PID 1). ca-certificates is needed for outbound HTTPS
-# (e.g. device-flow callbacks); fonts-liberation avoids □ boxes in rendered HTML.
+# Fonts + CA roots + tini (PID 1). ca-certificates is needed for outbound
+# HTTPS (e.g. device-flow callbacks); fonts-liberation avoids □ boxes in
+# rendered HTML.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates \

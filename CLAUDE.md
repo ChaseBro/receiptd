@@ -49,7 +49,7 @@ A legacy TCP server at `127.0.0.1:3099` still handles some CLI commands; being p
 
 **Layering** (enforce: transports are thin adapters, logic lives in services):
 - `internal/server/` — HTTP + TCP handlers, auth middleware, CloudPRNT protocol
-- `internal/services/` — business logic: `Jobs`, `Render`, `APIKeys`, `DeviceFlow`
+- `internal/services/` — business logic: `Jobs`, `Render`, `APIKeys`, `DeviceFlow`; takes an optional `Dispatcher` for cloud-mode worker dispatch
 - `internal/jobs/` — in-memory `Queue` + `Job` struct (split out from server to break the services↔server import cycle)
 - `internal/db/` — SQLite DAO (jobs, printers, api_keys, device_codes)
 - `internal/client/` — CLI-side transport; TCP or HTTP based on `RECEIPTD_API`
@@ -57,6 +57,10 @@ A legacy TCP server at `127.0.0.1:3099` still handles some CLI commands; being p
 - `internal/render/` — chromedp HTML→PNG at 576px (80mm × 203dpi)
 - `internal/imageproc/` — dithering + adjust pipeline
 - `internal/fontlib/` — 16-font registry + `@font-face` injection
+- `internal/cputil/` — Star CloudPRNT SDK binary wrapper (resolve path, build markup, convert to StarPRNT); shared by local + cloud paths
+- `internal/cloudcprnt/` — Fly → CF Worker admin client (HMAC-signed); implements `services.Dispatcher` for cloud mode
+- `internal/printerconfig/` — LAN-side TSP100IV web-UI scripter for `printer pair --auto`
+- `worker/` — Cloudflare Worker (Hono + TypeScript) serving CloudPRNT polls on the edge; KV signals + R2 binaries
 - `internal/stub/` — mock data for a few CLI commands not yet wired to the server
 
 ## Auth model

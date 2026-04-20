@@ -13,6 +13,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ChaseBro/receiptd/internal/cloudcprnt"
+	"github.com/ChaseBro/receiptd/internal/cputil"
 	"github.com/ChaseBro/receiptd/internal/db"
 	"github.com/ChaseBro/receiptd/internal/jobs"
 	"github.com/ChaseBro/receiptd/internal/services"
@@ -34,14 +36,32 @@ type Config struct {
 	// public-mode deployments where loopback could be attacker-controlled.
 	// Default false preserves today's local UX.
 	RequireAuthOnLoopback bool
+
+	// WorkerURL + WorkerHMACSecret enable cloud-mode: jobs created via the
+	// API are rendered + converted to StarPRNT and POSTed to this worker's
+	// /admin/jobs endpoint. Unset → local mode (printer polls this daemon
+	// directly).
+	WorkerURL        string
+	WorkerHMACSecret string
+
+	// DefaultPrinterID is used when a client POSTs to /v1/jobs without a
+	// printerId. MVP single-printer installs set this via
+	// RECEIPTD_DEFAULT_PRINTER_ID. Leave empty to require clients to
+	// always specify.
+	DefaultPrinterID string
 }
 
-// DefaultConfig returns sensible defaults
+// DefaultConfig returns sensible defaults. Worker credentials are loaded
+// from env so a Fly-deployed binary picks up cloud-mode without a code
+// path change in the CLI.
 func DefaultConfig() *Config {
 	return &Config{
-		CLIListen:       "127.0.0.1:3099",
-		CloudPRNTListen: ":3000",
-		DataDir:         os.ExpandEnv("$HOME/.receiptd"),
+		CLIListen:        "127.0.0.1:3099",
+		CloudPRNTListen:  ":3000",
+		DataDir:          os.ExpandEnv("$HOME/.receiptd"),
+		WorkerURL:        os.Getenv("RECEIPTD_WORKER_URL"),
+		WorkerHMACSecret: os.Getenv("RECEIPTD_WORKER_HMAC_SECRET"),
+		DefaultPrinterID: os.Getenv("RECEIPTD_DEFAULT_PRINTER_ID"),
 	}
 }
 
@@ -94,11 +114,24 @@ func NewDaemon(cfg *Config) (*Daemon, error) {
 	queue := jobs.NewQueue()
 	apiKeys := services.NewAPIKeys(database, "live", logger)
 	deviceFlow := services.NewDeviceFlow(database, apiKeys, "", logger)
+
+	// Cloud-mode dispatcher. If the worker isn't configured, dispatcher is
+	// nil and Jobs.Create behaves identically to today's local flow.
+	var dispatcher services.Dispatcher
+	if workerClient := cloudcprnt.NewClient(cfg.WorkerURL, cfg.WorkerHMACSecret); workerClient != nil {
+		cputilPath := cputil.ResolvePath()
+		if cputilPath == "" {
+			return nil, fmt.Errorf("cloud-mode: cputil not found (set CPUTIL_PATH)")
+		}
+		dispatcher = cloudcprnt.NewDispatcher(workerClient, cputilPath)
+		logger.Info().Str("worker_url", workerClient.BaseURL()).Msg("Cloud-mode dispatcher enabled")
+	}
+
 	d := &Daemon{
 		config:     cfg,
 		queue:      queue,
 		db:         database,
-		jobs:       services.NewJobs(queue, database, logger),
+		jobs:       services.NewJobs(queue, database, dispatcher, cfg.DataDir, logger),
 		render:     services.NewRender(cfg.DataDir, logger),
 		apiKeys:    apiKeys,
 		deviceFlow: deviceFlow,
@@ -354,17 +387,25 @@ func (d *Daemon) Queue() *jobs.Queue {
 	return d.queue
 }
 
-// AddJob is a thin pass-through to the Jobs service. Kept for the TCP handler
-// which will migrate to calling d.jobs.Create directly as it moves off TCP.
-// imagePath is an absolute local file path or a URL (file://, https://, data:).
-// If staged is true the job is held and never dispatched to the printer.
+// AddJob is a thin pass-through to the Jobs service for the legacy TCP
+// transport (being phased out in favor of /v1/jobs). imagePath is an
+// absolute local file path; it's read into memory here and shipped through
+// the new path-less CreateInput. If staged is true the job is held and
+// never dispatched to the printer.
 func (d *Daemon) AddJob(printerID, content, imagePath string, staged bool) *jobs.Job {
-	job, err := d.jobs.Create(context.Background(), services.CreateInput{
-		PrinterID: printerID,
-		Content:   content,
-		ImagePath: imagePath,
-		Staged:    staged,
-	})
+	in := services.CreateInput{PrinterID: printerID, Staged: staged}
+	if imagePath != "" {
+		data, err := os.ReadFile(imagePath)
+		if err != nil {
+			d.logger.Error().Err(err).Str("path", imagePath).Msg("AddJob: read image failed")
+			return nil
+		}
+		in.ImageData = data
+		in.Caption = content
+	} else {
+		in.Text = content
+	}
+	job, err := d.jobs.Create(context.Background(), in)
 	if err != nil {
 		// The only error services.Jobs.Create returns today is ErrEmptyJob.
 		// TCP callers never hit this path with empty input, but return a

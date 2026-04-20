@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -74,11 +75,53 @@ func (h *APIHandler) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// createJobRequest is the public POST /v1/jobs body. Exactly one of Text,
+// HTML, or ImageData must be set. ImageData is a base64-encoded PNG/JPEG
+// (with or without a `data:image/...;base64,` prefix). The server does not
+// expose filesystem paths — clients never name where images live on disk.
 type createJobRequest struct {
+	// PrinterID is optional. When omitted, the server falls back to its
+	// configured default printer (Daemon.Config.DefaultPrinterID). Callers
+	// that manage multiple printers pass this explicitly; the common
+	// single-printer case can just POST content and ignore routing.
 	PrinterID string `json:"printerId,omitempty"`
-	Content   string `json:"content"`
-	ImagePath string `json:"imagePath,omitempty"`
 	Staged    bool   `json:"staged,omitempty"`
+
+	// Input mode — pick one:
+	Text      string `json:"text,omitempty"`
+	HTML      string `json:"html,omitempty"`
+	ImageData string `json:"imageData,omitempty"` // base64 (with or without data: prefix)
+
+	// Optional Star Markup prepended above HTML/Image renders. Ignored
+	// for Text inputs.
+	Caption string `json:"caption,omitempty"`
+
+	// Image-processing options applied server-side before cputil
+	// rasterization. Ignored for Text inputs. Typical cloud use sets
+	// Dither to "floyd-steinberg".
+	Dither     string  `json:"dither,omitempty"`
+	Brightness int     `json:"brightness,omitempty"`
+	Contrast   int     `json:"contrast,omitempty"`
+	Gamma      float64 `json:"gamma,omitempty"`
+}
+
+// decodeImageData accepts either a raw base64 string or a data-URL
+// ("data:image/png;base64,XYZ..."). Returns nil, nil when s is empty.
+func decodeImageData(s string) ([]byte, error) {
+	if s == "" {
+		return nil, nil
+	}
+	if i := strings.Index(s, ","); i >= 0 && strings.HasPrefix(s, "data:") {
+		s = s[i+1:]
+	}
+	// Strip whitespace/newlines that pretty-printers sometimes insert.
+	s = strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\r' || r == ' ' || r == '\t' {
+			return -1
+		}
+		return r
+	}, s)
+	return base64.StdEncoding.DecodeString(s)
 }
 
 func (h *APIHandler) handleJobsCollection(w http.ResponseWriter, r *http.Request) {
@@ -91,15 +134,30 @@ func (h *APIHandler) handleJobsCollection(w http.ResponseWriter, r *http.Request
 			writeError(w, http.StatusBadRequest, "invalid_body", fmt.Sprintf("decode body: %v", err))
 			return
 		}
+		printerID := req.PrinterID
+		if printerID == "" {
+			printerID = h.daemon.config.DefaultPrinterID
+		}
+		imageBytes, err := decodeImageData(req.ImageData)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_image_data", fmt.Sprintf("base64 decode: %v", err))
+			return
+		}
 		job, err := h.daemon.jobs.Create(r.Context(), services.CreateInput{
-			PrinterID: req.PrinterID,
-			Content:   req.Content,
-			ImagePath: req.ImagePath,
-			Staged:    req.Staged,
+			PrinterID:  printerID,
+			Staged:     req.Staged,
+			Text:       req.Text,
+			HTML:       req.HTML,
+			ImageData:  imageBytes,
+			Caption:    req.Caption,
+			Dither:     req.Dither,
+			Brightness: req.Brightness,
+			Contrast:   req.Contrast,
+			Gamma:      req.Gamma,
 		})
 		if err != nil {
-			if errors.Is(err, services.ErrEmptyJob) {
-				writeError(w, http.StatusBadRequest, "empty_job", err.Error())
+			if errors.Is(err, services.ErrEmptyJob) || errors.Is(err, services.ErrAmbiguousInput) {
+				writeError(w, http.StatusBadRequest, "invalid_input", err.Error())
 				return
 			}
 			writeError(w, http.StatusInternalServerError, "create_failed", err.Error())

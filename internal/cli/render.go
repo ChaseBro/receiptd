@@ -120,23 +120,20 @@ Requires Chrome or Chromium to be installed.`,
 }
 
 // readHTMLInput reads HTML from args or stdin.
-// If args contain "-" or args is empty, reads stdin.
+// Stdin is only read when args is empty or is a single "-" token. Piped
+// stdin with non-empty args is ignored — otherwise CLI calls run under any
+// wrapper that pipes stdin (scripts, CI, agent harnesses) silently swallow
+// the provided HTML arg and block on an empty pipe.
 func readHTMLInput(args []string) string {
-	readStdin := len(args) == 0 || (len(args) == 1 && args[0] == "-")
-	if !readStdin {
-		if stat, err := os.Stdin.Stat(); err == nil {
-			readStdin = (stat.Mode() & os.ModeCharDevice) == 0
-		}
+	if len(args) > 0 && !(len(args) == 1 && args[0] == "-") {
+		return strings.Join(args, " ")
 	}
-	if readStdin {
-		data, err := io.ReadAll(os.Stdin)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error reading stdin: %v\n", err)
-			os.Exit(1)
-		}
-		return strings.TrimRight(string(data), "\n")
+	data, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading stdin: %v\n", err)
+		os.Exit(1)
 	}
-	return strings.Join(args, " ")
+	return strings.TrimRight(string(data), "\n")
 }
 
 func init() {

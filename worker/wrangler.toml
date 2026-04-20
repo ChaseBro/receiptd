@@ -1,0 +1,35 @@
+name = "receiptd-cprnt"
+main = "src/index.ts"
+compatibility_date = "2026-04-20"
+compatibility_flags = ["nodejs_compat"]
+
+# Production routes. custom_domain=true auto-creates the DNS record in the
+# zone on deploy (requires the zone to exist in the same CF account).
+routes = [
+  { pattern = "cprnt.receiptd.sh", custom_domain = true },
+]
+
+# Observability
+[observability]
+enabled = true
+
+# KV: signals "job ready for printer <id>" + per-printer HTTP Basic secrets.
+# Create with: wrangler kv namespace create receiptd_jobs
+# Then paste the returned id below.
+[[kv_namespaces]]
+binding = "JOBS_KV"
+id = "f7b184e88c364ae588d56652bbabe7d9"
+
+# R2: StarPRNT binaries keyed by job id.
+# Create with: wrangler r2 bucket create receiptd-jobs
+[[r2_buckets]]
+binding = "JOBS_R2"
+bucket_name = "receiptd-jobs"
+
+# Secrets (set via `wrangler secret put <NAME>`):
+#   FLY_HMAC_SECRET  — shared with Fly app; verifies /admin/* requests
+#
+# Non-secret vars:
+[vars]
+# Max KV TTL on job signals (seconds). 24h default — Fly should DELETE on ack.
+JOB_SIGNAL_TTL = "86400"

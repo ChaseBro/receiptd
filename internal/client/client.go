@@ -8,6 +8,7 @@ package client
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -40,7 +41,7 @@ const (
 type Client struct {
 	mode       Mode
 	tcpAddress string
-	httpBase   string // e.g. "https://api.receiptd.app" (no trailing slash)
+	httpBase   string // e.g. "https://api.receiptd.sh" (no trailing slash)
 	httpClient *http.Client
 	apiKey     string // bearer token, if any
 }
@@ -194,6 +195,72 @@ func (c *Client) Status() (*Response, error) {
 		return c.doJSON(http.MethodGet, "/v1/healthz", nil, &body)
 	}
 	return c.SendCommand("status", nil)
+}
+
+// JobRequest is the path-free shape of a print job (what HTTP clients
+// should send). Exactly one of Text, HTML, or ImageBytes must be set.
+// TCP callers keep using AddJob, which carries on the legacy path-based
+// shape for backward compat.
+type JobRequest struct {
+	PrinterID string
+	Staged    bool
+
+	Text       string
+	HTML       string
+	ImageBytes []byte
+	Caption    string
+
+	Dither     string
+	Brightness int
+	Contrast   int
+	Gamma      float64
+}
+
+// CreateJob is the HTTP-mode entry point for submitting a print job. The
+// TCP daemon is not supported — callers on localhost without --api should
+// keep using AddJob until the TCP server is fully retired.
+func (c *Client) CreateJob(req JobRequest) (*Response, error) {
+	if c.mode != ModeHTTP {
+		return nil, fmt.Errorf("CreateJob requires HTTP mode; set --api or RECEIPTD_API")
+	}
+	payload := map[string]interface{}{"staged": req.Staged}
+	if req.PrinterID != "" {
+		payload["printerId"] = req.PrinterID
+	}
+	if req.Text != "" {
+		payload["text"] = req.Text
+	}
+	if req.HTML != "" {
+		payload["html"] = req.HTML
+	}
+	if len(req.ImageBytes) > 0 {
+		payload["imageData"] = base64.StdEncoding.EncodeToString(req.ImageBytes)
+	}
+	if req.Caption != "" {
+		payload["caption"] = req.Caption
+	}
+	if req.Dither != "" {
+		payload["dither"] = req.Dither
+	}
+	if req.Brightness != 0 {
+		payload["brightness"] = req.Brightness
+	}
+	if req.Contrast != 0 {
+		payload["contrast"] = req.Contrast
+	}
+	if req.Gamma != 0 {
+		payload["gamma"] = req.Gamma
+	}
+
+	var body map[string]interface{}
+	resp, err := c.doJSON(http.MethodPost, "/v1/jobs", payload, &body)
+	if err != nil {
+		return resp, err
+	}
+	if id, ok := body["id"].(string); ok {
+		resp.Data = id
+	}
+	return resp, nil
 }
 
 // AddJob submits a print job. imagePath may be an absolute local path or URL

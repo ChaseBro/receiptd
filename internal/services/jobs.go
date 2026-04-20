@@ -7,10 +7,13 @@ package services
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/ChaseBro/receiptd/internal/db"
+	"github.com/ChaseBro/receiptd/internal/imageproc"
 	"github.com/ChaseBro/receiptd/internal/jobs"
+	"github.com/ChaseBro/receiptd/internal/render"
 	"github.com/ChaseBro/receiptd/internal/shortid"
 	"github.com/rs/zerolog"
 )
@@ -19,45 +22,92 @@ import (
 // cuts after each receipt. Callers must not include it themselves.
 const CutSuffix = "[feed:3][cut]"
 
-// Jobs is the service that handles print-job lifecycle operations.
-type Jobs struct {
-	queue  *jobs.Queue
-	db     *db.DB
-	logger zerolog.Logger
+// Dispatcher is an optional hook called synchronously after a job is queued
+// and persisted. Cloud-mode deployments use this to ship the rendered
+// StarPRNT binary to the Cloudflare Worker that serves printer polls; local
+// mode leaves it nil.
+//
+// A non-nil error from Dispatch surfaces to the caller of Jobs.Create. The
+// job record is left in the queue/DB for future retry.
+type Dispatcher interface {
+	Dispatch(ctx context.Context, job *jobs.Job) error
 }
 
-// NewJobs builds a Jobs service.
-func NewJobs(queue *jobs.Queue, database *db.DB, logger zerolog.Logger) *Jobs {
+// Jobs is the service that handles print-job lifecycle operations. It owns
+// the input-resolution pipeline: HTML→PNG rendering, ImageData decoding,
+// image-processing (dither/adjust), and markup assembly. The Dispatcher
+// (if any) and the local CloudPRNT handler receive an already-resolved job
+// with a Star Markup Content string and an on-disk ImagePath for any raster.
+type Jobs struct {
+	queue      *jobs.Queue
+	db         *db.DB
+	dispatcher Dispatcher
+	dataDir    string // where resolved images are persisted
+	logger     zerolog.Logger
+}
+
+// NewJobs builds a Jobs service. Pass a non-nil dispatcher to enable
+// cloud-mode (ship each job to the worker on create). dataDir is where
+// HTML-rendered and decoded images are persisted so the printer fetch path
+// can find them later.
+func NewJobs(queue *jobs.Queue, database *db.DB, dispatcher Dispatcher, dataDir string, logger zerolog.Logger) *Jobs {
 	return &Jobs{
-		queue:  queue,
-		db:     database,
-		logger: logger.With().Str("component", "services.jobs").Logger(),
+		queue:      queue,
+		db:         database,
+		dispatcher: dispatcher,
+		dataDir:    dataDir,
+		logger:     logger.With().Str("component", "services.jobs").Logger(),
 	}
 }
 
-// CreateInput describes a new print job. Either Content or ImagePath must be
-// non-empty; both may be set if the image should have caption markup.
+// CreateInput is the public shape of a new print job. Exactly one of Text,
+// HTML, or ImageData must be set:
+//
+//   - Text     — plain text or Star Markup; passed straight to cputil
+//   - HTML     — rendered server-side via chromedp to a 576px PNG
+//   - ImageData — client-provided raster (PNG/JPEG bytes, already decoded
+//     from any transport encoding by the caller)
+//
+// Caption is optional Star Markup prepended above an image; ignored for
+// Text inputs. Dither/Brightness/Contrast/Gamma apply to HTML and
+// ImageData only.
+//
+// The API deliberately does NOT expose filesystem paths — clients never
+// name where images live on the server.
 type CreateInput struct {
 	PrinterID string
-	Content   string
-	ImagePath string
 	Staged    bool
+
+	Text      string
+	HTML      string
+	ImageData []byte
+	Caption   string
+
+	Dither     string  // e.g. "floyd-steinberg", "atkinson"; "" → no dither
+	Brightness int     // -100..100
+	Contrast   int     // -100..100
+	Gamma      float64 // 0.5..2.5
 }
 
-// ErrEmptyJob is returned when a CreateInput has neither content nor image.
-var ErrEmptyJob = errors.New("empty job: content or imagePath required")
+// ErrEmptyJob is returned when a CreateInput has no input mode selected.
+var ErrEmptyJob = errors.New("empty job: one of text, html, or imageData required")
 
-// Create enqueues a new job, appending the CutSuffix and persisting to the DB.
-// Returns the queued job.
+// ErrAmbiguousInput is returned when more than one input mode is set.
+var ErrAmbiguousInput = errors.New("ambiguous job: set exactly one of text, html, or imageData")
+
+// Create resolves the job's inputs, enqueues it, persists it, and (in
+// cloud mode) dispatches it to the worker.
 func (s *Jobs) Create(ctx context.Context, in CreateInput) (*jobs.Job, error) {
-	if in.Content == "" && in.ImagePath == "" {
-		return nil, ErrEmptyJob
+	content, imagePath, err := s.resolveInputs(ctx, in)
+	if err != nil {
+		return nil, err
 	}
+
 	job := &jobs.Job{
 		ID:        "job-" + shortid.New(time.Now()),
 		PrinterID: in.PrinterID,
-		Content:   in.Content + CutSuffix,
-		ImagePath: in.ImagePath,
+		Content:   content + CutSuffix,
+		ImagePath: imagePath,
 		Status:    jobs.JobStatusPending,
 		Staged:    in.Staged,
 		CreatedAt: time.Now(),
@@ -75,8 +125,84 @@ func (s *Jobs) Create(ctx context.Context, in CreateInput) (*jobs.Job, error) {
 		Str("job_id", job.ID).
 		Bool("staged", in.Staged).
 		Str("printer_id", in.PrinterID).
+		Bool("has_image", imagePath != "").
 		Msg("Job created")
+
+	if s.dispatcher != nil && !in.Staged {
+		if err := s.dispatcher.Dispatch(ctx, job); err != nil {
+			s.logger.Error().Err(err).Str("job_id", job.ID).Msg("dispatch to worker failed")
+			return job, fmt.Errorf("dispatch: %w", err)
+		}
+		s.logger.Info().Str("job_id", job.ID).Msg("Job dispatched to worker")
+	}
+
 	return job, nil
+}
+
+// resolveInputs turns the public CreateInput shape into the internal
+// (content, imagePath) pair the queue + CloudPRNT handler expect.
+//
+//   - Text   → content=text, imagePath=""
+//   - HTML   → render PNG to dataDir, run imageproc, imagePath=<path>, content=caption
+//   - Image  → write bytes to dataDir, run imageproc, imagePath=<path>, content=caption
+func (s *Jobs) resolveInputs(ctx context.Context, in CreateInput) (content, imagePath string, err error) {
+	modes := 0
+	if in.Text != "" {
+		modes++
+	}
+	if in.HTML != "" {
+		modes++
+	}
+	if len(in.ImageData) > 0 {
+		modes++
+	}
+	if modes == 0 {
+		return "", "", ErrEmptyJob
+	}
+	if modes > 1 {
+		return "", "", ErrAmbiguousInput
+	}
+
+	if in.Text != "" {
+		return in.Text, "", nil
+	}
+
+	// HTML or ImageData: produce a PNG on disk, then apply imageproc if
+	// any dither/adjust flags were set.
+	var raw []byte
+	switch {
+	case in.HTML != "":
+		raw, err = render.HTMLToPNG(in.HTML, 0)
+		if err != nil {
+			return "", "", fmt.Errorf("render html: %w", err)
+		}
+	default:
+		raw = in.ImageData
+	}
+
+	processed, err := imageproc.Process(raw, imageprocOptsFrom(in))
+	if err != nil {
+		return "", "", fmt.Errorf("image processing: %w", err)
+	}
+
+	path, err := render.SaveRender(s.dataDir, processed)
+	if err != nil {
+		return "", "", fmt.Errorf("persist image: %w", err)
+	}
+	return in.Caption, path, nil
+}
+
+func imageprocOptsFrom(in CreateInput) imageproc.Options {
+	alg := imageproc.Algorithm(in.Dither)
+	if alg == "" {
+		alg = imageproc.None
+	}
+	return imageproc.Options{
+		Algorithm:  alg,
+		Brightness: in.Brightness,
+		Contrast:   in.Contrast,
+		Gamma:      in.Gamma,
+	}
 }
 
 // Get returns the in-memory queue entry for a job ID. Returns nil if the job

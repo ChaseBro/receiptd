@@ -93,12 +93,61 @@ Examples:
 			}
 		}
 
-		// Resolve image path to absolute before sending to server
-		resolvedImage := ""
 		if imagePath != "" && renderHTML != "" {
 			fmt.Fprintf(os.Stderr, "Error: --image, --render, and --render-file are mutually exclusive\n")
 			os.Exit(1)
 		}
+
+		// HTTP mode: send inputs to the server as-is (text / html / imageBytes)
+		// and let the server render + dither. No client-side filesystem paths.
+		httpClient := NewClient()
+		if httpClient.CurrentMode() == client.ModeHTTP {
+			req := client.JobRequest{
+				PrinterID:  printerID,
+				Staged:     staged,
+				Text:       message,
+				HTML:       renderHTML,
+				Dither:     string(procOpts().Algorithm),
+				Brightness: procOpts().Brightness,
+				Contrast:   procOpts().Contrast,
+				Gamma:      procOpts().Gamma,
+			}
+			if imagePath != "" {
+				abs, err := filepath.Abs(imagePath)
+				if err != nil {
+					ErrorExit(fmt.Sprintf("resolve image: %v", err), 1)
+				}
+				data, err := os.ReadFile(abs)
+				if err != nil {
+					ErrorExit(fmt.Sprintf("read image: %v", err), 1)
+				}
+				req.ImageBytes = data
+				req.Caption = message
+				req.Text = ""
+			}
+			if renderHTML != "" {
+				req.Caption = message
+				req.Text = ""
+			}
+			if dryRun {
+				fmt.Printf("→ POST /v1/jobs (text=%q html_len=%d image_len=%d caption=%q dither=%q)\n",
+					req.Text, len(req.HTML), len(req.ImageBytes), req.Caption, req.Dither)
+				return
+			}
+			resp, err := httpClient.CreateJob(req)
+			if err != nil {
+				ErrorExit(fmt.Sprintf("create job: %v", err), 1)
+			}
+			if jsonOutput {
+				PrintJSON(resp)
+				return
+			}
+			fmt.Printf("🖨️  Printing via cloud...\n   Job ID: %s\n\n✅ Print job submitted\n", resp.Data)
+			return
+		}
+
+		// Local TCP mode: client-side pre-processing + filesystem paths (legacy).
+		resolvedImage := ""
 		if imagePath != "" {
 			abs, err := filepath.Abs(imagePath)
 			if err != nil {
