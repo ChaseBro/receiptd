@@ -154,16 +154,21 @@ func NewDaemon(cfg *Config) (*Daemon, error) {
 	return d, nil
 }
 
+// recoveryAgeCap bounds how far back a restart will look when re-queuing
+// pending jobs. Anything older is considered stale and marked failed. Keeps
+// operator accidents (e.g. a week of accumulated pending rows from before
+// the dispatched-status fix) from flooding the printer on a restart.
+const recoveryAgeCap = 10 * time.Minute
+
 // loadPendingJobs reads pending/processing/acknowledged jobs from the DB and
 // re-queues them as pending so they can be dispatched after a restart.
 //
 // Cloud mode (dispatcher configured): each recovered job is re-POSTed to
-// the worker. Without this, jobs that were pending at shutdown — including
-// any whose original Dispatch failed — would sit in the local queue
-// forever, invisible to the printer. Re-dispatch is idempotent at the
-// user-visible level: the worker's FIFO may end up with an extra entry for
-// the same binary, which prints one extra copy; strictly better than
-// silently losing the job.
+// the worker ONLY if its status is still "pending" (i.e. its original
+// Dispatch was interrupted mid-flight) and it's younger than
+// recoveryAgeCap. Jobs that reached "dispatched" are no longer Fly's
+// responsibility — the worker has them. Jobs older than recoveryAgeCap
+// are marked failed-stale so they can't replay indefinitely.
 //
 // Local mode (no dispatcher): the printer polls this daemon's CloudPRNT
 // handler directly, so re-queuing alone is sufficient.
@@ -173,7 +178,20 @@ func (d *Daemon) loadPendingJobs() error {
 		return err
 	}
 	ctx := context.Background()
+	now := time.Now()
 	for _, dbJob := range pending {
+		if now.Sub(dbJob.CreatedAt) > recoveryAgeCap {
+			dbJob.Status = jobs.JobStatusFailed
+			dbJob.ErrorMsg = fmt.Sprintf("stale on recovery (age %s > %s)", now.Sub(dbJob.CreatedAt).Round(time.Second), recoveryAgeCap)
+			completed := now
+			dbJob.CompletedAt = &completed
+			if err := d.db.UpdateJob(dbJob); err != nil {
+				d.logger.Warn().Err(err).Str("job_id", dbJob.ID).Msg("mark stale on recovery")
+			} else {
+				d.logger.Info().Str("job_id", dbJob.ID).Dur("age", now.Sub(dbJob.CreatedAt)).Msg("Stale job marked failed on recovery")
+			}
+			continue
+		}
 		// Reset in-flight states to pending so they get re-dispatched
 		dbJob.Status = "pending"
 		dbJob.StartedAt = nil

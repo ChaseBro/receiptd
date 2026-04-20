@@ -46,6 +46,11 @@ func TestJobs_Create_DispatchesWhenConfigured(t *testing.T) {
 	if d.job == nil || d.job.ID != job.ID || d.job.PrinterID != "p1" {
 		t.Fatalf("dispatcher received wrong job: %+v", d.job)
 	}
+	// After successful Dispatch, status must leave "pending" so recovery
+	// on next startup doesn't replay the handoff — the replay-storm fix.
+	if job.Status != jobs.JobStatusDispatched {
+		t.Fatalf("status after successful Dispatch = %q, want dispatched (prevents replay on restart)", job.Status)
+	}
 }
 
 func TestJobs_Create_StagedSkipsDispatch(t *testing.T) {
@@ -94,8 +99,8 @@ func TestJobs_Redispatch_OnSuccess(t *testing.T) {
 	if !d.called {
 		t.Fatal("dispatcher should be invoked on recovery")
 	}
-	if recovered.Status != jobs.JobStatusPending {
-		t.Fatalf("status after successful re-dispatch = %q, want pending", recovered.Status)
+	if recovered.Status != jobs.JobStatusDispatched {
+		t.Fatalf("status after successful re-dispatch = %q, want dispatched", recovered.Status)
 	}
 }
 

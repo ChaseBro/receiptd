@@ -134,22 +134,35 @@ func (s *Jobs) Create(ctx context.Context, in CreateInput) (*jobs.Job, error) {
 			s.markFailed(job, fmt.Errorf("dispatch: %w", err))
 			return job, fmt.Errorf("dispatch: %w", err)
 		}
+		s.markDispatched(job)
 		s.logger.Info().Str("job_id", job.ID).Msg("Job dispatched to worker")
 	}
 
 	return job, nil
 }
 
+// markDispatched transitions a freshly-dispatched cloud job out of the
+// "pending" state so recovery on next startup doesn't re-send it. Fly
+// relinquishes state ownership once the worker has the binary — without
+// this flip, scale-to-zero bounces would replay the entire lifetime of
+// cloud prints on every restart.
+func (s *Jobs) markDispatched(job *jobs.Job) {
+	job.Status = jobs.JobStatusDispatched
+	if err := s.db.UpdateJob(jobToDB(job)); err != nil {
+		s.logger.Error().Err(err).Str("job_id", job.ID).Msg("persist dispatched status")
+	}
+}
+
 // Redispatch re-runs the dispatcher for a previously persisted job. Used
 // during daemon startup recovery — a job whose dispatch was interrupted
 // (crash, scale-to-zero bounce, or initial failure) is re-queued from the
-// DB, then pushed to the worker again. If dispatch still fails, the job is
-// marked "failed" so it doesn't accumulate as a ghost pending entry.
+// DB, then pushed to the worker again. If dispatch still fails, the job
+// is marked "failed" so it doesn't accumulate as a ghost pending entry.
 //
-// Safe to call on already-dispatched jobs: the worker's /admin/jobs append
-// is idempotent at the printer level (a duplicate just becomes an extra
-// FIFO entry with the same R2 key), and the user is better off with one
-// extra print than a silently dropped one.
+// Only truly "pending" jobs should reach this path — jobs that made it
+// to "dispatched" were already handed to the worker and must not be
+// re-sent on restart (that caused the 2026-04-20 replay storm). Callers
+// are responsible for filtering.
 func (s *Jobs) Redispatch(ctx context.Context, job *jobs.Job) error {
 	if s.dispatcher == nil || job == nil || job.Staged {
 		return nil
@@ -159,6 +172,7 @@ func (s *Jobs) Redispatch(ctx context.Context, job *jobs.Job) error {
 		s.markFailed(job, fmt.Errorf("dispatch: %w", err))
 		return err
 	}
+	s.markDispatched(job)
 	s.logger.Info().Str("job_id", job.ID).Msg("Job re-dispatched on recovery")
 	return nil
 }

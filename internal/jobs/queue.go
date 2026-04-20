@@ -25,6 +25,7 @@ type Job struct {
 // Job status constants
 const (
 	JobStatusPending      = "pending"
+	JobStatusDispatched   = "dispatched" // handed off to cloud worker; Fly no longer owns the job's fate
 	JobStatusProcessing   = "processing"
 	JobStatusAcknowledged = "acknowledged" // DELETE received; waiting for next poll before issuing next job
 	JobStatusCompleted    = "completed"
