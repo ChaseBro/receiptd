@@ -69,6 +69,11 @@ type AuthConfig struct {
 	// public deployments where even loopback could be attacker-controlled.
 	RequireAuthOnLoopback bool
 
+	// PublicPaths are exact-match request paths that skip bearer validation
+	// entirely (e.g. the RFC 8628 device-flow start/poll endpoints, which
+	// unauthenticated clients hit before they have a token).
+	PublicPaths []string
+
 	Logger zerolog.Logger
 }
 
@@ -91,8 +96,17 @@ func IdentityFromContext(ctx context.Context) *Identity {
 // RequireAuthOnLoopback disables the header-less bypass entirely — every
 // request must present a valid token. Used by cloud deployments.
 func AuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
+	publicPaths := make(map[string]struct{}, len(cfg.PublicPaths))
+	for _, p := range cfg.PublicPaths {
+		publicPaths[p] = struct{}{}
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if _, ok := publicPaths[r.URL.Path]; ok {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			token := extractBearer(r)
 
 			// Loopback + no token = synthesize the local admin identity.

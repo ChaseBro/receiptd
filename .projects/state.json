@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "providers": {
+    "flyio": {
+      "name": "Flyio"
+    }
+  },
+  "resources": {
+    "receiptd": {
+      "name": "receiptd",
+      "providerName": "Flyio",
+      "serviceId": "app"
+    }
+  }
+}

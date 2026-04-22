@@ -48,5 +48,6 @@ Thumbs.db
 
 .projects/cache
 .projects/vault
+.projects/*.local.json
 .env
 .env.local

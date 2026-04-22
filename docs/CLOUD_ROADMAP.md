@@ -75,9 +75,11 @@ Dockerfile bundling the binary + `cputil-bin/` + headless Chrome (chromedp/headl
 
 Smoke-tested 2026-04-19: Press Start 2P, Spleen 8×16, Alagard all rendered cleanly inside the container; Floyd-Steinberg dither on a black→white gradient verified `internal/imageproc` runs fine alongside chromedp.
 
+**Deployed 2026-04-21** via Stripe Projects (`stripe projects env --pull` → `FLYIO_DEPLOY_TOKEN` in `.env`; `flyctl` reads `FLY_API_TOKEN="FlyV1 $FLYIO_DEPLOY_TOKEN"`). App name `receiptd` in `iad`, custom hostname `api.receiptd.sh` (Let's Encrypt cert via Fly). End-to-end reachable (401 from `/v1/healthz` without a token is the expected auth-required response).
+
 ### Step 7b — CloudPRNT edge proxy (Cloudflare Worker)
 
-**Status (2026-04-20): scaffolded, Go client wired, smoke-tested end-to-end against `wrangler dev --local`.** KV namespace (`receiptd-cprnt-receiptd_jobs`) and R2 bucket (`receiptd-jobs`) exist in CF. `FLY_HMAC_SECRET` not yet set; worker not yet deployed; custom domain (`cprnt.receiptd.sh`) not yet attached. See `worker/` for the Hono app and `internal/cloudcprnt/` for the Fly-side client.
+**Status (2026-04-21): live in production.** Worker `receiptd-cprnt` deployed to CF; custom domain `cprnt.receiptd.sh` serving (200 OK); KV `receiptd-cprnt-receiptd_jobs` + R2 `receiptd-jobs` bound; HMAC shared with Fly (`FLY_HMAC_SECRET` on worker, `RECEIPTD_WORKER_HMAC_SECRET` + `RECEIPTD_WORKER_URL` on Fly). See `worker/` for the Hono app and `internal/cloudcprnt/` for the Fly-side client.
 
 Decided 2026-04-20 before first Fly deploy. The scale-to-zero story on Fly
 alone is broken: the printer polls every 5–60 s, so the Fly machine never

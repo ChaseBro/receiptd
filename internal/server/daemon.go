@@ -246,7 +246,13 @@ func (d *Daemon) Start() error {
 	authedAPI := AuthMiddleware(AuthConfig{
 		Verifier:              d.config.Verifier,
 		RequireAuthOnLoopback: d.config.RequireAuthOnLoopback,
-		Logger:                d.logger,
+		PublicPaths: []string{
+			// RFC 8628: clients hit these before they have a token.
+			"/v1/auth/device/code",
+			"/v1/auth/device/token",
+			"/v1/healthz",
+		},
+		Logger: d.logger,
 	})(apiMux)
 
 	mux := http.NewServeMux()
