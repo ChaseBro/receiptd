@@ -209,6 +209,12 @@ func doHTTPTo(base, method, path string, body []byte) ([]byte, error) {
 		if msg == "" {
 			msg = string(raw)
 		}
+		// Include the machine-readable code so callers doing string-match on
+		// the error (RFC 8628 poll loop watching for authorization_pending /
+		// slow_down) work even when the human-readable message differs.
+		if e.Code != "" {
+			return nil, fmt.Errorf("%d %s [%s]: %s", resp.StatusCode, resp.Status, e.Code, msg)
+		}
 		return nil, fmt.Errorf("%d %s: %s", resp.StatusCode, resp.Status, msg)
 	}
 	return raw, nil

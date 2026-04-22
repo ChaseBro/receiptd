@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -49,6 +50,11 @@ type Config struct {
 	// RECEIPTD_DEFAULT_PRINTER_ID. Leave empty to require clients to
 	// always specify.
 	DefaultPrinterID string
+
+	// PublicURL is the externally-reachable origin of this daemon
+	// (e.g. https://api.receiptd.sh). Used as the device-flow verification
+	// base URL. Empty falls back to http://localhost:3000 (local dev).
+	PublicURL string
 }
 
 // DefaultConfig returns sensible defaults. Worker credentials are loaded
@@ -62,6 +68,7 @@ func DefaultConfig() *Config {
 		WorkerURL:        os.Getenv("RECEIPTD_WORKER_URL"),
 		WorkerHMACSecret: os.Getenv("RECEIPTD_WORKER_HMAC_SECRET"),
 		DefaultPrinterID: os.Getenv("RECEIPTD_DEFAULT_PRINTER_ID"),
+		PublicURL:        os.Getenv("RECEIPTD_PUBLIC_URL"),
 	}
 }
 
@@ -113,7 +120,11 @@ func NewDaemon(cfg *Config) (*Daemon, error) {
 
 	queue := jobs.NewQueue()
 	apiKeys := services.NewAPIKeys(database, "live", logger)
-	deviceFlow := services.NewDeviceFlow(database, apiKeys, "", logger)
+	verificationBase := ""
+	if cfg.PublicURL != "" {
+		verificationBase = strings.TrimRight(cfg.PublicURL, "/") + "/activate"
+	}
+	deviceFlow := services.NewDeviceFlow(database, apiKeys, verificationBase, logger)
 
 	// Cloud-mode dispatcher. If the worker isn't configured, dispatcher is
 	// nil and Jobs.Create behaves identically to today's local flow.
