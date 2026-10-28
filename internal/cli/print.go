@@ -15,7 +15,6 @@ import (
 	"github.com/ChaseBro/receiptd/internal/fontlib"
 	"github.com/ChaseBro/receiptd/internal/imageproc"
 	"github.com/ChaseBro/receiptd/internal/render"
-	"github.com/ChaseBro/receiptd/internal/stub"
 	"github.com/spf13/cobra"
 )
 
@@ -240,29 +239,14 @@ Examples:
 				fmt.Println("🚀 Starting server...")
 			}
 			if err := startServerAuto(); err != nil {
-				if jsonOutput {
-					fmt.Printf(`{"error":"Failed to start server: %s"}`, err)
-					return
-				}
-				fmt.Printf("⚠️  Could not start server: %v\n", err)
-				result := stub.Print(message, printerID, 0)
-				printStubResult(result)
-				return
+				ErrorExit(fmt.Sprintf("could not start server: %v", err), 2)
 			}
 		}
 		
 		// Try real server
 		resp, err := c.AddJob(printerID, message, resolvedImage, staged)
 		if err != nil {
-			// Server error - fall back to stub
-			if jsonOutput {
-				fmt.Printf(`{"error":"Server error: %s"}`, err)
-				return
-			}
-			fmt.Printf("⚠️  Server error: %v\n", err)
-			result := stub.Print(message, printerID, 0)
-			printStubResult(result)
-			return
+			ErrorExit(fmt.Sprintf("print failed: %v", err), 1)
 		}
 		
 		// Success!
@@ -311,12 +295,6 @@ func startServerAuto() error {
 		}
 	}
 	return fmt.Errorf("server did not start in time")
-}
-
-func printStubResult(result stub.PrintResult) {
-	fmt.Printf("   Printer: %s (stub)\n", result.PrinterID)
-	fmt.Printf("   Job ID: %s (stub)\n", result.JobID)
-	fmt.Println("\n✅ Stub: job would be submitted")
 }
 
 func init() {

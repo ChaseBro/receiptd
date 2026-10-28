@@ -193,18 +193,22 @@ func TestServerNoCputil(t *testing.T) {
 }
 
 // TestPrintNoServer verifies that when no server is running and auto-start
-// also fails (no cputil), the print command falls back to the stub and exits 0.
+// also fails (no cputil), the print command reports the failure with exit
+// code 2 (server not running) instead of claiming the job was submitted.
 func TestPrintNoServer(t *testing.T) {
 	requirePortFree(t, "127.0.0.1:3099")
 
 	cmd := exec.Command(binary, "print", "hello")
 	cmd.Env = testEnv(t, "")
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("want exit 0, got error: %v\noutput: %s", err, out)
+	out, _ := cmd.CombinedOutput()
+	if code := cmd.ProcessState.ExitCode(); code != 2 {
+		t.Fatalf("want exit code 2, got %d\noutput: %s", code, out)
 	}
-	if !strings.Contains(string(out), "stub") {
-		t.Errorf("want 'stub' in output, got:\n%s", out)
+	if !strings.Contains(string(out), "could not start server") {
+		t.Errorf("want 'could not start server' in output, got:\n%s", out)
+	}
+	if strings.Contains(string(out), "submitted") {
+		t.Errorf("failed print must not report submission, got:\n%s", out)
 	}
 }
 
@@ -448,8 +452,9 @@ func TestPrintRenderStdin(t *testing.T) {
 }
 
 // TestImageJobLifecycle verifies the full CloudPRNT polling sequence for an
-// image job, and asserts that the [image: url file://...] tag is present in
-// the Star Markup that reaches cputil.
+// image job, and asserts that the [image: url file://...] tag (pointing at
+// the processed copy in the renders dir) is present in the Star Markup that
+// reaches cputil.
 func TestImageJobLifecycle(t *testing.T) {
 	captureFile := filepath.Join(t.TempDir(), "cputil-capture.stm")
 	env := testEnv(t, fakeCputilCapturing(t, captureFile))
@@ -487,8 +492,17 @@ func TestImageJobLifecycle(t *testing.T) {
 		t.Fatalf("read cputil capture: %v", err)
 	}
 	markup := string(captured)
-	if !strings.Contains(markup, "[image: url file://"+imgPath) {
-		t.Errorf("want [image: url file://%s] in markup, got:\n%s", imgPath, markup)
+	// Jobs.Create copies the image into the daemon's renders dir (after
+	// imageproc), so the tag points there rather than at the caller's file.
+	var home string
+	for _, kv := range env {
+		if h, ok := strings.CutPrefix(kv, "HOME="); ok {
+			home = h
+		}
+	}
+	rendersPrefix := "[image: url file://" + filepath.Join(home, ".receiptd", "renders", "render-")
+	if !strings.Contains(markup, rendersPrefix) {
+		t.Errorf("want %s…] in markup, got:\n%s", rendersPrefix, markup)
 	}
 	if !strings.Contains(markup, "photo caption") {
 		t.Errorf("want 'photo caption' in markup, got:\n%s", markup)

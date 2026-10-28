@@ -384,7 +384,11 @@ func (d *Daemon) handleCLIConn(conn net.Conn) {
 		imagePath, _ := payload["imagePath"].(string)
 		staged, _ := payload["staged"].(bool)
 
-		job := d.AddJob(printerID, content, imagePath, staged)
+		job, err := d.AddJob(printerID, content, imagePath, staged)
+		if err != nil {
+			resp = CLIResponse{Status: "error", Error: err.Error()}
+			break
+		}
 		resp = CLIResponse{
 			Status: "ok",
 			Data:   job.ID,
@@ -445,13 +449,13 @@ func (d *Daemon) Queue() *jobs.Queue {
 // absolute local file path; it's read into memory here and shipped through
 // the new path-less CreateInput. If staged is true the job is held and
 // never dispatched to the printer.
-func (d *Daemon) AddJob(printerID, content, imagePath string, staged bool) *jobs.Job {
-	in := services.CreateInput{PrinterID: printerID, Staged: staged}
+func (d *Daemon) AddJob(printerID, content, imagePath string, staged bool) (*jobs.Job, error) {
+	in := services.CreateInput{PrinterID: d.resolvePrinterID(printerID), Staged: staged}
 	if imagePath != "" {
 		data, err := os.ReadFile(imagePath)
 		if err != nil {
 			d.logger.Error().Err(err).Str("path", imagePath).Msg("AddJob: read image failed")
-			return nil
+			return nil, fmt.Errorf("read image: %w", err)
 		}
 		in.ImageData = data
 		in.Caption = content
@@ -460,13 +464,21 @@ func (d *Daemon) AddJob(printerID, content, imagePath string, staged bool) *jobs
 	}
 	job, err := d.jobs.Create(context.Background(), in)
 	if err != nil {
-		// The only error services.Jobs.Create returns today is ErrEmptyJob.
-		// TCP callers never hit this path with empty input, but return a
-		// nil-safe placeholder rather than panicking to keep the contract.
+		// Cloud-mode dispatch failures land here too, so callers must
+		// report the error rather than assume a job came back.
 		d.logger.Error().Err(err).Msg("AddJob: service rejected input")
-		return nil
+		return nil, err
 	}
-	return job
+	return job, nil
+}
+
+// resolvePrinterID falls back to the configured default printer when a
+// caller names none. Shared by the TCP and REST transports.
+func (d *Daemon) resolvePrinterID(printerID string) string {
+	if printerID == "" {
+		return d.config.DefaultPrinterID
+	}
+	return printerID
 }
 
 // acknowledgeJob marks a job as acknowledged in the queue and updates the DB.

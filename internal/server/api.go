@@ -134,10 +134,7 @@ func (h *APIHandler) handleJobsCollection(w http.ResponseWriter, r *http.Request
 			writeError(w, http.StatusBadRequest, "invalid_body", fmt.Sprintf("decode body: %v", err))
 			return
 		}
-		printerID := req.PrinterID
-		if printerID == "" {
-			printerID = h.daemon.config.DefaultPrinterID
-		}
+		printerID := h.daemon.resolvePrinterID(req.PrinterID)
 		imageBytes, err := decodeImageData(req.ImageData)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_image_data", fmt.Sprintf("base64 decode: %v", err))

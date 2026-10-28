@@ -149,10 +149,16 @@ func TestHTMLToPNGSnapshot(t *testing.T) {
 		}
 	}
 
-	if diffPixels > 0 {
+	// Chrome updates shift a few anti-aliased edge pixels between releases;
+	// tolerate that noise so the snapshot only fails on real layout changes.
+	const maxDiffFraction = 0.001
+	maxDiff := int(float64(gb.Dx()*gb.Dy()) * maxDiffFraction)
+	if diffPixels > maxDiff {
 		_ = os.WriteFile(actualPath, data, 0644)
-		t.Errorf("snapshot mismatch: %d pixel(s) differ from golden; actual written to %s\n"+
+		t.Errorf("snapshot mismatch: %d pixel(s) differ from golden (tolerance %d); actual written to %s\n"+
 			"To accept the new output, run: go test ./internal/render/ -run TestHTMLToPNGSnapshot -update",
-			diffPixels, actualPath)
+			diffPixels, maxDiff, actualPath)
+	} else if diffPixels > 0 {
+		t.Logf("%d pixel(s) differ from golden, within tolerance %d", diffPixels, maxDiff)
 	}
 }
