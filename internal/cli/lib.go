@@ -48,10 +48,10 @@ var libListCmd = &cobra.Command{
 
 		if jsonOutput {
 			type row struct {
-				Name        string `json:"name"`
-				Kind        string `json:"kind"`
-				Mode        string `json:"mode"`
-				Description string `json:"description"`
+				Name        string   `json:"name"`
+				Kind        string   `json:"kind"`
+				Mode        string   `json:"mode"`
+				Description string   `json:"description"`
 				Tags        []string `json:"tags,omitempty"`
 			}
 			rows := make([]row, len(items))

@@ -80,7 +80,7 @@ type clientAction struct {
 }
 
 type pageInfo struct {
-	PrintWidth          int     `json:"printWidth"`
+	PrintWidth           int     `json:"printWidth"`
 	HorizontalResolution float64 `json:"horizontalResolution"`
 }
 

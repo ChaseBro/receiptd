@@ -14,8 +14,8 @@ type Job struct {
 	PrinterID   string     `json:"printerId"`
 	Content     string     `json:"content"`
 	ImagePath   string     `json:"imagePath,omitempty"` // absolute local path or file:// / https:// URL
-	Status      string     `json:"status"` // pending, processing, completed, failed
-	Staged      bool       `json:"staged,omitempty"` // held in queue, never dispatched to printer
+	Status      string     `json:"status"`              // pending, processing, completed, failed
+	Staged      bool       `json:"staged,omitempty"`    // held in queue, never dispatched to printer
 	CreatedAt   time.Time  `json:"createdAt"`
 	StartedAt   *time.Time `json:"startedAt,omitempty"`
 	CompletedAt *time.Time `json:"completedAt,omitempty"`
@@ -127,7 +127,7 @@ func (q *Queue) TakeNextJob(printerID string) *Job {
 func (q *Queue) GetAll() []*Job {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
-	
+
 	jobs := make([]*Job, 0, len(q.jobs))
 	for _, job := range q.jobs {
 		jobs = append(jobs, job)
@@ -175,6 +175,7 @@ func (q *Queue) Acknowledge(token string, success bool, errMsg string) bool {
 	}
 	return true
 }
+
 // GetPendingCount returns the number of pending jobs
 func (q *Queue) GetPendingCount() int {
 	q.mu.RLock()

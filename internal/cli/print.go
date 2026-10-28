@@ -226,7 +226,7 @@ Examples:
 			fmt.Printf("⏳ Waiting %d seconds...\n", waitTime)
 			time.Sleep(time.Duration(waitTime) * time.Second)
 		}
-		
+
 		c := NewClient()
 
 		if !c.IsServerRunning() {
@@ -242,19 +242,19 @@ Examples:
 				ErrorExit(fmt.Sprintf("could not start server: %v", err), 2)
 			}
 		}
-		
+
 		// Try real server
 		resp, err := c.AddJob(printerID, message, resolvedImage, staged)
 		if err != nil {
 			ErrorExit(fmt.Sprintf("print failed: %v", err), 1)
 		}
-		
+
 		// Success!
 		if jsonOutput {
 			PrintJSON(resp)
 			return
 		}
-		
+
 		if staged {
 			fmt.Printf("📋 Job staged (held in queue, not sent to printer)\n")
 		} else {

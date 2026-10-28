@@ -46,8 +46,8 @@ func NewAPIKeys(database *db.DB, env string, logger zerolog.Logger) *APIKeys {
 // MintedKey is the once-returned envelope with the plaintext secret. After
 // mint the plaintext is unrecoverable — only the prefix is kept in the DB.
 type MintedKey struct {
-	Secret string      // full token, shown once to the user
-	Key    *db.APIKey  // persisted record (no plaintext)
+	Secret string     // full token, shown once to the user
+	Key    *db.APIKey // persisted record (no plaintext)
 }
 
 // MintInput describes a new API key to create.

@@ -111,18 +111,18 @@ func (c *Client) PutPrinterSecret(ctx context.Context, printerID, secret string)
 // PrinterStatus mirrors the worker's KV status snapshot (see
 // worker/src/status.ts PrinterStatus). Unix-millisecond timestamps.
 type PrinterStatus struct {
-	StatusCode         string `json:"statusCode,omitempty"`
-	MAC                string `json:"mac,omitempty"`
-	ClientType         string `json:"clientType,omitempty"`
-	ClientVersion      string `json:"clientVersion,omitempty"`
+	StatusCode    string `json:"statusCode,omitempty"`
+	MAC           string `json:"mac,omitempty"`
+	ClientType    string `json:"clientType,omitempty"`
+	ClientVersion string `json:"clientVersion,omitempty"`
 	// PrintWidth is a float because different TSP firmware reports inches
 	// (2.835) vs. raw dots (576). Callers multiply by HorizontalRes when
 	// they need dot count.
 	PrintWidth         float64 `json:"printWidth,omitempty"`
 	HorizontalRes      float64 `json:"horizontalRes,omitempty"`
-	PrintingInProgress bool   `json:"printingInProgress,omitempty"`
-	LastSeenAt         int64  `json:"lastSeenAt"`
-	LastChangeAt       int64  `json:"lastChangeAt"`
+	PrintingInProgress bool    `json:"printingInProgress,omitempty"`
+	LastSeenAt         int64   `json:"lastSeenAt"`
+	LastChangeAt       int64   `json:"lastChangeAt"`
 }
 
 // ErrNoStatus is returned by GetPrinterStatus when the printer has never

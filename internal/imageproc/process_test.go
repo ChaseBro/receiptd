@@ -145,10 +145,10 @@ func TestProcessAdjustmentsOnly(t *testing.T) {
 
 func TestApplyBrightness(t *testing.T) {
 	tests := []struct {
-		name   string
-		in     uint8
-		n      int
-		want   uint8
+		name string
+		in   uint8
+		n    int
+		want uint8
 	}{
 		// adj = 10/100*255 = 25.5; 100+25.5 = 125.5 → round → 126
 		{"add 10", 100, 10, 126},
@@ -181,10 +181,10 @@ func TestApplyBrightness(t *testing.T) {
 
 func TestApplyContrast(t *testing.T) {
 	tests := []struct {
-		name  string
-		in    uint8
-		n     int
-		want  uint8
+		name string
+		in   uint8
+		n    int
+		want uint8
 	}{
 		// factor = 1.5; (100-128)*1.5+128 = -42+128 = 86
 		{"contrast+50 dark pixel", 100, 50, 86},

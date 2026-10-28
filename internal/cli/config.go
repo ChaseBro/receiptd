@@ -18,22 +18,22 @@ var configShowCmd = &cobra.Command{
 	Short: "Show current configuration",
 	Run: func(cmd *cobra.Command, args []string) {
 		result := stub.GetConfig()
-		
+
 		if jsonOutput {
 			PrintJSON(result)
 			return
 		}
-		
+
 		fmt.Println("⚙️  Configuration")
 		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 		fmt.Printf("Config file: %s\n\n", result.ConfigPath)
-		
+
 		for key, value := range result.Settings {
 			fmt.Printf("  %s: %v\n", key, value)
 		}
-		
+
 		fmt.Println("\n💡 Modify with: receiptd config set <key> <value>")
-		
+
 		// TODO: Implement config display
 		// - Read from ~/.receiptd/config.yaml
 		// - Display all settings
@@ -48,17 +48,17 @@ var configSetCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		key := args[0]
 		value := args[1]
-		
+
 		result := stub.SetConfig(key, value)
-		
+
 		if jsonOutput {
 			PrintJSON(result)
 			return
 		}
-		
+
 		fmt.Printf("✅ Configuration updated\n")
 		fmt.Printf("   %s = %s\n", key, value)
-		
+
 		// TODO: Implement config setting
 		// - Validate key/value
 		// - Update config file

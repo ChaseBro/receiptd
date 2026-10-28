@@ -34,9 +34,9 @@ type Item struct {
 	Mode        PrintMode
 	Tags        []string
 
-	MarkupFn func() string                    // ModeMarkup: returns Star Markup (no [cut])
-	HTMLFn   func() string                    // ModeRender: returns full HTML document
-	ImageFn  func() (path, caption string)    // ModeImage: returns temp path + caption
+	MarkupFn func() string                 // ModeMarkup: returns Star Markup (no [cut])
+	HTMLFn   func() string                 // ModeRender: returns full HTML document
+	ImageFn  func() (path, caption string) // ModeImage: returns temp path + caption
 }
 
 //go:embed testdata/images/*

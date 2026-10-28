@@ -13,20 +13,20 @@ var jobsCmd = &cobra.Command{
 	Long:  `List recent and active print jobs with their status.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		result := stub.ListJobs()
-		
+
 		if jsonOutput {
 			PrintJSON(result)
 			return
 		}
-		
+
 		fmt.Println("📋 Print Jobs")
 		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-		
+
 		if len(result.Jobs) == 0 {
 			fmt.Println("\nNo jobs found")
 			return
 		}
-		
+
 		for _, job := range result.Jobs {
 			statusIcon := "⏳"
 			switch job.Status {
@@ -37,7 +37,7 @@ var jobsCmd = &cobra.Command{
 			case "processing":
 				statusIcon = "🔄"
 			}
-			
+
 			fmt.Printf("%s %s | %s\n", statusIcon, job.ID, job.Status)
 			fmt.Printf("   Printer: %s\n", job.PrinterID)
 			fmt.Printf("   Created: %s\n", job.CreatedAt)
@@ -50,7 +50,7 @@ var jobsCmd = &cobra.Command{
 			}
 			fmt.Println()
 		}
-		
+
 		// TODO: Implement job listing
 		// - Query server for job history
 		// - Show active and recent jobs

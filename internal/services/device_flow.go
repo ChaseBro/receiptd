@@ -44,12 +44,12 @@ type StartInput struct {
 
 // StartResult is the response to POST /v1/auth/device/code.
 type StartResult struct {
-	DeviceCode      string // opaque secret, polled by CLI
-	UserCode        string // short human code shown to user
-	VerificationURI string // where the human should go
+	DeviceCode              string // opaque secret, polled by CLI
+	UserCode                string // short human code shown to user
+	VerificationURI         string // where the human should go
 	VerificationURIComplete string // URI pre-filled with user_code
-	ExpiresIn       int    // seconds
-	Interval        int    // polling interval
+	ExpiresIn               int    // seconds
+	Interval                int    // polling interval
 }
 
 // Start creates a new device-code entry. Device codes live for 10 minutes and
@@ -102,7 +102,7 @@ var (
 
 // PollResult is what the CLI receives once the flow is approved.
 type PollResult struct {
-	APIKey  string   // plaintext secret (shown once; caller must cache or display)
+	APIKey  string // plaintext secret (shown once; caller must cache or display)
 	Subject string
 	Scopes  []string
 }

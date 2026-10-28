@@ -149,12 +149,12 @@ func TestAuth_ExtractBearer(t *testing.T) {
 
 func TestAuth_IsLoopback(t *testing.T) {
 	cases := map[string]bool{
-		"127.0.0.1:54321":     true,
-		"[::1]:54321":         true,
-		"localhost:54321":     true,
-		"192.168.1.5:3000":    false,
-		"10.0.0.1:3000":       false,
-		"printer.example:80":  false,
+		"127.0.0.1:54321":    true,
+		"[::1]:54321":        true,
+		"localhost:54321":    true,
+		"192.168.1.5:3000":   false,
+		"10.0.0.1:3000":      false,
+		"printer.example:80": false,
 	}
 	for addr, want := range cases {
 		if got := isLoopback(addr); got != want {

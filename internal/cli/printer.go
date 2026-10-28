@@ -20,14 +20,14 @@ var printerDiscoverCmd = &cobra.Command{
 		if !jsonOutput {
 			fmt.Println("🔍 Scanning for printers...")
 		}
-		
+
 		result := stub.DiscoverPrinters()
-		
+
 		if jsonOutput {
 			PrintJSON(result)
 			return
 		}
-		
+
 		fmt.Printf("\n✅ Found %d printer(s)\n\n", len(result.Printers))
 		for _, p := range result.Printers {
 			fmt.Printf("  • %s (%s)\n", p.Name, p.ID)
@@ -35,11 +35,11 @@ var printerDiscoverCmd = &cobra.Command{
 			fmt.Printf("    Address: %s\n", p.Address)
 			fmt.Printf("    Status: %s\n\n", p.Status)
 		}
-		
+
 		if len(result.Printers) > 0 {
 			fmt.Println("💡 Set a default printer with: receiptd printer default <id>")
 		}
-		
+
 		// TODO: Implement printer discovery
 		// - Scan network for CloudPRNT/Star printers
 		// - Check USB connections
@@ -53,21 +53,21 @@ var printerListCmd = &cobra.Command{
 	Short: "List configured printers",
 	Run: func(cmd *cobra.Command, args []string) {
 		result := stub.ListPrinters()
-		
+
 		if jsonOutput {
 			PrintJSON(result)
 			return
 		}
-		
+
 		fmt.Println("🖨️  Configured Printers")
 		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-		
+
 		if len(result.Printers) == 0 {
 			fmt.Println("\nNo printers configured")
 			fmt.Println("💡 Run 'receiptd printer discover' to find printers")
 			return
 		}
-		
+
 		for _, p := range result.Printers {
 			prefix := "  "
 			if p.IsDefault {
@@ -76,7 +76,7 @@ var printerListCmd = &cobra.Command{
 			fmt.Printf("%s%s (%s)\n", prefix, p.Name, p.ID)
 			fmt.Printf("   Model: %s | Status: %s\n", p.Model, p.Status)
 		}
-		
+
 		// TODO: Implement printer listing
 		// - Read from config file (~/.receiptd/config.yaml)
 		// - Show all configured printers
@@ -92,12 +92,12 @@ var printerShowCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		printerID := args[0]
 		result := stub.ShowPrinter(printerID)
-		
+
 		if jsonOutput {
 			PrintJSON(result)
 			return
 		}
-		
+
 		fmt.Printf("🖨️  Printer Details: %s\n", result.ID)
 		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 		fmt.Printf("Name: %s\n", result.Name)
@@ -109,7 +109,7 @@ var printerShowCmd = &cobra.Command{
 		if result.IsDefault {
 			fmt.Println("Default: ✓ Yes")
 		}
-		
+
 		// TODO: Implement printer details
 		// - Query printer for detailed status
 		// - Show paper level, errors
@@ -125,14 +125,14 @@ var printerDefaultCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		printerID := args[0]
 		result := stub.SetDefaultPrinter(printerID)
-		
+
 		if jsonOutput {
 			PrintJSON(result)
 			return
 		}
-		
+
 		fmt.Printf("✅ Default printer set to: %s\n", printerID)
-		
+
 		// TODO: Implement default printer setting
 		// - Update config file
 		// - Verify printer exists

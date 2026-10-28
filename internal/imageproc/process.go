@@ -3,8 +3,8 @@ package imageproc
 import (
 	"bytes"
 	"image"
-	"image/png"
 	_ "image/jpeg"
+	"image/png"
 )
 
 // Algorithm names the dithering algorithm to apply.

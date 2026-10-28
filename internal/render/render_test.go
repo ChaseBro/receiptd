@@ -1,9 +1,9 @@
 package render
 
 import (
+	"bytes"
 	"flag"
 	"image/png"
-	"bytes"
 	"os"
 	"os/exec"
 	"testing"
