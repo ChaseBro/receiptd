@@ -51,3 +51,4 @@ Thumbs.db
 .projects/*.local.json
 .env
 .env.local
+.worktrees/
