@@ -2,6 +2,9 @@ name = "receiptd-cprnt"
 main = "src/index.ts"
 compatibility_date = "2026-04-20"
 compatibility_flags = ["nodejs_compat"]
+# Personal Cloudflare account. Pinned because the wrangler login also reaches
+# other accounts; config account_id wins over CLOUDFLARE_ACCOUNT_ID.
+account_id = "38b54d999e1a68660cba1c6c96fabcee"
 
 # Production routes. custom_domain=true auto-creates the DNS record in the
 # zone on deploy (requires the zone to exist in the same CF account).
