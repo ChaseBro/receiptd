@@ -295,7 +295,12 @@ const UI = {                                             // theme → [accent, a
 
 // ---------- persisted settings ----------
 const S = {
-  get(k, d) { const v = localStorage.getItem("booth." + k); return v === null ? d : JSON.parse(v); },
+  // Tolerates values saved by older versions as plain text (e.g. footer "").
+  get(k, d) {
+    const v = localStorage.getItem("booth." + k);
+    if (v === null) return d;
+    try { return JSON.parse(v); } catch { return typeof d === "string" ? v : d; }
+  },
   set(k, v) { v === undefined ? localStorage.removeItem("booth." + k) : localStorage.setItem("booth." + k, JSON.stringify(v)); },
 };
 const cfg = () => ({
