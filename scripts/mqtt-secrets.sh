@@ -26,7 +26,7 @@ read -r -s -p "  App Secret (hidden): " APP_SECRET; echo
 
 put() { # dir name value [env]
   local dir=$1 name=$2 value=$3 env=${4:-}
-  (cd "$dir" && printf %s "$value" | wrangler secret put "$name" ${env:+--env "$env"} >/dev/null) \
+  (cd "$dir" && printf %s "$value" | wrangler secret put "$name" --env="$env" >/dev/null) \
     && echo "  ✓ $name → $dir${env:+ ($env)}"
 }
 echo

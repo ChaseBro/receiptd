@@ -140,7 +140,7 @@ export default {
       await env.JOBS_R2.put(sig.r2Key, bin, { httpMetadata: { contentType: STARPRNT_MEDIA } });
       const res = await enqueueMany(env.PRINTER_QUEUE, env.PRINTER_ID, [sig]);
       // Wake the printer now via MQTT (no-op unless configured; never throws).
-      ctx.waitUntil(triggerPrinterPoll(env, env.PRINTER_MAC));
+      ctx.waitUntil(triggerPrinterPoll(env, env.PRINTER_MAC).then((r) => console.log("mqtt-trigger", JSON.stringify(r))));
       for (const ev of res.evicted) ctx.waitUntil(env.JOBS_R2.delete(ev.r2Key).catch(() => {}));
       return json(201, { id: base, ids: [base], copies, status: "pending", position: res.depth });
     }

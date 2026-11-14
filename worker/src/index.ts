@@ -218,7 +218,7 @@ app.post("/admin/jobs", async (c) => {
     c.executionCtx.waitUntil(c.env.JOBS_R2.delete(result.evicted.r2Key).catch(() => {}));
   }
   // Wake the printer now via MQTT (no-op unless configured; never throws).
-  c.executionCtx.waitUntil(printerMac(c.env, printerId).then((mac) => triggerPrinterPoll(c.env, mac)));
+  c.executionCtx.waitUntil(printerMac(c.env, printerId).then((mac) => triggerPrinterPoll(c.env, mac)).then((r) => console.log("mqtt-trigger", JSON.stringify(r))));
 
   return c.json({ jobId, r2Key, depth: result.depth, evicted: result.evicted?.jobId ?? null }, 201);
 });
