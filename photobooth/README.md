@@ -35,14 +35,17 @@ modeled as darker, so the dither fires fewer dots in greys that follow dark
 areas. Solid blacks are left solid. Settings → 🧪 prints a calibration strip
 with five gains (A–E): pick the band where the greys under the black block
 match the greys to its right. The print density (`ESC RS d n`) and speed
-(`ESC RS r n`, default slow) are sent with each job. On **Print** the browser sends the packed 1-bit raster;
+(`ESC RS r n`, default slow) are sent with each job.
+
+On **Print** the browser sends the packed 1-bit raster;
 `src/starprnt.ts` wraps it in the same StarPRNT bytes Star's `cputil` emits
 for `[image …][feed:3][cut]` (verified byte-identical) and the Worker pushes
 it onto the printer's CloudPRNT queue. Job status = "completed" once the
 printer acks (the job leaves the KV queue).
 
 Guests unlock with a shared PIN (`BOOTH_PIN`), cached in `localStorage`.
-⚙ in the camera view sets header/footer/countdown per device and can re-lock.
+Settings (long-press top-right) set footer, countdown, anti-ghost gain,
+density, speed, and sounds per device, and can re-lock the booth.
 
 ## Deploy
 
