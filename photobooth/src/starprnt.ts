@@ -27,13 +27,30 @@ const HEADER = [
 // Image line break + `[feed:3]` as cputil encodes them, then ESC d 3 (feed to cutter + cut).
 const TRAILER = [0x0d, 0x0a, 0x0d, 0x0a, 0x1b, 0x64, 0x03];
 
+export type PrintSettings = {
+  /** ESC RS d n (StarPRNT spec 1, TSP100IV): 0 darkest (+3) … 3 standard … 6 lightest (−3). */
+  density?: number;
+  /** ESC RS r n (spec 1): 0 high, 1 mid, 2 low. Slower = cooler head, less ghosting. */
+  speed?: number;
+};
+
+function settingsBytes(s: PrintSettings): number[] {
+  const out: number[] = [];
+  if (s.density !== undefined) out.push(0x1b, 0x1e, 0x64, s.density);
+  if (s.speed !== undefined) out.push(0x1b, 0x1e, 0x72, s.speed);
+  return out;
+}
+
 /** raster: rows of BYTES_PER_ROW bytes, MSB = leftmost pixel, 1 = black. */
-export function buildStarPRNT(raster: Uint8Array, height: number): Uint8Array {
+export function buildStarPRNT(raster: Uint8Array, height: number, settings: PrintSettings = {}): Uint8Array {
   const bands = Math.ceil(height / BAND_ROWS);
-  const out = new Uint8Array(HEADER.length + raster.length + bands * 9 + TRAILER.length);
+  // Density/speed go right after ESC @ (which may reset them) and before any
+  // raster data — the spec applies them once printing is stopped.
+  const head = [...HEADER.slice(0, 2), ...settingsBytes(settings), ...HEADER.slice(2)];
+  const out = new Uint8Array(head.length + raster.length + bands * 9 + TRAILER.length);
   let o = 0;
-  out.set(HEADER, o);
-  o += HEADER.length;
+  out.set(head, o);
+  o += head.length;
   for (let y = 0; y < height; y += BAND_ROWS) {
     const rows = Math.min(BAND_ROWS, height - y);
     // ESC GS S m=1 xL xH yL yH n=0

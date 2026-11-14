@@ -12,10 +12,30 @@ phone/tablet browser ──► booth.receiptd.sh  (Worker: static UI + /api)
 printer (WiFi) ── polls ──► cprnt.receiptd.sh  (receiptd-cprnt Worker)
 ```
 
-The page captures 1 or 3 photos with a countdown, lays them out at 576px
-(80mm @ 203dpi) with a header, date, and optional footer, tone-maps for
-thermal paper, and Atkinson-dithers in the browser. The preview is the exact
-bitmap that prints. On **Print** the browser sends the packed 1-bit raster;
+Kid-first, no reading needed: emoji theme picker (🎞️ ⭐ 💖 🎉 🦖 🚀 📷), a
+strip/single pictogram toggle, a giant bouncing 📸 button, ring countdown with
+beeps, flash + shutter sound, ✖️ / 🖨️ review, a printer animation, a confetti
+finish, and an anti-mashing cooldown ring (1–15 s; UX borrowed from
+`ChaseBro/photo-receipts`). The screen stays awake (Wake Lock). Long-press the
+top-right corner for 1.5 s to open adult settings.
+
+Photos are turned upright from the phone's tilt sensor at capture time; tap ↻
+on a photo in the review screen to fix one by hand. Strips are laid out at
+576px (80mm @ 203dpi) with a theme frame (`public/frames.js`), a date/time
+stamp, and an optional footer, then dithered in a Web Worker
+(`public/dither.worker.js`). The preview is the exact bitmap that prints.
+
+### Anti-ghosting
+
+`public/raster.js` runs Atkinson error diffusion against a printer model
+(Pappas & Neuhoff, model-based error diffusion), not against ideal dots. Each head element
+tracks fast heat (~3 lines) and slow substrate heat (~65 lines) with lateral
+spread, as in Saquib/Vetterling US6819347B2. A dot fired on a hot element is
+modeled as darker, so the dither fires fewer dots in greys that follow dark
+areas. Solid blacks are left solid. Settings → 🧪 prints a calibration strip
+with five gains (A–E): pick the band where the greys under the black block
+match the greys to its right. The print density (`ESC RS d n`) and speed
+(`ESC RS r n`, default slow) are sent with each job. On **Print** the browser sends the packed 1-bit raster;
 `src/starprnt.ts` wraps it in the same StarPRNT bytes Star's `cputil` emits
 for `[image …][feed:3][cut]` (verified byte-identical) and the Worker pushes
 it onto the printer's CloudPRNT queue. Job status = "completed" once the

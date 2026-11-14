@@ -73,7 +73,7 @@ export default {
       if (Number(req.headers.get("content-length") ?? "0") > MAX_BODY) {
         return json(413, { error: "too_large" });
       }
-      let body: { width?: unknown; height?: unknown; bits?: unknown };
+      let body: { width?: unknown; height?: unknown; bits?: unknown; density?: unknown; speed?: unknown };
       try {
         body = await req.json();
       } catch {
@@ -98,9 +98,13 @@ export default {
         return json(400, { error: "raster_size_mismatch" });
       }
 
+      const intIn = (v: unknown, lo: number, hi: number) =>
+        typeof v === "number" && Number.isInteger(v) && v >= lo && v <= hi ? v : undefined;
+      const settings = { density: intIn(body.density, 0, 6), speed: intIn(body.speed, 0, 2) };
+
       const jobId = `booth-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 8)}`;
       const r2Key = `jobs/${jobId}.bin`;
-      await env.JOBS_R2.put(r2Key, buildStarPRNT(raster, height), {
+      await env.JOBS_R2.put(r2Key, buildStarPRNT(raster, height, settings), {
         httpMetadata: { contentType: STARPRNT_MEDIA },
       });
       const res = await enqueue(env.JOBS_KV, env.PRINTER_ID, {
