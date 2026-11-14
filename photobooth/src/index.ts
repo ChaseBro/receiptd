@@ -1,19 +1,25 @@
-// receiptd photo booth — a thin edge proxy in front of api.receiptd.sh.
+// receiptd photo booth — serverless edition.
 //
-// The browser never sees the receiptd API key. Guests unlock the booth with a
-// shared PIN; the Worker checks it and forwards the composed photo strip to
-// POST /v1/jobs, which dithers, converts to StarPRNT, and hands it to the
-// CloudPRNT edge for the printer to pick up over WiFi.
+// No Fly, no laptop: the browser composes and dithers the strip to a 1-bit
+// 576px raster, this Worker wraps it in StarPRNT (the same bytes cputil emits
+// for an `[image]` + `[cut]` job) and drops it on the printer's existing
+// CloudPRNT queue in KV/R2. The receiptd-cprnt Worker serves it on the
+// printer's next poll over WiFi.
+
+import { enqueue, jobsKey, type JobSignal } from "../../worker/src/queue";
+import { buildStarPRNT, RASTER_WIDTH_PX } from "./starprnt";
 
 interface Env {
   ASSETS: Fetcher;
-  RECEIPTD_API: string;
-  RECEIPTD_API_KEY: string;
+  JOBS_KV: KVNamespace;
+  JOBS_R2: R2Bucket;
+  PRINTER_ID: string;
   BOOTH_PIN: string;
-  DITHER: string;
 }
 
-const MAX_IMAGE_BYTES = 6 * 1024 * 1024; // base64 payload cap
+const STARPRNT_MEDIA = "application/vnd.star.starprnt";
+const MAX_HEIGHT_PX = 4000; // ~50cm of paper
+const MAX_BODY = 2 * 1024 * 1024;
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -23,9 +29,8 @@ function json(status: number, body: unknown): Response {
 }
 
 async function pinOK(req: Request, env: Env): Promise<boolean> {
-  const got = req.headers.get("x-booth-pin") ?? "";
   if (!env.BOOTH_PIN) return false;
-  // Constant-time compare via digests.
+  const got = req.headers.get("x-booth-pin") ?? "";
   const enc = new TextEncoder();
   const [a, b] = await Promise.all([
     crypto.subtle.digest("SHA-256", enc.encode(got)),
@@ -34,68 +39,90 @@ async function pinOK(req: Request, env: Env): Promise<boolean> {
   return crypto.subtle.timingSafeEqual(a, b);
 }
 
-function upstream(env: Env, path: string, init: RequestInit = {}): Promise<Response> {
-  return fetch(`${env.RECEIPTD_API}${path}`, {
-    ...init,
-    headers: {
-      authorization: `Bearer ${env.RECEIPTD_API_KEY}`,
-      "content-type": "application/json",
-      ...(init.headers ?? {}),
-    },
-  });
+function b64decode(s: string): Uint8Array {
+  const bin = atob(s);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+async function queueIds(env: Env): Promise<string[]> {
+  const raw = await env.JOBS_KV.get(jobsKey(env.PRINTER_ID));
+  if (!raw) return [];
+  try {
+    const q = JSON.parse(raw) as { jobs?: JobSignal[] };
+    return (q.jobs ?? []).map((j) => j.jobId);
+  } catch {
+    return [];
+  }
 }
 
 export default {
-  async fetch(req: Request, env: Env): Promise<Response> {
+  async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
+    if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(req);
+    if (!(await pinOK(req, env))) return json(401, { error: "bad_pin" });
 
-    if (!url.pathname.startsWith("/api/")) {
-      return env.ASSETS.fetch(req);
-    }
-    if (!(await pinOK(req, env))) {
-      return json(401, { error: "bad_pin" });
-    }
-
-    // POST /api/unlock — PIN check only.
     if (url.pathname === "/api/unlock" && req.method === "POST") {
       return json(200, { ok: true });
     }
 
-    // POST /api/print { imageData: "data:image/png;base64,..." }
+    // POST /api/print { width: 576, height, bits: base64 } — 1 bit/px, MSB
+    // first, 1 = black, rows packed to width/8 bytes.
     if (url.pathname === "/api/print" && req.method === "POST") {
-      const len = Number(req.headers.get("content-length") ?? "0");
-      if (len > MAX_IMAGE_BYTES) return json(413, { error: "too_large" });
-      let body: { imageData?: unknown };
+      if (Number(req.headers.get("content-length") ?? "0") > MAX_BODY) {
+        return json(413, { error: "too_large" });
+      }
+      let body: { width?: unknown; height?: unknown; bits?: unknown };
       try {
         body = await req.json();
       } catch {
         return json(400, { error: "invalid_body" });
       }
-      if (typeof body.imageData !== "string" || !body.imageData.startsWith("data:image/")) {
-        return json(400, { error: "invalid_image" });
+      const { width, height, bits } = body;
+      if (
+        width !== RASTER_WIDTH_PX ||
+        typeof height !== "number" || !Number.isInteger(height) ||
+        height < 1 || height > MAX_HEIGHT_PX ||
+        typeof bits !== "string"
+      ) {
+        return json(400, { error: "invalid_raster" });
       }
-      if (body.imageData.length > MAX_IMAGE_BYTES) return json(413, { error: "too_large" });
+      let raster: Uint8Array;
+      try {
+        raster = b64decode(bits);
+      } catch {
+        return json(400, { error: "invalid_base64" });
+      }
+      if (raster.length !== (RASTER_WIDTH_PX / 8) * height) {
+        return json(400, { error: "raster_size_mismatch" });
+      }
 
-      const res = await upstream(env, "/v1/jobs", {
-        method: "POST",
-        body: JSON.stringify({ imageData: body.imageData, dither: env.DITHER || "atkinson" }),
+      const jobId = `booth-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 8)}`;
+      const r2Key = `jobs/${jobId}.bin`;
+      await env.JOBS_R2.put(r2Key, buildStarPRNT(raster, height), {
+        httpMetadata: { contentType: STARPRNT_MEDIA },
       });
-      const text = await res.text();
-      if (!res.ok) {
-        console.error("receiptd create failed", res.status, text);
-        return json(502, { error: "print_failed", status: res.status });
+      const res = await enqueue(env.JOBS_KV, env.PRINTER_ID, {
+        jobId,
+        r2Key,
+        contentType: STARPRNT_MEDIA,
+        createdAt: Date.now(),
+      });
+      if (res.evicted) {
+        ctx.waitUntil(env.JOBS_R2.delete(res.evicted.r2Key).catch(() => {}));
       }
-      const job = JSON.parse(text) as { id?: string; status?: string };
-      return json(201, { id: job.id, status: job.status });
+      return json(201, { id: jobId, status: "pending", position: res.depth });
     }
 
-    // GET /api/jobs/:id — status polling for the "printing…" screen.
+    // GET /api/jobs/:id — "completed" once the printer has acked (popped it).
     const m = url.pathname.match(/^\/api\/jobs\/([A-Za-z0-9_-]+)$/);
     if (m && req.method === "GET") {
-      const res = await upstream(env, `/v1/jobs/${m[1]}`);
-      if (!res.ok) return json(res.status, { error: "lookup_failed" });
-      const job = (await res.json()) as { id?: string; status?: string; errorMsg?: string };
-      return json(200, { id: job.id, status: job.status, error: job.errorMsg });
+      const ids = await queueIds(env);
+      const idx = ids.indexOf(m[1]!);
+      return idx === -1
+        ? json(200, { id: m[1], status: "completed" })
+        : json(200, { id: m[1], status: idx === 0 ? "printing" : "pending", position: idx + 1 });
     }
 
     return json(404, { error: "not_found" });

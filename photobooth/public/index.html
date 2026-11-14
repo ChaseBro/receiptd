@@ -307,15 +307,30 @@
   }
 
   // ---- review / print --------------------------------------------------
+  // Pack the dithered preview into 1-bit rows (MSB = leftmost, 1 = black),
+  // which the Worker wraps in StarPRNT raster commands — what you see is
+  // exactly what prints.
+  function packBits(canvas) {
+    const w = canvas.width, h = canvas.height, bpr = w / 8;
+    const d = canvas.getContext("2d").getImageData(0, 0, w, h).data;
+    const out = new Uint8Array(bpr * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      if (d[(y * w + x) * 4] < 128) out[y * bpr + (x >> 3)] |= 0x80 >> (x & 7);
+    }
+    let s = "";
+    for (let i = 0; i < out.length; i += 0x8000) s += String.fromCharCode.apply(null, out.subarray(i, i + 0x8000));
+    return { width: w, height: h, bits: btoa(s) };
+  }
+
   $("retake").onclick = () => show("cam");
   $("print").onclick = async () => {
     if (!composed) return;
     $("print").disabled = true;
     $("status").textContent = "Sending to printer…";
     try {
-      const job = await api("/api/print", { method: "POST", body: JSON.stringify({ imageData: composed.toDataURL("image/png") }) });
-      $("status").textContent = "Printing… 🖨";
-      const deadline = Date.now() + 15000;
+      const job = await api("/api/print", { method: "POST", body: JSON.stringify(packBits($("preview"))) });
+      $("status").textContent = job.position > 1 ? `Queued (#${job.position})… 🖨` : "Printing… 🖨";
+      const deadline = Date.now() + 30000;
       let final = null;
       while (Date.now() < deadline) {
         await sleep(2000);

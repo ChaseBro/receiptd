@@ -8,22 +8,27 @@ routes = [
   { pattern = "booth.receiptd.sh", custom_domain = true },
 ]
 
-# Static UI (camera page). /api/* falls through to the Worker script.
+# Static UI (camera page). /api/* runs the Worker script.
 [assets]
 directory = "./public"
 binding = "ASSETS"
-not_found_handling = "single-page-application"
 run_worker_first = ["/api/*"]
 
 [observability]
 enabled = true
 
+# Same KV + R2 as receiptd-cprnt: the booth enqueues StarPRNT jobs directly
+# onto the printer's CloudPRNT queue, which that Worker serves on poll.
+[[kv_namespaces]]
+binding = "JOBS_KV"
+id = "f7b184e88c364ae588d56652bbabe7d9"
+
+[[r2_buckets]]
+binding = "JOBS_R2"
+bucket_name = "receiptd-jobs"
+
 [vars]
-RECEIPTD_API = "https://api.receiptd.sh"
-# Server-side dither applied to booth photos. atkinson keeps highlights clean
-# on thermal paper; floyd-steinberg is the darker alternative.
-DITHER = "atkinson"
+PRINTER_ID = "printer-prod-3838"
 
 # Secrets (wrangler secret put <NAME>):
-#   RECEIPTD_API_KEY — rd_live_… with jobs:write + jobs:read only
-#   BOOTH_PIN        — shared passcode guests type once per device
+#   BOOTH_PIN — shared passcode guests type once per device
