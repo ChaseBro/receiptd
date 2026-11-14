@@ -425,7 +425,23 @@ function showPrinter(h) {
   $("paperWait").hidden = !(paper || other);
   $("paperWait").textContent = paper ? "🧻❗" : "🖨️❗";
 }
-async function refreshPrinter() { try { showPrinter(await api("/api/printer")); } catch {} }
+// With MQTT the printer barely polls on its own, so its status (paper, cover)
+// goes stale. While the booth is actually in use, ask it to check in (an MQTT
+// nudge makes it poll, which refreshes the status) at most every 2 minutes.
+let lastHealthNudge = 0;
+async function refreshPrinter() {
+  try {
+    const h = await api("/api/printer");
+    showPrinter(h);
+    const inUse = Date.now() - lastTouch < 600000;
+    if (inUse && (h.lastSeenSec ?? 1e9) > 120 && Date.now() - lastHealthNudge > 120000) {
+      lastHealthNudge = Date.now();
+      await api("/api/nudge", { method: "POST" }).catch(() => {});
+      await sleep(3000);
+      showPrinter(await api("/api/printer"));
+    }
+  } catch {}
+}
 setInterval(() => { if ($("cam").classList.contains("on") && document.visibilityState === "visible") refreshPrinter(); }, 15000);
 
 // ---------- lock ----------
