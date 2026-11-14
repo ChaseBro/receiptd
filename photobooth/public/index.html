@@ -12,6 +12,27 @@
 <link rel="apple-touch-icon" href="./icons/icon-180.png">
 <title>📸</title>
 <link rel="preload" href="./fonts/lilita-one.woff2" as="font" type="font/woff2" crossorigin>
+<script>
+  // Classic (non-module) script: runs even if the module below fails to parse
+  // on an older Safari. Reports errors to the Worker log and shows a 🐛 badge.
+  (function () {
+    var sent = 0;
+    function report(msg, where) {
+      if (sent++ > 5) return;
+      try {
+        fetch("/api/log", { method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ msg: String(msg).slice(0, 500), where: String(where || "").slice(0, 200), ua: navigator.userAgent }) });
+      } catch (e) {}
+      var b = document.getElementById("boom");
+      if (b) { b.hidden = false; b.title = String(msg); }
+    }
+    window.addEventListener("error", function (e) { report(e.message || "error", (e.filename || "") + ":" + (e.lineno || "")); });
+    window.addEventListener("unhandledrejection", function (e) { report(e.reason && (e.reason.stack || e.reason.message) || e.reason, "promise"); });
+    window.__bootTimer = setTimeout(function () {
+      if (!document.querySelector(".screen.on")) report("no screen shown after 6s", "boot");
+    }, 6000);
+  })();
+</script>
 <style>
   /* Design rules + tokens: see ../DESIGN.md. `npm run lint` enforces them. */
   @font-face { font-family:"Lilita"; src:url("./fonts/lilita-one.woff2") format("woff2"); font-display:block; }
@@ -191,6 +212,7 @@
 </head>
 <body>
 
+<div id="boom" class="emoji" hidden style="position:fixed;bottom:8px;left:8px;z-index:99;font-size:28px">🐛</div>
 <section id="lock" class="screen">
   <div id="lockLogo" class="sticker fat emoji">📸</div>
   <form id="lockForm">

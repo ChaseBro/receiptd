@@ -62,6 +62,12 @@ export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(req);
+    // Public, no PIN: client crash reports → Workers logs (wrangler tail).
+    if (url.pathname === "/api/log" && req.method === "POST") {
+      const text = (await req.text()).slice(0, 4000);
+      console.log("client-error", text);
+      return new Response(null, { status: 204 });
+    }
     // Public, no PIN: lets idle kiosks notice a new deploy and reload.
     if (url.pathname === "/api/version") return json(200, { id: env.CF_VERSION_METADATA?.id ?? "dev" });
     if (!(await pinOK(req, env))) return json(401, { error: "bad_pin" });
