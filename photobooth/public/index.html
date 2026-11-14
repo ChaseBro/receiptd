@@ -528,12 +528,24 @@ $("shutter").onclick = async () => {
 // ---------- dithering worker ----------
 const worker = new Worker("./dither.worker.js", { type: "module" });
 let jobSeq = 0; const pending = new Map();
-worker.onmessage = (e) => { pending.get(e.data.id)?.(e.data.bits); pending.delete(e.data.id); };
-function dither(gray, h, segments) {
+worker.onmessage = (e) => { pending.get(e.data.id)?.(e.data); pending.delete(e.data.id); };
+/** → { bits: Uint8Array[] (one per copy), sink } */
+function dither(gray, h, segments, copies = 1, sinkStart = 0) {
   return new Promise((resolve) => {
     const id = ++jobSeq; pending.set(id, resolve);
-    worker.postMessage({ id, gray, w: W, h, segments }, [gray.buffer]);
+    worker.postMessage({ id, gray: gray.slice(), w: W, h, segments, copies, sinkStart });
   });
+}
+
+// ---------- print-head heat carried across prints ----------
+// The head (and its heatsink) stays warm between back-to-back strips and
+// copies; that's when the grey haze after dark areas is worst. Remember the
+// heat at the end of our last job and let it cool exponentially while idle.
+const HEAD_COOL_MS = 60000;   // e-folding time while idle (~40 s half-life)
+function headHeat() {
+  const h = S.get("head", null);
+  if (!h || typeof h.sink !== "number" || typeof h.t !== "number") return 0;
+  return h.sink * Math.exp(-Math.max(0, Date.now() - h.t) / HEAD_COOL_MS);
 }
 function drawBits(bits, h) {
   const cv = $("preview"); cv.width = W; cv.height = h;
@@ -550,8 +562,9 @@ async function buildPreview() {
   const faces = faceBoxes && frames.map((f, i) => rotateBoxes(faceBoxes[i] ?? [], f.width, f.height, rotations[i]));
   const { canvas, layout } = compose(upright, { theme: c.theme, seed, footer: c.footer, ticket: c.ticket + 1, faces });
   const gray = luminance(canvas.getContext("2d").getImageData(0, 0, W, layout.H).data, W, layout.H);
-  const bits = await dither(gray, layout.H, [{ y0: 0, y1: layout.H, opts: { gain: c.gain, bleed: 0 } }]);
-  lastBits = { bits, h: layout.H };
+  const segs = [{ y0: 0, y1: layout.H, opts: { gain: c.gain, bleed: 0 } }];
+  const { bits: [bits] } = await dither(gray, layout.H, segs, 1, headHeat());
+  lastBits = { bits, h: layout.H, gray, segs };
   drawBits(bits, layout.H);
   $("receipt").querySelectorAll(".rot").forEach((b) => b.remove());
   layout.photos.forEach((p, i) => {
@@ -597,10 +610,13 @@ function cooldownMs() {   // 1s, growing to 15s when the button gets mashed (fro
   while (printTimes.length && now - printTimes[0] > 60000) printTimes.shift();
   return printTimes.length < 2 ? 1000 : Math.min(15000, 1000 + (printTimes.length - 1) * 3500);
 }
+/** bits: one bitmap, or one per copy (each relieved for the head heat it will meet). */
 async function sendBits(bits, h, n = 1) {
-  const c = cfg();
+  const c = cfg(), list = Array.isArray(bits) ? bits : [bits];
+  const enc = list.map((b) => toBase64(packBits(b, W, h)));
   return api("/api/print", { method: "POST",
-    body: JSON.stringify({ width: W, height: h, bits: toBase64(packBits(bits, W, h)), density: c.density, speed: c.speed, copies: n }) });
+    body: JSON.stringify({ width: W, height: h, bits: enc[0], ...(enc.length > 1 ? { bitsList: enc } : {}),
+      density: c.density, speed: c.speed, copies: n }) });
 }
 /** One 🧾 per copy: done ones turn mint, the one printing now bobs. */
 function renderTicks(n, done) {
@@ -620,7 +636,11 @@ async function printFlow() {
   const n = copies;
   renderTicks(n, 0);
   try {
-    const job = await sendBits(lastBits.bits, lastBits.h, n);
+    // Re-render every copy from the head heat right now (time has passed since
+    // the preview, and copy k+1 starts as hot as copy k left the head).
+    const r = await dither(lastBits.gray, lastBits.h, lastBits.segs, n, headHeat());
+    const job = await sendBits(r.bits, lastBits.h, n);
+    S.set("head", { sink: r.sink, t: Date.now() });
     const ids = job.ids ?? [job.id];   // one job per copy, in print order
     S.set("ticket", cfg().ticket + 1);
     for (const _ of ids) printTimes.push(Date.now());   // copies count toward anti-mash
@@ -695,7 +715,7 @@ $("calib").onclick = async () => {
     const segs = GAINS.map((g, i) => ({
       y0: i === 0 ? 0 : 20 + i * bandH, y1: i === GAINS.length - 1 ? H : 20 + (i + 1) * bandH, opts: { gain: g, bleed: 0 },
     }));
-    const bits = await dither(gray, H, segs);
+    const { bits: [bits] } = await dither(gray, H, segs);
     await sendBits(bits, H);
     status("Sent. Pick the band (A–E) with the most even greys below the black block.");
   } catch (e) { status("Failed: " + e.message); }

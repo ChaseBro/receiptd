@@ -186,3 +186,16 @@ test("relieveSolids: head-wide heat thins long dark runs more as the head warms"
   const off = relieveSolids(b, W, h, { sinkGain: 0 });
   assert.ok(Math.abs(dens(off, 60, 516, 1300, 1400) - dens(off, 60, 516, 100, 200)) < 0.03, "sinkGain 0 → no slow drift");
 });
+
+test("relieveSolids: head heat carries over between back-to-back copies", () => {
+  const h = 800, b = new Uint8Array(W * h);
+  for (let y = 0; y < h; y++) for (let x = 40; x < 536; x++) b[y * W + x] = 1;
+  const state = { sink: 0 };
+  const c1 = relieveSolids(b, W, h, { state });
+  const after1 = state.sink;
+  const c2 = relieveSolids(b, W, h, { state });
+  console.log({ after1, after2: state.sink, d1: dens(c1, 60, 516, 50, 150), d2: dens(c2, 60, 516, 50, 150) });
+  assert.ok(after1 > 0.3, `first copy warms the head (${after1})`);
+  assert.ok(dens(c2, 60, 516, 50, 150) < dens(c1, 60, 516, 50, 150) - 0.05, "second copy starts thinner");
+  assert.ok(state.sink >= after1, "keeps warming");
+});

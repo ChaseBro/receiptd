@@ -352,6 +352,8 @@ export const DEFAULT_RELIEF = Object.freeze({
   sinkDecay: 0.9975, // per-line retention (~400 lines ≈ 5 cm)
   sinkOn: 0.2,       // average duty where extra thinning starts
   sinkGain: 0.35,    // extra fraction of interior dots skipped at full sink heat
+  // state: { sink } — optional; the starting head heat (e.g. carried over from
+  // the previous copy/print) and, on return, the heat at the end of this job.
 });
 
 // Hole mask: interleaved gradient noise (Jimenez 2014) as a threshold field.
@@ -387,7 +389,7 @@ export function relieveSolids(bits, w, h, opts = {}) {
   }
   const heat = new Float32Array(w);
   const a = p.heatDecay;
-  let sink = 0;
+  let sink = Math.max(0, Math.min(1, p.state?.sink ?? 0));
   for (let y = 0; y < h; y++) {
     const row = y * w;
     let duty = 0;
@@ -414,6 +416,7 @@ export function relieveSolids(bits, w, h, opts = {}) {
       if (holeRank(x, y) >= keep) out[i] = 0;
     }
   }
+  if (p.state) p.state.sink = sink;
   return out;
 }
 

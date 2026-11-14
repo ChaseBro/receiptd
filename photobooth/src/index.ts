@@ -20,7 +20,7 @@ interface Env {
 
 const STARPRNT_MEDIA = "application/vnd.star.starprnt";
 const MAX_HEIGHT_PX = 4000; // ~50cm of paper
-const MAX_BODY = 2 * 1024 * 1024;
+const MAX_BODY = 4 * 1024 * 1024; // up to 6 per-copy bitmaps
 const MAX_COPIES = 6; // keep in sync with public/copies.js
 
 function json(status: number, body: unknown): Response {
@@ -84,7 +84,7 @@ export default {
       if (Number(req.headers.get("content-length") ?? "0") > MAX_BODY) {
         return json(413, { error: "too_large" });
       }
-      let body: { width?: unknown; height?: unknown; bits?: unknown; density?: unknown; speed?: unknown; copies?: unknown };
+      let body: { width?: unknown; height?: unknown; bits?: unknown; bitsList?: unknown; density?: unknown; speed?: unknown; copies?: unknown };
       try {
         body = await req.json();
       } catch {
@@ -119,14 +119,27 @@ export default {
       // One R2 object per copy: receiptd-cprnt deletes a job's r2Key when the
       // printer acks it, so a shared key would vanish after the first copy.
       const base = `booth-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 8)}`;
-      const bin = buildStarPRNT(raster, height, settings);
+      // Optional per-copy bitmaps (later copies are thinned for a hotter head).
+      let rasters: Uint8Array[] = [raster];
+      if (body.bitsList !== undefined) {
+        if (!Array.isArray(body.bitsList) || body.bitsList.length !== copies || !body.bitsList.every((b) => typeof b === "string")) {
+          return json(400, { error: "invalid_bits_list" });
+        }
+        try {
+          rasters = (body.bitsList as string[]).map(b64decode);
+        } catch {
+          return json(400, { error: "invalid_base64" });
+        }
+        if (rasters.some((r) => r.length !== raster.length)) return json(400, { error: "raster_size_mismatch" });
+      }
+      const bins = rasters.map((r) => buildStarPRNT(r, height, settings));
       const now = Date.now();
       const sigs: JobSignal[] = Array.from({ length: copies }, (_, i) => {
         const jobId = copies === 1 ? base : `${base}-c${i + 1}`;
         return { jobId, r2Key: `jobs/${jobId}.bin`, contentType: STARPRNT_MEDIA, createdAt: now };
       });
-      await Promise.all(sigs.map((s) =>
-        env.JOBS_R2.put(s.r2Key, bin, { httpMetadata: { contentType: STARPRNT_MEDIA } })));
+      await Promise.all(sigs.map((s, i) =>
+        env.JOBS_R2.put(s.r2Key, bins[Math.min(i, bins.length - 1)]!, { httpMetadata: { contentType: STARPRNT_MEDIA } })));
       const res = await enqueueMany(env.JOBS_KV, env.PRINTER_ID, sigs);
       for (const ev of res.evicted) ctx.waitUntil(env.JOBS_R2.delete(ev.r2Key).catch(() => {}));
       const ids = sigs.map((s) => s.jobId);
