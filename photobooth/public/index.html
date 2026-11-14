@@ -315,6 +315,7 @@
 <script type="module">
 import { THEMES, compose, calibrationGray } from "./frames.js";
 import { PRINT_WIDTH as W, luminance, packBits, toBase64 } from "./raster.js";
+import { uprightRotation as orient } from "./orient.js";
 import { clampCopies, defaultCopies, maxFaces, MAX_COPIES } from "./copies.js";
 import { detectFaces, loadFaceDetector, rotateBoxes } from "./faces.js";
 
@@ -389,17 +390,7 @@ async function askMotion() {
 }
 /** Clockwise degrees to rotate a screen-space frame so the world's up is up. */
 function uprightRotation() {
-  // No tilt reading (iOS permission not granted, desktop): the browser already
-  // delivers frames rotated to match the screen, so trust them as-is.
-  if (!tilt) return 0;
-  let dev = 0;
-  {
-    const { beta, gamma } = tilt;
-    if (Math.abs(gamma) > 50 && Math.abs(beta) < 40) dev = gamma > 0 ? 90 : 270;
-    else if (beta < -45) dev = 180;
-  }
-  const scr = screen.orientation?.angle ?? window.orientation ?? 0;
-  return ((dev + scr) % 360 + 360) % 360;
+  return orient(tilt, matchMedia("(orientation: landscape)").matches, screen.orientation?.angle ?? window.orientation ?? 0);
 }
 
 // ---------- lock ----------
