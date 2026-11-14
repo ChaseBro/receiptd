@@ -92,6 +92,7 @@
     background:var(--white); color:var(--ink); font-family:var(--font-display); font-size:38px; text-align:center; letter-spacing:.25em; outline:none; }
   #lockGo { width:76px; height:76px; font-size:38px; background:var(--mint); }
   #lock.nope #pin { animation:shake .4s; background:var(--tomato); }
+  .permhint { max-width:min(90vw,420px); font-size:14px; line-height:1.4; text-align:center; opacity:.75; }
 
   /* ---------- camera ---------- */
   /* Camera: grid that always fits the viewport. Portrait = themes / stage / tray;
@@ -241,6 +242,7 @@
     <input id="pin" type="password" inputmode="numeric" autocomplete="off" aria-label="PIN">
     <button id="lockGo" class="sticker emoji" type="submit" aria-label="Unlock">🔓</button>
   </form>
+  <p class="permhint" id="permHint" hidden>Tip: so the camera never asks again, tap <b>aA</b> in Safari's address bar → <b>Website Settings</b> → <b>Camera: Allow</b>.</p>
 </section>
 
 <section id="cam" class="screen">
@@ -312,11 +314,13 @@
     <button class="pill go" id="sDone">Done</button>
   </div>
   <div class="card" id="sStatus" hidden></div>
+  <div class="card permhint" id="permHint2" hidden></div>
 </section>
 
 <script type="module">
 import { THEMES, compose, calibrationGray } from "./frames.js";
 import { PRINT_WIDTH as W, luminance, packBits, toBase64 } from "./raster.js";
+import { play as playSound, unlockSounds } from "./sound.js";
 import { uprightRotation as orient } from "./orient.js";
 import { clampCopies, defaultCopies, maxFaces, MAX_COPIES } from "./copies.js";
 import { detectFaces, loadFaceDetector, rotateBoxes } from "./faces.js";
@@ -359,47 +363,56 @@ async function api(path, opts = {}) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const restart = (el, cls) => { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); };
 
-// ---------- sound ----------
-let ac;
-function tone(freq, dur = 0.09, type = "sine", vol = 0.25, at = 0, slide = 0) {
-  if (!cfg().sound) return;
-  ac ??= new (window.AudioContext || window.webkitAudioContext)();
-  const t = ac.currentTime + at, o = ac.createOscillator(), g = ac.createGain();
-  o.type = type; o.frequency.setValueAtTime(freq, t);
-  if (slide) o.frequency.exponentialRampToValueAtTime(slide, t + dur);
-  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-  o.connect(g).connect(ac.destination); o.start(t); o.stop(t + dur);
-}
+// ---------- sound (pre-rendered clips; see sound.js — no Web Audio, no mic prompt) ----------
 const sfx = {
-  tick: (n) => tone(440 + 110 * (4 - n), 0.12, "square", 0.12),
-  snap: () => { tone(1800, 0.04, "square", 0.2); tone(700, 0.15, "triangle", 0.25, 0.03, 200); },
-  tap: () => tone(600, 0.07, "sine", 0.18, 0, 900),
-  boop: () => tone(300, 0.12, "triangle", 0.2, 0, 520),
-  whirr: () => { for (let i = 0; i < 10; i++) tone(180 + (i % 2) * 40, 0.12, "sawtooth", 0.05, i * 0.13); },
-  yay: () => [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, 0.22, "triangle", 0.2, i * 0.09)),
-  boo: () => tone(400, 0.5, "sine", 0.2, 0, 180),
+  tick: (n) => cfg().sound && playSound(n >= 1 && n <= 3 ? `tick${n}` : "tickN"),
+  snap: () => cfg().sound && playSound("snap"),
+  tap: () => cfg().sound && playSound("tap"),
+  boop: () => cfg().sound && playSound("boop"),
+  whirr: () => cfg().sound && playSound("whirr"),
+  yay: () => cfg().sound && playSound("yay"),
+  boo: () => cfg().sound && playSound("boo"),
 };
+document.addEventListener("pointerdown", unlockSounds, { capture: true, once: true });
 const buzz = (p) => navigator.vibrate?.(p);
 
 // ---------- wake lock ----------
 async function keepAwake() { try { await navigator.wakeLock?.request("screen"); } catch {} }
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && stream) keepAwake(); });
 
-// ---------- orientation (tilt sensor) ----------
+// ---------- orientation ----------
+// Frames already arrive rotated to match the page, which turns with the iPad
+// (so mid-strip turns just work). The tilt sensor only matters when rotation
+// lock is on; its permission is asked ONCE, at PIN unlock (an adult is
+// there), never during capture. Without it we trust the frames, and ↻ on the
+// review screen fixes a stray sideways shot.
 let tilt = null;
 window.addEventListener("deviceorientation", (e) => { if (e.beta !== null) tilt = { beta: e.beta, gamma: e.gamma }; });
-async function askMotion() {
+async function askMotionAtUnlock() {
   try { if (typeof DeviceOrientationEvent?.requestPermission === "function") await DeviceOrientationEvent.requestPermission(); } catch {}
 }
-/** Clockwise degrees to rotate a screen-space frame so the world's up is up. */
 function uprightRotation() {
   return orient(tilt, matchMedia("(orientation: landscape)").matches, screen.orientation?.angle ?? window.orientation ?? 0);
 }
 
+// ---------- adult hint: is camera access pre-approved? ----------
+// A page can't change Safari's per-site setting, but it can see whether the
+// camera is already "granted" (Safari 16+). If not, show a tip on the adult
+// screens (PIN + settings) only.
+async function cameraPermissionHint() {
+  let state = "unknown";
+  try { state = (await navigator.permissions.query({ name: "camera" })).state; } catch {}
+  const show = state !== "granted";
+  $("permHint").hidden = !show;
+  $("permHint2").hidden = !show;
+  $("permHint2").innerHTML = show ? $("permHint").innerHTML : "";
+}
+cameraPermissionHint();
+
 // ---------- lock ----------
 $("lockForm").onsubmit = async (e) => {
   e.preventDefault();
-  askMotion();
+  askMotionAtUnlock();   // the one place we ask (adult present)
   S.set("pin", $("pin").value.trim());
   try { await api("/api/unlock", { method: "POST" }); $("pin").value = ""; sfx.yay(); startCam(); }
   catch { sfx.boo(); restart($("lock"), "nope"); }
@@ -521,7 +534,7 @@ function syncOriginals() {
 }
 $("shutter").onclick = async () => {
   if (busy || !stream) return;
-  busy = true; $("shutter").disabled = true; askMotion(); sfx.tap();
+  busy = true; $("shutter").disabled = true; sfx.tap();
   const c = cfg(); frames = []; rotations = [];
   const full = [];
   session = null;
@@ -743,6 +756,7 @@ function chips(el, options, key) {
 function status(msg) { $("sStatus").hidden = !msg; $("sStatus").textContent = msg; }
 function openSettings() {
   const c = cfg();
+  cameraPermissionHint();
   $("sFooter").value = c.footer; $("sCount").value = c.count; status("");
   chips($("sGain"), GAINS.map((g, i) => [g, `${String.fromCharCode(65 + i)} · ${g}`]), "gain");
   chips($("sDensity"), [[5, "−2"], [4, "−1"], [3, "std"], [2, "+1"], [1, "+2"]], "density");
@@ -773,7 +787,7 @@ async function checkVersion() {
   try {
     const { id } = await (await fetch("/api/version", { cache: "no-store" })).json();
     // Only reload an untouched booth (reloads can re-prompt for the camera).
-    const idle = Date.now() - lastTouch > 120000;
+    const idle = Date.now() - lastTouch > 600000;   // 10 min: reloads can re-prompt for the camera
     if (version && id !== version && idle && $("cam").classList.contains("on") && !busy) location.reload();
     version ??= id;
   } catch {}
