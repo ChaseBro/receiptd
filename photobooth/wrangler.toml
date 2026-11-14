@@ -43,6 +43,13 @@ bucket_name = "receiptd-photos"
 
 [vars]
 PRINTER_ID = "printer-prod-3838"
+PRINTER_MAC = "00:11:62:5a:a9:8b"
+# CloudPRNT MQTT trigger (EMQX Serverless "receiptd-printers"). Secrets via
+# `wrangler secret put`: MQTT_APP_KEY, MQTT_APP_SECRET, MQTT_PRINTER_PASSWORD.
+# MQTT_ENABLED="off" = kill switch: no triggers, and (cprnt) the printer's
+# cloudprnt-setting.json 404s so it stays on HTTP polling.
+MQTT_ENABLED = "off"
+MQTT_API_URL = "https://u2f2f216.ala.us-east-1.emqxsl.com:8443/api/v5"
 ARCHIVE_PREFIX = ""
 
 # Secrets (wrangler secret put <NAME>):
@@ -77,4 +84,11 @@ bucket_name = "receiptd-photos"
 
 [env.staging.vars]
 PRINTER_ID = "printer-prod-3838"
+PRINTER_MAC = "00:11:62:5a:a9:8b"
+# CloudPRNT MQTT trigger (EMQX Serverless "receiptd-printers"). Secrets via
+# `wrangler secret put`: MQTT_APP_KEY, MQTT_APP_SECRET, MQTT_PRINTER_PASSWORD.
+# MQTT_ENABLED="off" = kill switch: no triggers, and (cprnt) the printer's
+# cloudprnt-setting.json 404s so it stays on HTTP polling.
+MQTT_ENABLED = "off"
+MQTT_API_URL = "https://u2f2f216.ala.us-east-1.emqxsl.com:8443/api/v5"
 ARCHIVE_PREFIX = "staging/"

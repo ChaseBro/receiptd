@@ -46,6 +46,16 @@ bucket_name = "receiptd-jobs"
 #
 # Non-secret vars:
 [vars]
+# CloudPRNT MQTT trigger (EMQX Serverless "receiptd-printers"). Secrets via
+# `wrangler secret put`: MQTT_APP_KEY, MQTT_APP_SECRET, MQTT_PRINTER_PASSWORD.
+# MQTT_ENABLED="off" = kill switch: no triggers, and (cprnt) the printer's
+# cloudprnt-setting.json 404s so it stays on HTTP polling.
+MQTT_ENABLED = "off"
+MQTT_API_URL = "https://u2f2f216.ala.us-east-1.emqxsl.com:8443/api/v5"
+MQTT_BROKER_HOST = "u2f2f216.ala.us-east-1.emqxsl.com"
+MQTT_BROKER_PORT = "8883"
+MQTT_PRINTER_USERNAME = "printer-prod-3838"
+MQTT_FALLBACK_POLL_SEC = "30"
 # Max KV TTL on job signals (seconds). 24h default — Fly should DELETE on ack.
 JOB_SIGNAL_TTL = "86400"
 
@@ -77,6 +87,7 @@ binding = "JOBS_R2"
 bucket_name = "receiptd-jobs"
 
 [env.staging.vars]
+MQTT_ENABLED = "off"   # isolated test worker: never hands the real printer MQTT settings
 JOB_SIGNAL_TTL = "86400"
 # Short KV dual-read window so dq-smoke.mjs can observe it ending (prod: 30m).
 LEGACY_KV_WINDOW_SEC = "120"

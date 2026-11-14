@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { parseBasicAuth, timingSafeEqual, verifyAdminSignature } from "./auth";
 import { ackPop, drain, enqueue, peek, type QueueNamespace } from "./queue";
 import { statusKey, updatePrinterStatus } from "./status";
+import { SERVER_SETTING_FILE, serverSetting, triggerPrinterPoll, type MqttEnv } from "./mqtt";
 
 // The Durable Object class must be exported from the main module so wrangler
 // can bind it (here, and from receiptd-booth via script_name).
@@ -15,7 +16,17 @@ export type Env = {
   JOBS_R2: R2Bucket;
   FLY_HMAC_SECRET: string;
   JOB_SIGNAL_TTL: string;
-};
+} & MqttEnv;
+
+/** Printer MAC from its last status snapshot (needed for the MQTT topic). */
+async function printerMac(env: Env, printerId: string): Promise<string | null> {
+  try {
+    const raw = await env.JOBS_KV.get(statusKey(printerId));
+    return raw ? ((JSON.parse(raw) as { mac?: string }).mac ?? null) : null;
+  } catch {
+    return null;
+  }
+}
 
 const CPRNT_CONTENT_TYPE = "application/vnd.star.cloudprnt";
 const STARPRNT_MEDIA = "application/vnd.star.starprnt";
@@ -56,6 +67,23 @@ async function requirePrinterAuth(
   }
   return null;
 }
+
+// CloudPRNT MQTT opt-in (firmware ≥ 2.2): the printer GETs this file from
+// the folder of its Server URL. 200 + JSON switches it to MQTT Trigger-POST
+// mode; 404 keeps it on HTTP polling. Must be registered before the
+// /cprnt/:printerId routes. Auth: HTTP Basic as the printer (the JSON carries
+// the broker password). MQTT_ENABLED=off (or missing secrets) → 404.
+app.get(`/cprnt/${SERVER_SETTING_FILE}`, async (c) => {
+  const creds = parseBasicAuth(c.req.header("Authorization") ?? null);
+  if (!creds) {
+    return new Response("unauthorized", { status: 401, headers: { "WWW-Authenticate": 'Basic realm="receiptd-cprnt"' } });
+  }
+  const unauth = await requirePrinterAuth(c.req.raw, c.env, creds.user);
+  if (unauth) return unauth;
+  const setting = serverSetting(c.env, creds.user);
+  if (!setting) return new Response("not found", { status: 404 });
+  return c.json(setting, 200, { "Cache-Control": "no-store" });
+});
 
 app.post("/cprnt/:printerId", async (c) => {
   const printerId = c.req.param("printerId");
@@ -189,6 +217,8 @@ app.post("/admin/jobs", async (c) => {
     // Queue was at cap — clean up the dropped job's R2 object.
     c.executionCtx.waitUntil(c.env.JOBS_R2.delete(result.evicted.r2Key).catch(() => {}));
   }
+  // Wake the printer now via MQTT (no-op unless configured; never throws).
+  c.executionCtx.waitUntil(printerMac(c.env, printerId).then((mac) => triggerPrinterPoll(c.env, mac)));
 
   return c.json({ jobId, r2Key, depth: result.depth, evicted: result.evicted?.jobId ?? null }, 201);
 });

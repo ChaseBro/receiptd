@@ -8,15 +8,17 @@
 // poll over WiFi.
 
 import { enqueueMany, jobStatus, type JobSignal, type QueueNamespace } from "../../worker/src/queue";
+import { triggerPrinterPoll, type MqttEnv } from "../../worker/src/mqtt";
 import { buildStarPRNT, RASTER_WIDTH_PX } from "./starprnt";
 import { handleArchive } from "./archive-api";
 
-interface Env {
+interface Env extends MqttEnv {
   ASSETS: Fetcher;
   CF_VERSION_METADATA?: { id: string };
   PRINTER_QUEUE: QueueNamespace;
   JOBS_R2: R2Bucket;
   PRINTER_ID: string;
+  PRINTER_MAC?: string;
   BOOTH_PIN: string;
   /** Private photo archive (receiptd-photos). Never served publicly. */
   PHOTOS?: R2Bucket;
@@ -137,6 +139,8 @@ export default {
       const sig: JobSignal = { jobId: base, r2Key: `jobs/${base}.bin`, contentType: STARPRNT_MEDIA, createdAt: Date.now() };
       await env.JOBS_R2.put(sig.r2Key, bin, { httpMetadata: { contentType: STARPRNT_MEDIA } });
       const res = await enqueueMany(env.PRINTER_QUEUE, env.PRINTER_ID, [sig]);
+      // Wake the printer now via MQTT (no-op unless configured; never throws).
+      ctx.waitUntil(triggerPrinterPoll(env, env.PRINTER_MAC));
       for (const ev of res.evicted) ctx.waitUntil(env.JOBS_R2.delete(ev.r2Key).catch(() => {}));
       return json(201, { id: base, ids: [base], copies, status: "pending", position: res.depth });
     }
