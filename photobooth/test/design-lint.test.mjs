@@ -98,3 +98,12 @@ test("print art is ink only (#000 / #fff)", () => {
   });
   assert.equal(bad.length, 0, "non-ink print colours:\n" + bad.map((b) => `  frames.js:${b.n}: ${b.line.trim()}`).join("\n"));
 });
+
+test("no merge-conflict markers in shipped files", async () => {
+  const { readdirSync } = await import("node:fs");
+  const dir = new URL("../public/", import.meta.url);
+  for (const f of readdirSync(dir).filter((n) => /\.(html|js|webmanifest)$/.test(n))) {
+    const text = readFileSync(new URL(f, dir), "utf8");
+    assert.ok(!/^(<{7}|={7}|>{7}|\|{7})( |$)/m.test(text), `conflict markers in public/${f}`);
+  }
+});
