@@ -128,18 +128,17 @@ export default {
         if (rasters.some((r) => r.length !== raster.length)) return json(400, { error: "raster_size_mismatch" });
       }
       const bins = rasters.map((r) => buildStarPRNT(r, height, settings));
-      const now = Date.now();
-      const sigs: JobSignal[] = Array.from({ length: copies }, (_, i) => {
-        const jobId = copies === 1 ? base : `${base}-c${i + 1}`;
-        return { jobId, r2Key: `jobs/${jobId}.bin`, contentType: STARPRNT_MEDIA, createdAt: now };
-      });
-      await Promise.all(sigs.map((s, i) =>
-        env.JOBS_R2.put(s.r2Key, bins[Math.min(i, bins.length - 1)]!, { httpMetadata: { contentType: STARPRNT_MEDIA } })));
-      const res = await enqueueMany(env.PRINTER_QUEUE, env.PRINTER_ID, sigs);
+      // All copies go out as ONE job: each copy is a complete StarPRNT stream
+      // (init … raster … feed + cut) concatenated, so the printer runs them
+      // back to back instead of poll → fetch → ack → wait between copies.
+      const parts = Array.from({ length: copies }, (_, i) => bins[Math.min(i, bins.length - 1)]!);
+      const bin = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+      parts.reduce((o, p) => (bin.set(p, o), o + p.length), 0);
+      const sig: JobSignal = { jobId: base, r2Key: `jobs/${base}.bin`, contentType: STARPRNT_MEDIA, createdAt: Date.now() };
+      await env.JOBS_R2.put(sig.r2Key, bin, { httpMetadata: { contentType: STARPRNT_MEDIA } });
+      const res = await enqueueMany(env.PRINTER_QUEUE, env.PRINTER_ID, [sig]);
       for (const ev of res.evicted) ctx.waitUntil(env.JOBS_R2.delete(ev.r2Key).catch(() => {}));
-      const ids = sigs.map((s) => s.jobId);
-      // `id` is the last copy: it completes once every copy has printed (FIFO).
-      return json(201, { id: ids[ids.length - 1], ids, status: "pending", position: res.depth });
+      return json(201, { id: base, ids: [base], copies, status: "pending", position: res.depth });
     }
 
     // Photo archive: POST /api/archive, GET /api/photos{,/days,/file}.

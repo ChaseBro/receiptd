@@ -681,21 +681,25 @@ async function printFlow() {
       syncOriginals();
     }
     S.set("head", { sink: r.sink, t: Date.now() });
-    const ids = job.ids ?? [job.id];   // one job per copy, in print order
+    // All copies print as one job (back to back, each cut). The 🧾 ticks
+    // advance on an estimate while it prints, and all fill on completion.
+    const id = job.id;
     S.set("ticket", cfg().ticket + 1);
-    for (const _ of ids) printTimes.push(Date.now());   // copies count toward anti-mash
-    const until = Date.now() + 60000 + 30000 * ids.length;
-    let done = 0;
-    while (done < ids.length && Date.now() < until) {
-      const s = await api("/api/jobs/" + encodeURIComponent(ids[done])).catch(() => ({}));
-      if (s.status === "completed") {
-        renderTicks(ids.length, ++done);
-        if (done < ids.length) { sfx.whirr(); buzz(30); restart($("printing"), "go"); }
-        continue;
+    for (let i = 0; i < n; i++) printTimes.push(Date.now());   // copies count toward anti-mash
+    const until = Date.now() + 60000 + 30000 * n;
+    const perCopyMs = 1500 + lastBits.h * 2;   // rough print time per strip
+    let printingSince = 0, shown = 0;
+    while (Date.now() < until) {
+      const s = await api("/api/jobs/" + encodeURIComponent(id)).catch(() => ({}));
+      if (s.status === "completed") { renderTicks(n, n); break; }
+      if (s.status === "printing" && n > 1) {
+        printingSince ||= Date.now();
+        const est = Math.min(n - 1, Math.floor((Date.now() - printingSince) / perCopyMs));
+        if (est > shown) { shown = est; renderTicks(n, shown); sfx.whirr(); buzz(30); restart($("printing"), "go"); }
       }
       $("queue").innerHTML = s.position > 1
         ? `<div class="sticker emoji">⏳</div>` + `<div class="sticker emoji">🧾</div>`.repeat(Math.min(4, s.position - 1)) : "";
-      await sleep(2000);
+      await sleep(1000);
     }
     celebrate();
     await sleep(2400);
