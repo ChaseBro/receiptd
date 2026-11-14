@@ -565,6 +565,17 @@ $("calib").onclick = async () => {
   } catch (e) { status("Failed: " + e.message); }
 };
 
+// ---------- auto-update: reload idle kiosks after a deploy ----------
+let version = null;
+async function checkVersion() {
+  try {
+    const { id } = await (await fetch("/api/version", { cache: "no-store" })).json();
+    if (version && id !== version && $("cam").classList.contains("on") && !busy) location.reload();
+    version ??= id;
+  } catch {}
+}
+checkVersion(); setInterval(checkVersion, 60000);
+
 // ---------- boot ----------
 if (cfg().pin) api("/api/unlock", { method: "POST" }).then(startCam, () => show("lock"));
 else show("lock");

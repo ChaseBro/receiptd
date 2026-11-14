@@ -11,6 +11,7 @@ import { buildStarPRNT, RASTER_WIDTH_PX } from "./starprnt";
 
 interface Env {
   ASSETS: Fetcher;
+  CF_VERSION_METADATA?: { id: string };
   JOBS_KV: KVNamespace;
   JOBS_R2: R2Bucket;
   PRINTER_ID: string;
@@ -61,6 +62,8 @@ export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(req);
+    // Public, no PIN: lets idle kiosks notice a new deploy and reload.
+    if (url.pathname === "/api/version") return json(200, { id: env.CF_VERSION_METADATA?.id ?? "dev" });
     if (!(await pinOK(req, env))) return json(401, { error: "bad_pin" });
 
     if (url.pathname === "/api/unlock" && req.method === "POST") {
