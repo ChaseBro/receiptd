@@ -289,16 +289,44 @@ export function layout(theme, frames, footer = "") {
   return { photos, stubY, H: stubY + STUB + (footer ? 40 : 0) };
 }
 
-/** Cover-crop + tone-map a frame into a w×h canvas. */
-function photoTile(frame, w, h) {
+/** Centre cover-crop of an fw×fh source into a w×h slot: source rect. */
+export function coverCrop(fw, fh, w, h) {
+  const sa = fw / fh, da = w / h;
+  let sw = fw, sh = fh;
+  if (sa > da) sw = sh * da; else sh = sw / da;
+  return { sx: (fw - sw) / 2, sy: (fh - sh) / 2, sw, sh };
+}
+
+/**
+ * Face boxes in frame pixels → tile pixels through the cover-crop, clipped to
+ * the tile. Boxes mostly cropped away (<30% left) are dropped.
+ */
+export function facesToTile(faces, crop, w, h) {
+  if (!Array.isArray(faces)) return [];
+  const k = w / crop.sw, out = [];
+  for (const f of faces) {
+    if (!f || !(f.w > 0 && f.h > 0)) continue;
+    const x0 = (f.x - crop.sx) * k, y0 = (f.y - crop.sy) * k;
+    const x1 = x0 + f.w * k, y1 = y0 + f.h * k;
+    const cx0 = Math.max(0, x0), cy0 = Math.max(0, y0), cx1 = Math.min(w, x1), cy1 = Math.min(h, y1);
+    if (cx1 <= cx0 || cy1 <= cy0) continue;
+    if ((cx1 - cx0) * (cy1 - cy0) < 0.3 * (x1 - x0) * (y1 - y0)) continue;
+    out.push({ x: cx0, y: cy0, w: cx1 - cx0, h: cy1 - cy0 });
+  }
+  return out;
+}
+
+/**
+ * Cover-crop + tone-map a frame into a w×h canvas. `faces` (optional): boxes
+ * {x,y,w,h} in frame pixels, used to meter exposure on the faces.
+ */
+function photoTile(frame, w, h, faces) {
   const c = new OffscreenCanvas(w, h);
   const ctx = c.getContext("2d", { willReadFrequently: true });
-  const sa = frame.width / frame.height, da = w / h;
-  let sw = frame.width, sh = frame.height;
-  if (sa > da) sw = sh * da; else sh = sw / da;
-  ctx.drawImage(frame, (frame.width - sw) / 2, (frame.height - sh) / 2, sw, sh, 0, 0, w, h);
+  const crop = coverCrop(frame.width, frame.height, w, h);
+  ctx.drawImage(frame, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, w, h);
   const img = ctx.getImageData(0, 0, w, h);
-  const g = toneMap(luminance(img.data, w, h));
+  const g = toneMap(luminance(img.data, w, h), { width: w, height: h, faces: facesToTile(faces, crop, w, h) });
   for (let i = 0, j = 0; j < g.length; i += 4, j++) {
     img.data[i] = img.data[i + 1] = img.data[i + 2] = g[j]; img.data[i + 3] = 255;
   }
@@ -342,9 +370,11 @@ function ticketStub(ctx, L, { ticket, date, footer }) {
 
 /**
  * Build the full grayscale strip. frames: canvases already rotated upright.
+ * faces (optional): one array per frame of face boxes {x,y,w,h} in that
+ * frame's pixel coords (missing/empty → centre-weighted metering).
  * Returns { canvas, layout }.
  */
-export function compose(frames, { theme = "stars", seed = 1, footer = "", ticket = 1, date = new Date() } = {}) {
+export function compose(frames, { theme = "stars", seed = 1, footer = "", ticket = 1, date = new Date(), faces = [] } = {}) {
   const t = THEMES[theme] ?? THEMES.plain;
   const L = layout(theme, frames, footer);
   const rand = rng(seed);
@@ -355,7 +385,7 @@ export function compose(frames, { theme = "stars", seed = 1, footer = "", ticket
   t.bg?.(ctx, L, rand);
 
   L.photos.forEach((p, i) => {
-    const tile = photoTile(frames[i], p.w, p.h);
+    const tile = photoTile(frames[i], p.w, p.h, faces?.[i]);
     const tilt = ((rand() - 0.5) * 2 * (theme === "film" ? 0 : 1.6) * Math.PI) / 180;
     ctx.save();
     ctx.translate(p.x + p.w / 2, p.y + p.h / 2); ctx.rotate(tilt);

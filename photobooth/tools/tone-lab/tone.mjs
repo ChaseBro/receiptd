@@ -1,7 +1,26 @@
 // Tone-mapping candidates for thermal photo tiles. All take Float32 luminance
 // 0..255 (0 = black) and return a new Float32Array 0..255.
 
-export { toneMap as currentToneMap } from "../../public/raster.js";
+export { toneMap as proposedToneMap } from "../../public/raster.js";
+
+/** The pre-2026-11 toneMap (1% levels + S-curve + pow 0.85), for comparison. */
+export function legacyToneMap(gray) {
+  const hist = new Uint32Array(256);
+  for (const v of gray) hist[Math.max(0, Math.min(255, v | 0))]++;
+  const clip = gray.length * 0.01;
+  let lo = 0, hi = 255, acc = 0;
+  for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc > clip) { lo = v; break; } }
+  acc = 0;
+  for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc > clip) { hi = v; break; } }
+  const span = Math.max(1, hi - lo);
+  const out = new Float32Array(gray.length);
+  for (let i = 0; i < gray.length; i++) {
+    let t = Math.min(1, Math.max(0, (gray[i] - lo) / span));
+    t = t * t * (3 - 2 * t) * 0.6 + t * 0.4;
+    out[i] = Math.pow(t, 0.85) * 255;
+  }
+  return out;
+}
 
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const clamp255 = (v) => (v < 0 ? 0 : v > 255 ? 255 : v);

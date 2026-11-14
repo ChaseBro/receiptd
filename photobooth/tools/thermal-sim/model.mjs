@@ -140,6 +140,7 @@ export function ditherModel(gray, w, h, opts = {}) {
  */
 export const TRUE_NOMINAL = Object.freeze({
   G: 0.3, gamma: 1.0, aF: 0.7, aS: 0.985, wS: 0.5, s1: 0.12, s2: 0.03, S: 0.15, aM: 0.75, F: 0.03, sigma: 1.5,
+  smTh: 0, // smear activation threshold: 0 = linear haze; >0 = haze only once stored heat passes smTh
 });
 export const TRUE_RANGES = Object.freeze({
   G: [0.1, 0.5], gamma: [0.7, 1.5], aF: [0.5, 0.85], aS: [0.97, 0.995], wS: [0.3, 0.7], s1: [0.05, 0.2],
@@ -162,7 +163,7 @@ export function simulatePrint(bits, w, h, T = TRUE_NOMINAL) {
     const row = y * w;
     for (let x = 0; x < w; x++) {
       const he = (1 - t.wS) * fast[x] + t.wS * slow[x];
-      D[row + x] = bits[row + x] ? 1 + t.G * Math.pow(he, t.gamma) : t.S * smear[x] + t.F * slow[x];
+      D[row + x] = bits[row + x] ? 1 + t.G * Math.pow(he, t.gamma) : t.S * (t.smTh ? Math.max(0, smear[x] - t.smTh) / (1 - t.smTh) : smear[x]) + t.F * slow[x];
     }
     step(fast, t.aF, row); step(slow, t.aS, row); step(smear, t.aM, row);
   }

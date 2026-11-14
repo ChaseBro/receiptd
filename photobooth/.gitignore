@@ -1,0 +1,3 @@
+node_modules/
+# generated contact sheets / search logs from the tuning tools
+tools/*/out/
