@@ -22,9 +22,10 @@ on HI01x, varies by model).
 - Configurable fields: Service URL, Poll Interval, username/password (HTTP
   Basic), custom CA certs, TLS cipher suite, TLS 1.3 toggle.
 - Changes require Save + reboot of the printer.
-- MQTT mode (firmware 2.2+) uses the same web UI — the Service URL scheme
-  (`http://` vs `mqtt://`) determines the protocol. No separate MQTT config
-  path.
+- MQTT mode (firmware 2.2+) needs no web UI change: the Server URL stays
+  HTTPS and the printer fetches `cloudprnt-setting.json` beside it; the
+  server's answer picks HTTP vs MQTT (and carries the broker credentials).
+  See `cloudprnt-mqtt.md`.
 - Star Micronics Cloud Services (starmicronicscloud.com) is Star's hosted
   product that offers "remote provisioning" — but that's a closed commercial
   offering routing through their backend, not a public API you can call.

@@ -15,6 +15,7 @@ go_library(
         "print.go",
         "printer.go",
         "printer_cloud.go",
+        "printer_inspect.go",
         "printer_pair.go",
         "proc_flags.go",
         "render.go",
