@@ -67,7 +67,7 @@ function sticker(ctx, emoji, x, y, size, angle = 0) {
 }
 
 /** Black rays fanning out from (cx, cy), clipped to a box. */
-function sunburst(ctx, cx, cy, box, n = 24, fill = 0.35) {
+function sunburst(ctx, cx, cy, box, n = 24, fill = 0.25) {
   ctx.save();
   ctx.beginPath(); ctx.rect(box.x, box.y, box.w, box.h); ctx.clip();
   ctx.fillStyle = INK;
@@ -341,7 +341,7 @@ function ticketStub(ctx, L, { ticket, date, footer }) {
   ctx.strokeStyle = INK; ctx.lineWidth = 3; ctx.setLineDash([12, 10]);
   ctx.beginPath(); ctx.moveTo(30, y); ctx.lineTo(W - 10, y); ctx.stroke(); ctx.setLineDash([]);
   ctx.fillStyle = INK;
-  ctx.font = `30px ${EMOJI}`; ctx.textBaseline = "middle"; ctx.fillText("✂", 0, y);
+  ctx.font = `30px "Apple Symbols", "Segoe UI Symbol", sans-serif`; ctx.textBaseline = "middle"; ctx.fillText("✂\uFE0E", 0, y);
   // notches
   for (const x of [0, W]) { ctx.beginPath(); ctx.arc(x, y + 64, 18, 0, Math.PI * 2); ctx.fill(); }
 
@@ -351,16 +351,19 @@ function ticketStub(ctx, L, { ticket, date, footer }) {
   // date pill (left)
   ctx.font = `34px ${DISPLAY}`;
   const label = `${d} · ${tm}`, tw = ctx.measureText(label).width + 40;
-  ctx.beginPath(); ctx.roundRect(34, y + 38, tw, 52, 26); ctx.fill();
-  ctx.fillStyle = PAPER; ctx.fillText(label, 54, y + 66);
+  ctx.beginPath(); ctx.roundRect(36, y + 40, tw - 4, 48, 24);
+  ctx.lineWidth = 4; ctx.strokeStyle = INK; ctx.stroke();   // outlined, not solid: less heat haze
+  ctx.fillStyle = INK; ctx.fillText(label, 54, y + 66);
   ctx.fillStyle = INK; ctx.font = `20px ${DISPLAY}`;
   ctx.fillText(String(date.getFullYear()), 54, y + 112);
   // ticket number (right), outlined with an offset shadow
   ctx.font = `76px ${DISPLAY}`; ctx.textAlign = "right";
   const num = `№${String(ticket).padStart(3, "0")}`;
-  ctx.fillText(num, W - 22, y + 76);
-  ctx.lineWidth = 3; ctx.strokeStyle = INK; ctx.fillStyle = PAPER;
-  ctx.fillText(num, W - 28, y + 70); ctx.strokeText(num, W - 28, y + 70);
+  // Outlined numerals (solid black numerals left a heat haze below them).
+  ctx.lineJoin = "round"; ctx.strokeStyle = INK;
+  ctx.lineWidth = 3; ctx.strokeText(num, W - 22, y + 76);
+  ctx.fillStyle = PAPER; ctx.fillText(num, W - 28, y + 70);
+  ctx.lineWidth = 4; ctx.strokeText(num, W - 28, y + 70);
   if (footer) {
     ctx.fillStyle = INK; ctx.textAlign = "center"; ctx.font = `30px ${DISPLAY}`;
     ctx.fillText(footer, W / 2, y + 152, W - 60);
@@ -389,7 +392,7 @@ export function compose(frames, { theme = "stars", seed = 1, footer = "", ticket
     const tilt = ((rand() - 0.5) * 2 * (theme === "film" ? 0 : 1.6) * Math.PI) / 180;
     ctx.save();
     ctx.translate(p.x + p.w / 2, p.y + p.h / 2); ctx.rotate(tilt);
-    ctx.fillStyle = INK; ctx.fillRect(-p.w / 2 + OFFSET, -p.h / 2 + OFFSET, p.w, p.h);      // hard shadow
+    ctx.fillStyle = INK; ctx.fillRect(p.w / 2, -p.h / 2 + OFFSET, OFFSET, p.h - OFFSET);   // hard shadow, right edge only: black rows under a photo heat the head and haze the paper after it
     ctx.fillStyle = PAPER; ctx.fillRect(-p.w / 2 - 6, -p.h / 2 - 6, p.w + 12, p.h + 12);    // paper mat
     ctx.drawImage(tile, -p.w / 2, -p.h / 2);
     ctx.strokeStyle = INK; ctx.lineWidth = 6; ctx.strokeRect(-p.w / 2 - 3, -p.h / 2 - 3, p.w + 6, p.h + 6);
