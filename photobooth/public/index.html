@@ -5,182 +5,235 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#111">
+<meta name="theme-color" content="#FFF4DC">
 <title>📸</title>
+<link rel="preload" href="./fonts/lilita-one.woff2" as="font" type="font/woff2" crossorigin>
 <style>
-  :root { --p:#a78bfa; --a:#facc15; --bg:#111; }
+  /* Design rules + tokens: see ../DESIGN.md. `npm run lint` enforces them. */
+  @font-face { font-family:"Lilita"; src:url("./fonts/lilita-one.woff2") format("woff2"); font-display:block; }
+  :root {
+    --paper:#FFF4DC; --ink:#1A1423; --white:#FFFFFF;
+    --pink:#FF5DA2; --sun:#FFD23F; --mint:#2EE6A6; --sky:#3EC1FF; --grape:#9B6BFF; --tomato:#FF6B4A;
+    --accent:var(--sun); --accent-2:var(--grape);
+    --line:4px; --line-fat:6px;
+    --shadow-sm:3px 3px 0 var(--ink); --shadow:6px 6px 0 var(--ink); --shadow-lg:10px 10px 0 var(--ink);
+    --r:24px;
+    --font-display:"Lilita", "Arial Rounded MT Bold", ui-rounded, system-ui, sans-serif;
+    --font-body:ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", system-ui, sans-serif;
+    --font-emoji:"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+    --ease-pop:cubic-bezier(.34,1.56,.64,1);
+    --dots:radial-gradient(color-mix(in srgb, var(--ink) 14%, transparent) 1.6px, transparent 1.8px);
+    --rays:repeating-conic-gradient(from 0deg, color-mix(in srgb, var(--white) 30%, transparent) 0 9deg, transparent 9deg 18deg);
+    --zz:14px;
+    --zigzag:
+      conic-gradient(from -45deg at bottom, transparent, var(--ink) 1deg 89deg, transparent 90deg) bottom / var(--zz) 51% repeat-x,
+      conic-gradient(from 135deg at top, transparent, var(--ink) 1deg 89deg, transparent 90deg) top / var(--zz) 51% repeat-x;
+  }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; -webkit-user-select:none; user-select:none; }
-  html,body { margin:0; height:100%; background:var(--bg); color:#fff; overflow:hidden; touch-action:manipulation;
-    font:16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  html,body { margin:0; height:100%; overflow:hidden; touch-action:manipulation; color:var(--ink);
+    background:var(--paper); background-image:var(--dots); background-size:22px 22px; font-family:var(--font-body); }
   .screen { position:fixed; inset:0; display:none; flex-direction:column; align-items:center; justify-content:center; }
   .screen.on { display:flex; }
-  button { font:inherit; border:0; cursor:pointer; background:none; color:inherit; padding:0; }
-  .emoji { font-family:"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif; }
+  button { font:inherit; color:inherit; border:0; padding:0; cursor:pointer; background:none; }
+  .emoji { font-family:var(--font-emoji); line-height:1; }
 
-  /* ---------- lock (adults) ---------- */
-  #lock { gap:14px; }
-  #lock input { font-size:30px; text-align:center; letter-spacing:.3em; width:230px; padding:12px; border-radius:16px;
-    border:2px solid #333; background:#1b1b1b; color:#fff; }
-  #lock .go { font-size:40px; width:90px; height:90px; border-radius:50%; background:#fff; }
-  #lock.shake input { animation:shake .4s; border-color:#ef4444; }
-  @keyframes shake { 20%,60%{transform:translateX(-10px)} 40%,80%{transform:translateX(10px)} }
+  /* ---------- sticker primitive ---------- */
+  .sticker { display:flex; align-items:center; justify-content:center; background:var(--white);
+    border:var(--line) solid var(--ink); box-shadow:var(--shadow); border-radius:50%;
+    transform:rotate(var(--tilt, 0deg)); transition:transform .14s var(--ease-pop), box-shadow .14s; }
+  .sticker:active { transform:translate(4px,4px) rotate(var(--tilt, 0deg)) scale(.96); box-shadow:var(--shadow-sm); }
+  .sticker.sq { border-radius:22px; }
+  .sticker.fat { border-width:var(--line-fat); box-shadow:var(--shadow-lg); }
+  .sticker.fat:active { transform:translate(7px,7px) scale(.95); box-shadow:var(--shadow-sm); }
+
+  @keyframes pop-in { 0% { transform:scale(.2) rotate(-25deg); opacity:0 } 100% { transform:scale(1) rotate(var(--tilt,0deg)); opacity:1 } }
+  @keyframes wiggle { 0%,86%,100% { transform:rotate(0) } 89% { transform:rotate(-9deg) scale(1.06) } 93% { transform:rotate(8deg) scale(1.06) } 97% { transform:rotate(-4deg) } }
+  @keyframes bob { 0%,100% { translate:0 0 } 50% { translate:0 -8px } }
+  @keyframes spin { to { rotate:360deg } }
+  @keyframes blink { 50% { opacity:.2 } }
+  @keyframes shake { 20%,60% { translate:-12px 0 } 40%,80% { translate:12px 0 } }
+
+  /* ---------- lock (adult) ---------- */
+  #lock { gap:26px; }
+  #lockLogo { width:150px; height:150px; font-size:84px; --tilt:-8deg; background:var(--sun); animation:pop-in .5s var(--ease-pop); }
+  #lockForm { display:flex; gap:14px; align-items:center; }
+  #pin { width:200px; height:76px; border-radius:var(--r); border:var(--line) solid var(--ink); box-shadow:var(--shadow);
+    background:var(--white); color:var(--ink); font-family:var(--font-display); font-size:38px; text-align:center; letter-spacing:.25em; outline:none; }
+  #lockGo { width:76px; height:76px; font-size:38px; background:var(--mint); }
+  #lock.nope #pin { animation:shake .4s; background:var(--tomato); }
 
   /* ---------- camera ---------- */
-  #cam { background:#000; }
+  #cam { justify-content:flex-start; }
+  #themes { position:absolute; top:calc(env(safe-area-inset-top) + 14px); left:0; right:0; z-index:3;
+    display:flex; justify-content:center; gap:8px; padding:4px 12px 12px; overflow-x:auto; scrollbar-width:none; }
+  #themes button { flex:0 0 auto; width:min(10.6vw,62px); height:min(10.6vw,62px); font-size:min(5.6vw,32px); }
+  #themes button:nth-child(odd) { --tilt:-6deg; } #themes button:nth-child(even) { --tilt:5deg; }
+  #themes button.sel { background:var(--accent); --tilt:0deg; scale:1.16; animation:wiggle 2.6s infinite; }
+  #stage { position:absolute; left:14px; right:14px; top:calc(env(safe-area-inset-top) + 96px); bottom:calc(env(safe-area-inset-bottom) + 196px);
+    border:var(--line-fat) solid var(--ink); border-radius:34px; box-shadow:var(--shadow-lg); overflow:hidden; background:var(--ink); }
+  #stage.kick { animation:shake .25s; }
   #video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
   #video.mirror { transform:scaleX(-1); }
-  #frameGlow { position:absolute; inset:0; pointer-events:none; border:10px solid var(--p); border-radius:28px;
-    box-shadow: inset 0 0 40px color-mix(in srgb, var(--p) 60%, transparent); opacity:.85; }
-  #themes { position:absolute; top:calc(env(safe-area-inset-top) + 34px); left:0; right:0; display:flex; gap:8px;
-    justify-content:center; padding:6px 14px; z-index:3; overflow-x:auto; scrollbar-width:none; }
-  #themes button { flex:0 0 auto; width:min(11.5vw,64px); height:min(11.5vw,64px); border-radius:50%; font-size:min(6.2vw,34px);
-    background:rgba(0,0,0,.4); border:3px solid transparent; transition:transform .15s; }
-  #themes button.sel { border-color:#fff; background:var(--p); transform:scale(1.18); }
-  #dots { position:absolute; top:calc(env(safe-area-inset-top) + 120px); left:0; right:0; display:flex; gap:12px;
-    justify-content:center; z-index:3; pointer-events:none; }
-  #dots i { width:20px; height:20px; border-radius:50%; border:3px solid #fff; background:transparent; box-shadow:0 2px 8px #0008; }
-  #dots i.done { background:#fff; }
-  .bottom { position:absolute; left:0; right:0; bottom:calc(env(safe-area-inset-bottom) + 28px); display:flex;
-    align-items:center; justify-content:space-around; z-index:3; }
-  #shutter { width:clamp(120px,30vw,200px); height:clamp(120px,30vw,200px); border-radius:50%;
-    font-size:clamp(60px,15vw,100px); border:6px solid var(--p);
-    background:linear-gradient(135deg, color-mix(in srgb,var(--p) 55%,transparent), color-mix(in srgb,var(--a) 55%,transparent));
-    box-shadow:0 10px 40px #0009; animation:bounce 1.6s infinite; }
-  #shutter:active { transform:scale(.92); }
-  #shutter:disabled { animation:none; opacity:.35; }
-  @keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-14px)} }
-  .round { width:72px; height:72px; border-radius:50%; background:rgba(0,0,0,.45); border:3px solid rgba(255,255,255,.5);
-    font-size:34px; display:flex; align-items:center; justify-content:center; }
-  /* mode pictograms: one box vs three stacked */
-  .mode-ico { display:flex; flex-direction:column; gap:3px; padding:4px; background:#fff; border-radius:4px; }
-  .mode-ico b { display:block; width:18px; height:11px; background:var(--p); border-radius:2px; }
-  .mode-ico.one { padding:5px; } .mode-ico.one b { width:26px; height:22px; }
-  #hotspot { position:absolute; top:0; right:0; width:56px; height:34px; z-index:4; }
+  #dots { position:absolute; top:14px; left:0; right:0; display:flex; gap:10px; justify-content:center; z-index:2; }
+  #dots i { width:26px; height:26px; border-radius:8px; border:var(--line) solid var(--ink); background:var(--white); box-shadow:var(--shadow-sm); }
+  #dots i.done { background:var(--accent); animation:pop-in .35s var(--ease-pop); }
+  #tray { position:absolute; left:0; right:0; bottom:calc(env(safe-area-inset-bottom) + 22px); display:flex; align-items:center; justify-content:space-evenly; z-index:3; }
+  #shutter { width:clamp(140px,34vw,190px); height:clamp(140px,34vw,190px); font-size:clamp(66px,16vw,96px); background:var(--accent); }
+  #shutter span { animation:wiggle 3.2s infinite; display:block; }
+  #shutter:disabled { opacity:.45; }
+  .tool { width:78px; height:78px; font-size:36px; background:var(--accent-2); }
+  #mode { --tilt:-6deg; } #flip { --tilt:6deg; }
+  .strip-ico { display:flex; flex-direction:column; gap:3px; padding:4px; background:var(--white); border:3px solid var(--ink); border-radius:5px; }
+  .strip-ico b { display:block; width:18px; height:10px; background:var(--ink); border-radius:2px; }
+  .strip-ico.one b { width:24px; height:24px; }
+  #hotspot { position:absolute; top:0; right:0; width:54px; height:20px; z-index:4; }
 
-  /* countdown / cooldown ring */
-  #ring { position:absolute; inset:0; display:none; align-items:center; justify-content:center; z-index:5; pointer-events:none; }
+  /* countdown / cooldown */
+  #ring { position:absolute; inset:0; display:none; align-items:center; justify-content:center; z-index:5; pointer-events:none; overflow:hidden; }
   #ring.on { display:flex; }
-  #ring .dim { position:absolute; inset:0; background:#000; opacity:0; transition:opacity .3s; }
-  #ring svg { position:relative; width:min(60vw,300px); height:min(60vw,300px); transform:rotate(-90deg); }
-  #ring .num { position:absolute; font-size:min(30vw,150px); font-weight:900; color:var(--a);
-    text-shadow:0 6px 30px #000a; transition:transform .25s; }
-  #ring .num.pop { animation:pop .5s; }
-  @keyframes pop { 0%{scale:1.6} 100%{scale:1} }
-  #flash { position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; transition:opacity .4s; z-index:6; }
+  #ring .burst { position:absolute; width:250vmax; height:250vmax; background:var(--rays); animation:spin 9s linear infinite; opacity:0; transition:opacity .3s; }
+  #ring .dim { position:absolute; inset:0; background:color-mix(in srgb, var(--accent) 55%, transparent); opacity:0; transition:opacity .3s; }
+  #ring.counting .burst { opacity:1; }
+  #ring svg { position:relative; width:min(66vw,320px); height:min(66vw,320px); transform:rotate(-90deg); }
+  #ring .track { stroke:var(--ink); stroke-width:26; fill:var(--white); }
+  #ring .arc { stroke:var(--accent-2); stroke-width:16; fill:none; stroke-linecap:round; }
+  #num { position:absolute; font-family:var(--font-display); font-size:min(40vw,190px); color:var(--accent);
+    -webkit-text-stroke:10px var(--ink); paint-order:stroke fill; }
+  #num.emoji { font-family:var(--font-emoji); -webkit-text-stroke:0; font-size:min(26vw,130px); }
+  #num.tick { animation:pop-in .45s var(--ease-pop); }
+  #flash { position:absolute; inset:0; background:var(--white); opacity:0; pointer-events:none; transition:opacity .4s; z-index:6; }
   #flash.pop { opacity:1; transition:none; }
 
-  /* errors (pictographic) */
-  .err { position:absolute; inset:0; display:none; flex-direction:column; align-items:center; justify-content:center;
-    gap:24px; background:#000c; z-index:7; font-size:90px; }
+  /* errors */
+  .err { position:absolute; inset:0; z-index:7; display:none; flex-direction:column; align-items:center; justify-content:center; gap:26px;
+    background:color-mix(in srgb, var(--paper) 92%, transparent); }
   .err.on { display:flex; }
-  .big { width:110px; height:110px; border-radius:50%; font-size:56px; display:flex; align-items:center; justify-content:center;
-    box-shadow:0 8px 30px #0008; }
-  .big.yes { background:#22c55e; } .big.no { background:#ef4444; } .big.neutral { background:#fff; color:#111; }
+  .err .face { width:170px; height:170px; font-size:96px; background:var(--sun); --tilt:-6deg; animation:pop-in .45s var(--ease-pop); }
+  .row { display:flex; gap:44px; }
+  .big { width:112px; height:112px; font-size:54px; }
+  .big.yes { background:var(--mint); --tilt:4deg; } .big.no { background:var(--tomato); --tilt:-4deg; } .big.again { background:var(--sky); }
 
   /* ---------- review ---------- */
-  #review { background:radial-gradient(circle at 50% 30%, color-mix(in srgb,var(--p) 35%,#222), #111); justify-content:flex-start;
-    padding:calc(env(safe-area-inset-top) + 16px) 16px calc(env(safe-area-inset-bottom) + 20px); }
-  #paper { flex:1; min-height:0; width:100%; overflow:auto; display:flex; justify-content:center; padding:4px 0 18px; }
-  #paperIn { position:relative; width:min(78vw,340px); align-self:flex-start; }
-  #preview { width:100%; display:block; background:#fff; image-rendering:pixelated; box-shadow:0 12px 50px #000a;
-    animation:slidein .5s ease-out; }
-  @keyframes slidein { from{transform:translateY(-40px); opacity:0} }
-  .rot { position:absolute; right:-14px; width:52px; height:52px; border-radius:50%; background:#fff; color:#111;
-    font-size:28px; box-shadow:0 4px 14px #0008; display:flex; align-items:center; justify-content:center; }
-  .actions { display:flex; gap:56px; }
-  #printBtn { animation:bounce 1.6s infinite; }
+  #review, #printing { background:var(--accent); overflow:hidden; }
+  #review::before, #printing::before { content:""; position:absolute; width:250vmax; height:250vmax; left:50%; top:40%;
+    translate:-50% -50%; background:var(--rays); animation:spin 30s linear infinite; }
+  #review { justify-content:flex-start; padding:calc(env(safe-area-inset-top) + 18px) 16px calc(env(safe-area-inset-bottom) + 24px); }
+  #paper { position:relative; flex:1; min-height:0; width:100%; overflow:auto; display:flex; justify-content:center; padding:6px 0 26px; scrollbar-width:none; }
+  #receipt { position:relative; width:min(72vw,330px); align-self:flex-start; rotate:-2deg; animation:feed-in .6s var(--ease-pop); }
+  #receipt::before { content:""; position:absolute; inset:0; translate:10px 10px; background:var(--ink); mask:var(--zigzag), linear-gradient(var(--ink),var(--ink)) center / 100% calc(100% - var(--zz)) no-repeat; }
+  #preview { position:relative; display:block; width:100%; image-rendering:pixelated; background:var(--white);
+    mask:var(--zigzag), linear-gradient(var(--ink),var(--ink)) center / 100% calc(100% - var(--zz)) no-repeat; }
+  @keyframes feed-in { from { translate:0 -60px; opacity:0 } }
+  .rot { position:absolute; right:-22px; width:52px; height:52px; font-size:28px; background:var(--sky); --tilt:8deg; z-index:2; }
+  #review .row { position:relative; }
+  #printBtn span { display:block; animation:bob 1.2s ease-in-out infinite; }
 
   /* ---------- printing ---------- */
-  #printing { background:radial-gradient(circle at 50% 40%, color-mix(in srgb,var(--p) 40%,#222), #111); }
-  #printer { font-size:130px; position:relative; z-index:2; }
-  #slip { width:110px; background:#fff; border-radius:0 0 6px 6px; margin-top:-48px; height:0; box-shadow:0 10px 30px #0008;
-    background-image:repeating-linear-gradient(#fff 0 14px, #ddd 14px 18px); }
-  #printing.go #slip { animation:feed 6s ease-out forwards; }
-  @keyframes feed { to { height:min(45vh,320px); } }
-  #queue { margin-top:20px; font-size:40px; min-height:50px; letter-spacing:6px; }
-  #done { position:fixed; inset:0; display:none; align-items:center; justify-content:center; font-size:min(50vw,260px); z-index:8; pointer-events:none; }
-  #done.on { display:flex; animation:pop .6s; }
-  .confetti { position:fixed; top:-40px; font-size:34px; z-index:9; pointer-events:none; animation:fall linear forwards; }
-  @keyframes fall { to { transform:translateY(110vh) rotate(720deg); } }
+  #machine { position:relative; display:flex; flex-direction:column; align-items:center; }
+  #printer { position:relative; z-index:2; width:min(74vw,300px); height:132px; border-radius:30px; background:var(--accent-2);
+    border:var(--line-fat) solid var(--ink); box-shadow:var(--shadow-lg); animation:bob .5s ease-in-out infinite; }
+  #printer::before { content:""; position:absolute; left:14%; right:14%; bottom:22px; height:18px; border-radius:99px; background:var(--ink); }
+  #printer .led { position:absolute; top:22px; right:26px; width:22px; height:22px; border-radius:50%; background:var(--mint);
+    border:var(--line) solid var(--ink); animation:blink .6s steps(2) infinite; }
+  #printer .face { position:absolute; top:16px; left:24px; font-size:42px; }
+  #slip { position:relative; z-index:1; margin-top:-40px; width:min(54vw,216px); height:0; background:var(--white) top / 100% auto no-repeat;
+    image-rendering:pixelated; border:var(--line) solid var(--ink); border-top:0; box-shadow:var(--shadow); rotate:1.5deg; }
+  #printing.go #slip { animation:feed var(--feed-ms, 6s) linear forwards; }
+  @keyframes feed { to { height:var(--slip-h, 300px); } }
+  #queue { position:relative; margin-top:26px; display:flex; gap:10px; min-height:56px; }
+  #queue .sticker { width:56px; height:56px; font-size:28px; background:var(--white); }
+  #done { position:fixed; inset:0; z-index:8; display:none; align-items:center; justify-content:center; pointer-events:none; }
+  #done.on { display:flex; }
+  #done .sticker { width:min(64vw,300px); height:min(64vw,300px); font-size:min(38vw,170px); background:var(--sun); --tilt:-6deg;
+    border-width:var(--line-fat); box-shadow:var(--shadow-lg); animation:pop-in .5s var(--ease-pop); }
+  .confetti { position:fixed; top:-40px; z-index:9; width:var(--s); height:var(--s); border:3px solid var(--ink); pointer-events:none;
+    animation:fall var(--t) linear forwards; }
+  .confetti.circle { border-radius:50%; } .confetti.tri { clip-path:polygon(50% 0, 100% 100%, 0 100%); border:0; }
+  @keyframes fall { to { translate:var(--dx) 112vh; rotate:900deg; } }
 
-  /* ---------- settings (adults) ---------- */
-  #settings { background:#000e; z-index:20; overflow:auto; justify-content:flex-start; padding:40px 20px; }
-  #settings h2 { margin:0 0 4px; }
-  #settings .row { width:min(92vw,420px); margin:10px 0; color:#bbb; font-size:14px; }
-  #settings input[type=text], #settings input[type=number] { display:block; width:100%; margin-top:6px; font:inherit;
-    padding:10px 12px; border-radius:10px; border:1px solid #333; background:#1b1b1b; color:#fff; }
-  .chips { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
-  .chips button { padding:8px 12px; border-radius:999px; background:#2a2a2a; color:#fff; font-size:14px; }
-  .chips button.sel { background:#fff; color:#111; font-weight:700; }
-  .pill { padding:12px 20px; border-radius:999px; background:#fff; color:#111; font-weight:700; }
-  .pill.ghost { background:#2a2a2a; color:#fff; }
-  #settings .hint { font-size:12px; color:#888; margin-top:4px; }
+  /* ---------- settings (adult) ---------- */
+  #settings { z-index:20; overflow:auto; justify-content:flex-start; padding:36px 18px 60px; }
+  #settings h2 { font-family:var(--font-display); font-size:38px; margin:0 0 10px; font-weight:400; }
+  .card { width:min(94vw,440px); margin:9px 0; padding:14px 16px; border-radius:var(--r); background:var(--white);
+    border:var(--line) solid var(--ink); box-shadow:var(--shadow); font-size:15px; font-weight:700; }
+  .card input { display:block; width:100%; margin-top:8px; font:inherit; font-weight:500; padding:10px 12px; border-radius:14px;
+    border:3px solid var(--ink); background:var(--paper); color:var(--ink); }
+  .hint { font-size:12px; font-weight:500; opacity:.7; margin-top:6px; }
+  .chips { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+  .chips button { padding:7px 12px; border-radius:999px; border:3px solid var(--ink); background:var(--paper); font-weight:700; font-size:14px; }
+  .chips button.sel { background:var(--accent); box-shadow:var(--shadow-sm); }
+  .pill { padding:12px 18px; border-radius:999px; font-weight:800; background:var(--white); }
+  .pill.go { background:var(--mint); }
 </style>
 </head>
 <body>
 
 <section id="lock" class="screen">
-  <div class="emoji" style="font-size:80px">📸</div>
-  <form id="lockForm" style="display:flex;flex-direction:column;align-items:center;gap:14px">
+  <div id="lockLogo" class="sticker fat emoji">📸</div>
+  <form id="lockForm">
     <input id="pin" type="password" inputmode="numeric" autocomplete="off" aria-label="PIN">
-    <button class="go emoji" type="submit" aria-label="Unlock">🔓</button>
+    <button id="lockGo" class="sticker emoji" type="submit" aria-label="Unlock">🔓</button>
   </form>
 </section>
 
 <section id="cam" class="screen">
-  <video id="video" class="mirror" playsinline autoplay muted></video>
-  <div id="frameGlow"></div>
   <div id="themes"></div>
-  <div id="dots"></div>
-  <div id="hotspot" aria-hidden="true"></div>
-  <div class="bottom">
-    <button class="round" id="mode" aria-label="One or three photos"><span class="mode-ico"><b></b><b></b><b></b></span></button>
-    <button id="shutter" class="emoji" aria-label="Take photo">📸</button>
-    <button class="round emoji" id="flip" aria-label="Switch camera">🔄</button>
+  <div id="stage">
+    <video id="video" class="mirror" playsinline autoplay muted></video>
+    <div id="dots"></div>
   </div>
-  <div id="ring"><div class="dim"></div>
-    <svg viewBox="0 0 220 220"><circle cx="110" cy="110" r="96" stroke="#fff" stroke-opacity=".35" stroke-width="16" fill="none"/>
-      <circle id="arc" cx="110" cy="110" r="96" style="stroke:var(--p)" stroke-width="16" fill="none" stroke-linecap="round"/></svg>
-    <div class="num emoji" id="num"></div>
+  <div id="hotspot" aria-hidden="true"></div>
+  <div id="tray">
+    <button id="mode" class="sticker sq tool" aria-label="One or three photos"><span class="strip-ico"><b></b><b></b><b></b></span></button>
+    <button id="shutter" class="sticker fat emoji" aria-label="Take photo"><span>📸</span></button>
+    <button id="flip" class="sticker sq tool emoji" aria-label="Switch camera">🔄</button>
+  </div>
+  <div id="ring"><div class="burst"></div><div class="dim"></div>
+    <svg viewBox="0 0 220 220"><circle class="track" cx="110" cy="110" r="96"/><circle id="arc" class="arc" cx="110" cy="110" r="96"/></svg>
+    <div id="num"></div>
   </div>
   <div id="flash"></div>
-  <div class="err emoji" id="camErr"><div>📷🚫</div><button class="big neutral" id="camRetry" aria-label="Try again">🔁</button></div>
+  <div class="err" id="camErr"><div class="sticker fat face emoji">🙈</div><button class="sticker big again emoji" id="camRetry" aria-label="Try again">🔁</button></div>
 </section>
 
 <section id="review" class="screen">
-  <div id="paper"><div id="paperIn"><canvas id="preview"></canvas></div></div>
-  <div class="actions">
-    <button class="big no emoji" id="retake" aria-label="Retake">✖️</button>
-    <button class="big yes emoji" id="printBtn" aria-label="Print">🖨️</button>
+  <div id="paper"><div id="receipt"><canvas id="preview"></canvas></div></div>
+  <div class="row">
+    <button class="sticker fat big no emoji" id="retake" aria-label="Retake">✖️</button>
+    <button class="sticker fat big yes emoji" id="printBtn" aria-label="Print"><span>🖨️</span></button>
   </div>
 </section>
 
 <section id="printing" class="screen">
-  <div id="printer" class="emoji">🖨️</div>
-  <div id="slip"></div>
-  <div id="queue" class="emoji"></div>
-  <div class="err emoji" id="printErr"><div>😕</div><div class="actions"><button class="big no" id="printBack" aria-label="Back">✖️</button><button class="big neutral" id="printRetry" aria-label="Try again">🔁</button></div></div>
+  <div id="machine">
+    <div id="printer"><span class="face emoji">😺</span><span class="led"></span></div>
+    <div id="slip"></div>
+  </div>
+  <div id="queue"></div>
+  <div class="err" id="printErr"><div class="sticker fat face emoji">😕</div>
+    <div class="row"><button class="sticker big no emoji" id="printBack" aria-label="Back">✖️</button>
+      <button class="sticker big again emoji" id="printRetry" aria-label="Try again">🔁</button></div></div>
 </section>
-<div id="done" class="emoji">🎉</div>
+<div id="done"><div class="sticker emoji" id="doneFace">🎉</div></div>
 
 <section id="settings" class="screen">
   <h2>Booth settings</h2>
-  <div class="row">Footer text (optional)<input type="text" id="sFooter" maxlength="60"></div>
-  <div class="row">Countdown seconds<input type="number" id="sCount" min="1" max="10"></div>
-  <div class="row">Anti-ghosting (heat compensation)
+  <div class="card">Footer text (optional)<input type="text" id="sFooter" maxlength="40"></div>
+  <div class="card">Countdown seconds<input type="number" id="sCount" min="1" max="10"></div>
+  <div class="card">Anti-ghosting
     <div class="chips" id="sGain"></div>
     <div class="hint">Print the calibration strip, then pick the band whose greys under the black block match the greys to its right.</div>
   </div>
-  <div class="row">Print density<div class="chips" id="sDensity"></div></div>
-  <div class="row">Print speed<div class="chips" id="sSpeed"></div><div class="hint">Slower = cooler head = less ghosting.</div></div>
-  <div class="row">Sounds<div class="chips" id="sSound"></div></div>
-  <div class="row" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:18px">
-    <button class="pill ghost" id="calib">🧪 Calibration print</button>
-    <button class="pill ghost" id="fs">⛶ Fullscreen</button>
-    <button class="pill ghost" id="lockNow">🔒 Lock</button>
-    <button class="pill" id="sDone">Done</button>
+  <div class="card">Print density<div class="chips" id="sDensity"></div></div>
+  <div class="card">Print speed<div class="chips" id="sSpeed"></div><div class="hint">Slower = cooler head = less ghosting.</div></div>
+  <div class="card">Sounds<div class="chips" id="sSound"></div></div>
+  <div class="card chips">
+    <button class="pill" id="calib">🧪 Calibration</button>
+    <button class="pill" id="fs">⛶ Fullscreen</button>
+    <button class="pill" id="lockNow">🔒 Lock</button>
+    <button class="pill go" id="sDone">Done</button>
   </div>
-  <div class="row" id="sStatus"></div>
+  <div class="card" id="sStatus" hidden></div>
 </section>
 
 <script type="module">
@@ -188,10 +241,11 @@ import { THEMES, compose, calibrationGray } from "./frames.js";
 import { PRINT_WIDTH as W, luminance, packBits, toBase64 } from "./raster.js";
 
 const $ = (id) => document.getElementById(id);
-const GAINS = [0, 0.15, 0.3, 0.45, 0.6];               // calibration bands A..E
-const UI = {                                             // theme → [primary, accent]
-  stars: ["#a78bfa", "#facc15"], hearts: ["#ec4899", "#f9a8d4"], party: ["#ec4899", "#06b6d4"],
-  dino: ["#22c55e", "#a3e635"], space: ["#6366f1", "#22d3ee"], film: ["#9ca3af", "#f5f5f5"], plain: ["#2563eb", "#8b5cf6"],
+const GAINS = [0, 0.1, 0.15, 0.25, 0.4];               // calibration bands A..E
+const CANDY = ["--pink", "--sun", "--mint", "--sky", "--grape", "--tomato"];
+const UI = {                                             // theme → [accent, accent-2] tokens
+  stars: ["--sun", "--grape"], hearts: ["--pink", "--sun"], party: ["--sky", "--pink"],
+  dino: ["--mint", "--sun"], space: ["--grape", "--sky"], film: ["--tomato", "--sun"], plain: ["--sky", "--mint"],
 };
 
 // ---------- persisted settings ----------
@@ -202,7 +256,8 @@ const S = {
 const cfg = () => ({
   pin: S.get("pin", ""), theme: S.get("theme", "stars"), shots: S.get("shots", 3),
   footer: S.get("footer", ""), count: Math.min(10, Math.max(1, S.get("count", 3))),
-  gain: S.get("gain", 0.3), density: S.get("density", 3), speed: S.get("speed", 2), sound: S.get("sound", true),
+  gain: S.get("gain", 0.15), density: S.get("density", 3), speed: S.get("speed", 2), sound: S.get("sound", true),
+  ticket: S.get("ticket", 0),
 });
 
 // ---------- screens / api ----------
@@ -215,29 +270,32 @@ async function api(path, opts = {}) {
   return body;
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const restart = (el, cls) => { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); };
 
 // ---------- sound ----------
 let ac;
-function tone(freq, dur = 0.09, type = "sine", vol = 0.25, at = 0) {
+function tone(freq, dur = 0.09, type = "sine", vol = 0.25, at = 0, slide = 0) {
   if (!cfg().sound) return;
   ac ??= new (window.AudioContext || window.webkitAudioContext)();
   const t = ac.currentTime + at, o = ac.createOscillator(), g = ac.createGain();
-  o.type = type; o.frequency.value = freq;
+  o.type = type; o.frequency.setValueAtTime(freq, t);
+  if (slide) o.frequency.exponentialRampToValueAtTime(slide, t + dur);
   g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
   o.connect(g).connect(ac.destination); o.start(t); o.stop(t + dur);
 }
 const sfx = {
-  tick: () => tone(660, 0.08, "square", 0.12),
-  snap: () => { tone(1400, 0.05, "square", 0.2); tone(500, 0.12, "triangle", 0.25, 0.04); },
-  tap: () => tone(520, 0.05, "sine", 0.15),
-  yay: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.25, "triangle", 0.2, i * 0.11)),
-  boo: () => [392, 311].forEach((f, i) => tone(f, 0.3, "sine", 0.2, i * 0.2)),
+  tick: (n) => tone(440 + 110 * (4 - n), 0.12, "square", 0.12),
+  snap: () => { tone(1800, 0.04, "square", 0.2); tone(700, 0.15, "triangle", 0.25, 0.03, 200); },
+  tap: () => tone(600, 0.07, "sine", 0.18, 0, 900),
+  boop: () => tone(300, 0.12, "triangle", 0.2, 0, 520),
+  whirr: () => { for (let i = 0; i < 10; i++) tone(180 + (i % 2) * 40, 0.12, "sawtooth", 0.05, i * 0.13); },
+  yay: () => [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, 0.22, "triangle", 0.2, i * 0.09)),
+  boo: () => tone(400, 0.5, "sine", 0.2, 0, 180),
 };
 const buzz = (p) => navigator.vibrate?.(p);
 
 // ---------- wake lock ----------
-let wake;
-async function keepAwake() { try { wake = await navigator.wakeLock?.request("screen"); } catch {} }
+async function keepAwake() { try { await navigator.wakeLock?.request("screen"); } catch {} }
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && stream) keepAwake(); });
 
 // ---------- orientation (tilt sensor) ----------
@@ -248,8 +306,11 @@ async function askMotion() {
 }
 /** Clockwise degrees to rotate a screen-space frame so the world's up is up. */
 function uprightRotation() {
+  // No tilt reading (iOS permission not granted, desktop): the browser already
+  // delivers frames rotated to match the screen, so trust them as-is.
+  if (!tilt) return 0;
   let dev = 0;
-  if (tilt) {
+  {
     const { beta, gamma } = tilt;
     if (Math.abs(gamma) > 50 && Math.abs(beta) < 40) dev = gamma > 0 ? 90 : 270;
     else if (beta < -45) dev = 180;
@@ -263,29 +324,29 @@ $("lockForm").onsubmit = async (e) => {
   e.preventDefault();
   askMotion();
   S.set("pin", $("pin").value.trim());
-  try { await api("/api/unlock", { method: "POST" }); $("pin").value = ""; startCam(); }
-  catch { $("lock").classList.remove("shake"); void $("lock").offsetWidth; $("lock").classList.add("shake"); }
+  try { await api("/api/unlock", { method: "POST" }); $("pin").value = ""; sfx.yay(); startCam(); }
+  catch { sfx.boo(); restart($("lock"), "nope"); }
 };
 
 // ---------- camera ----------
 let stream = null, facing = "user";
 async function startCam() {
   show("cam"); stopCam(); $("camErr").classList.remove("on");
-  applyTheme(); renderModeIcon(); keepAwake();
+  applyTheme(); renderMode(); keepAwake();
   try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: false,
       video: { facingMode: facing, width: { ideal: 1920 }, height: { ideal: 1440 } } });
     $("video").srcObject = stream;
     $("video").classList.toggle("mirror", facing === "user");
-  } catch { $("camErr").classList.add("on"); }
+  } catch { sfx.boo(); $("camErr").classList.add("on"); }
 }
 function stopCam() { stream?.getTracks().forEach((t) => t.stop()); stream = null; }
 $("camRetry").onclick = () => { sfx.tap(); startCam(); };
-$("flip").onclick = () => { sfx.tap(); facing = facing === "user" ? "environment" : "user"; startCam(); };
-$("mode").onclick = () => { sfx.tap(); S.set("shots", cfg().shots === 3 ? 1 : 3); renderModeIcon(); };
-function renderModeIcon() {
+$("flip").onclick = () => { sfx.boop(); facing = facing === "user" ? "environment" : "user"; startCam(); };
+$("mode").onclick = () => { sfx.boop(); S.set("shots", cfg().shots === 3 ? 1 : 3); renderMode(); };
+function renderMode() {
   const one = cfg().shots === 1, ico = $("mode").firstElementChild;
-  ico.className = "mode-ico" + (one ? " one" : "");
+  ico.className = "strip-ico" + (one ? " one" : "");
   ico.innerHTML = one ? "<b></b>" : "<b></b><b></b><b></b>";
   renderDots(0);
 }
@@ -293,15 +354,12 @@ function renderDots(done) {
   const n = cfg().shots;
   $("dots").innerHTML = n > 1 ? Array.from({ length: n }, (_, i) => `<i class="${i < done ? "done" : ""}"></i>`).join("") : "";
 }
-
-// theme picker
 function applyTheme() {
-  const t = cfg().theme, [p, a] = UI[t] ?? UI.stars;
-  document.documentElement.style.setProperty("--p", p);
-  document.documentElement.style.setProperty("--a", a);
+  const t = cfg().theme, [a, b] = UI[t] ?? UI.stars, root = document.documentElement.style;
+  root.setProperty("--accent", `var(${a})`); root.setProperty("--accent-2", `var(${b})`);
   $("themes").innerHTML = Object.entries(THEMES).map(([k, v]) =>
-    `<button class="emoji ${k === t ? "sel" : ""}" data-k="${k}" aria-label="${k}">${v.icon}</button>`).join("");
-  for (const b of $("themes").children) b.onclick = () => { sfx.tap(); S.set("theme", b.dataset.k); applyTheme(); };
+    `<button class="sticker emoji ${k === t ? "sel" : ""}" data-k="${k}" aria-label="${k} theme">${v.icon}</button>`).join("");
+  for (const btn of $("themes").children) btn.onclick = () => { sfx.tap(); S.set("theme", btn.dataset.k); applyTheme(); };
 }
 
 /** Grab the current frame in screen space (mirrored for selfies), upright. */
@@ -328,20 +386,21 @@ const ARC = 2 * Math.PI * 96;
 function ring(mode, ms, label) {
   return new Promise((resolve) => {
     const r = $("ring"), arc = $("arc"), num = $("num"), dim = r.querySelector(".dim");
-    r.classList.add("on"); arc.style.strokeDasharray = ARC;
+    r.classList.add("on"); r.classList.toggle("counting", mode === "countdown");
+    arc.style.strokeDasharray = ARC;
+    num.className = mode === "countdown" ? "" : "emoji";
+    num.style.rotate = `${-uprightRotation()}deg`;   // readable when the phone is sideways
     const t0 = performance.now(); let last = -1;
-    // Keep the number readable when the phone is turned sideways.
-    num.style.transform = `rotate(${-uprightRotation()}deg)`;
     const frame = (now) => {
       const p = Math.min(1, (now - t0) / ms);
       arc.style.strokeDashoffset = mode === "countdown" ? ARC * (1 - p) : ARC * p;
-      dim.style.opacity = mode === "countdown" ? 0.45 * p : 0.35 * (1 - p);
+      dim.style.opacity = mode === "countdown" ? 0.25 + 0.5 * p : 0.6 * (1 - p);
       if (mode === "countdown") {
         const left = Math.max(1, Math.ceil((ms - (now - t0)) / 1000));
-        if (left !== last) { last = left; num.textContent = left; num.classList.remove("pop"); void num.offsetWidth; num.classList.add("pop"); sfx.tick(); }
+        if (left !== last) { last = left; num.textContent = left; restart(num, "tick"); sfx.tick(left); buzz(15); }
       } else num.textContent = label;
       if (p < 1) requestAnimationFrame(frame);
-      else { r.classList.remove("on"); dim.style.opacity = 0; resolve(); }
+      else { r.classList.remove("on", "counting"); dim.style.opacity = 0; resolve(); }
     };
     requestAnimationFrame(frame);
   });
@@ -351,14 +410,14 @@ function ring(mode, ms, label) {
 let busy = false, frames = [], rotations = [], seed = 1, lastBits = null;
 $("shutter").onclick = async () => {
   if (busy || !stream) return;
-  busy = true; $("shutter").disabled = true; askMotion();
+  busy = true; $("shutter").disabled = true; askMotion(); sfx.tap();
   const c = cfg(); frames = []; rotations = [];
   try {
     renderDots(0);
     for (let i = 0; i < c.shots; i++) {
       await ring("countdown", c.count * 1000);
       frames.push(grab()); rotations.push(0);
-      sfx.snap(); buzz(40);
+      sfx.snap(); buzz(40); restart($("stage"), "kick");
       $("flash").classList.add("pop"); await sleep(70); $("flash").classList.remove("pop");
       renderDots(i + 1);
       if (i < c.shots - 1) await sleep(700);
@@ -382,43 +441,40 @@ function dither(gray, h, segments) {
 function drawBits(bits, h) {
   const cv = $("preview"); cv.width = W; cv.height = h;
   const ctx = cv.getContext("2d"), img = ctx.createImageData(W, h);
-  for (let i = 0; i < bits.length; i++) { const v = bits[i] ? 0 : 255; img.data.set([v, v, v, 255], i * 4); }
+  for (let i = 0; i < bits.length; i++) { const v = bits[i] ? 26 : 255; img.data.set([v, v - 6, v + 9, 255], i * 4); }
   ctx.putImageData(img, 0, 0);
 }
 
 async function buildPreview() {
   const c = cfg();
+  await document.fonts.load("40px Lilita");
   const upright = frames.map((f, i) => rotate(f, rotations[i]));
-  const { canvas, layout } = compose(upright, { theme: c.theme, seed, footer: c.footer });
-  const ctx = canvas.getContext("2d");
-  const gray = luminance(ctx.getImageData(0, 0, W, layout.H).data, W, layout.H);
-  const bits = await dither(gray, layout.H, [{ y0: 0, y1: layout.H, opts: { gain: c.gain } }]);
+  const { canvas, layout } = compose(upright, { theme: c.theme, seed, footer: c.footer, ticket: c.ticket + 1 });
+  const gray = luminance(canvas.getContext("2d").getImageData(0, 0, W, layout.H).data, W, layout.H);
+  const bits = await dither(gray, layout.H, [{ y0: 0, y1: layout.H, opts: { gain: c.gain, bleed: 0 } }]);
   lastBits = { bits, h: layout.H };
   drawBits(bits, layout.H);
-  // ↻ badges on each photo (tap to fix a sideways shot).
-  $("paperIn").querySelectorAll(".rot").forEach((b) => b.remove());
+  $("receipt").querySelectorAll(".rot").forEach((b) => b.remove());
   layout.photos.forEach((p, i) => {
     const b = document.createElement("button");
-    b.className = "rot emoji"; b.textContent = "↻"; b.ariaLabel = "Rotate photo";
+    b.className = "sticker rot emoji"; b.textContent = "↻"; b.setAttribute("aria-label", "Rotate photo");
     b.style.top = `calc(${((p.y + p.h / 2) / layout.H) * 100}% - 26px)`;
-    b.onclick = async () => { sfx.tap(); armIdle(); rotations[i] = (rotations[i] + 90) % 360; await buildPreview(); };
-    $("paperIn").appendChild(b);
+    b.onclick = async () => { sfx.boop(); armIdle(); rotations[i] = (rotations[i] + 90) % 360; await buildPreview(); };
+    $("receipt").appendChild(b);
   });
 }
 
-// review idles back to the camera if nobody decides
 let idleT;
 function armIdle() { clearTimeout(idleT); idleT = setTimeout(() => { if ($("review").classList.contains("on")) show("cam"); }, 45000); }
-$("retake").onclick = () => { sfx.tap(); clearTimeout(idleT); show("cam"); };
+$("retake").onclick = () => { sfx.boop(); clearTimeout(idleT); show("cam"); };
 
 // ---------- print ----------
 const printTimes = [];
-function cooldownMs() {   // 1s, growing to 15s when the button gets mashed
+function cooldownMs() {   // 1s, growing to 15s when the button gets mashed (from photo-receipts)
   const now = Date.now();
   while (printTimes.length && now - printTimes[0] > 60000) printTimes.shift();
   return printTimes.length < 2 ? 1000 : Math.min(15000, 1000 + (printTimes.length - 1) * 3500);
 }
-
 async function sendBits(bits, h) {
   const c = cfg();
   return api("/api/print", { method: "POST",
@@ -428,20 +484,25 @@ async function sendBits(bits, h) {
 async function printFlow() {
   clearTimeout(idleT);
   show("printing"); $("printErr").classList.remove("on");
-  const p = $("printing"); p.classList.remove("go"); void p.offsetWidth; p.classList.add("go");
-  $("queue").textContent = "";
+  const slip = $("slip"), sw = slip.getBoundingClientRect().width || 216;
+  slip.style.backgroundImage = `url(${$("preview").toDataURL()})`;
+  slip.style.setProperty("--slip-h", `${Math.min(innerHeight * 0.55, (sw * lastBits.h) / W)}px`);
+  restart($("printing"), "go"); sfx.whirr();
+  $("queue").innerHTML = "";
   try {
     const job = await sendBits(lastBits.bits, lastBits.h);
+    S.set("ticket", cfg().ticket + 1);
     printTimes.push(Date.now());
     const until = Date.now() + 90000;
     while (Date.now() < until) {
       const s = await api("/api/jobs/" + encodeURIComponent(job.id)).catch(() => ({}));
       if (s.status === "completed") break;
-      $("queue").textContent = s.position > 1 ? "⏳" + "🧾".repeat(Math.min(5, s.position - 1)) : "";
+      $("queue").innerHTML = s.position > 1
+        ? `<div class="sticker emoji">⏳</div>` + `<div class="sticker emoji">🧾</div>`.repeat(Math.min(4, s.position - 1)) : "";
       await sleep(2000);
     }
     celebrate();
-    await sleep(2600);
+    await sleep(2400);
     show("cam");
     $("shutter").disabled = true;
     await ring("cooldown", cooldownMs(), "🎉");
@@ -452,20 +513,19 @@ async function printFlow() {
 }
 $("printBtn").onclick = () => { sfx.tap(); printFlow(); };
 $("printRetry").onclick = () => { sfx.tap(); printFlow(); };
-$("printBack").onclick = () => { sfx.tap(); show("cam"); };
+$("printBack").onclick = () => { sfx.boop(); show("cam"); };
 
 function celebrate() {
-  sfx.yay(); buzz([60, 40, 60]);
-  const d = $("done"); d.textContent = ["🎉", "🥳", "🤩", "✨"][Math.floor(Math.random() * 4)];
-  d.classList.remove("on"); void d.offsetWidth; d.classList.add("on");
-  setTimeout(() => d.classList.remove("on"), 2400);
-  const bits = ["🎉", "⭐", "💖", "🎈", "✨", THEMES[cfg().theme]?.icon ?? "📸"];
-  for (let i = 0; i < 36; i++) {
+  sfx.yay(); buzz([60, 40, 60, 40, 120]);
+  $("doneFace").textContent = ["🎉", "🥳", "🤩", "😻", "🦄"][Math.floor(Math.random() * 5)];
+  restart($("done"), "on"); setTimeout(() => $("done").classList.remove("on"), 2200);
+  const shapes = ["", "circle", "tri"];
+  for (let i = 0; i < 48; i++) {
     const s = document.createElement("div");
-    s.className = "confetti emoji"; s.textContent = bits[i % bits.length];
-    s.style.left = Math.random() * 100 + "vw"; s.style.animationDuration = 1.8 + Math.random() * 1.6 + "s";
-    s.style.animationDelay = Math.random() * 0.4 + "s";
-    document.body.appendChild(s); setTimeout(() => s.remove(), 4200);
+    s.className = "confetti " + shapes[i % 3];
+    s.style.cssText = `left:${Math.random() * 100}vw; --s:${12 + Math.random() * 16}px; --t:${1.6 + Math.random() * 1.6}s;
+      --dx:${(Math.random() - 0.5) * 30}vw; animation-delay:${Math.random() * 0.35}s; background:var(${CANDY[i % CANDY.length]})`;
+    document.body.appendChild(s); setTimeout(() => s.remove(), 3800);
   }
 }
 
@@ -479,32 +539,30 @@ function chips(el, options, key) {
   el.innerHTML = options.map(([v, label]) => `<button data-v='${JSON.stringify(v)}' class="${v === cur ? "sel" : ""}">${label}</button>`).join("");
   for (const b of el.children) b.onclick = () => { S.set(key, JSON.parse(b.dataset.v)); chips(el, options, key); };
 }
+function status(msg) { $("sStatus").hidden = !msg; $("sStatus").textContent = msg; }
 function openSettings() {
   const c = cfg();
-  $("sFooter").value = c.footer; $("sCount").value = c.count; $("sStatus").textContent = "";
+  $("sFooter").value = c.footer; $("sCount").value = c.count; status("");
   chips($("sGain"), GAINS.map((g, i) => [g, `${String.fromCharCode(65 + i)} · ${g}`]), "gain");
   chips($("sDensity"), [[5, "−2"], [4, "−1"], [3, "std"], [2, "+1"], [1, "+2"]], "density");
   chips($("sSpeed"), [[0, "fast"], [1, "mid"], [2, "slow"]], "speed");
   chips($("sSound"), [[true, "on"], [false, "off"]], "sound");
   show("settings");
 }
-$("sDone").onclick = () => {
-  S.set("footer", $("sFooter").value.trim()); S.set("count", +$("sCount").value || 3);
-  startCam();
-};
+$("sDone").onclick = () => { S.set("footer", $("sFooter").value.trim()); S.set("count", +$("sCount").value || 3); startCam(); };
 $("lockNow").onclick = () => { S.set("pin"); stopCam(); show("lock"); };
 $("fs").onclick = () => document.documentElement.requestFullscreen?.().catch(() => {});
 $("calib").onclick = async () => {
-  $("sStatus").textContent = "Printing calibration strip…";
+  status("Printing calibration strip…");
   try {
     const { gray, H, bandH } = calibrationGray(GAINS);
     const segs = GAINS.map((g, i) => ({
-      y0: i === 0 ? 0 : 20 + i * bandH, y1: i === GAINS.length - 1 ? H : 20 + (i + 1) * bandH, opts: { gain: g },
+      y0: i === 0 ? 0 : 20 + i * bandH, y1: i === GAINS.length - 1 ? H : 20 + (i + 1) * bandH, opts: { gain: g, bleed: 0 },
     }));
     const bits = await dither(gray, H, segs);
     await sendBits(bits, H);
-    $("sStatus").textContent = "Sent. Pick the band (A–E) with the most even greys below the black block.";
-  } catch (e) { $("sStatus").textContent = "Failed: " + e.message; }
+    status("Sent. Pick the band (A–E) with the most even greys below the black block.");
+  } catch (e) { status("Failed: " + e.message); }
 };
 
 // ---------- boot ----------

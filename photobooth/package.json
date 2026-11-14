@@ -1,0 +1,10 @@
+{
+  "name": "receiptd-booth",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "node --test test/design-lint.test.mjs",
+    "test": "node --test test/",
+    "deploy": "npm test && wrangler deploy"
+  }
+}
