@@ -107,6 +107,8 @@
     border:var(--line-fat) solid var(--ink); border-radius:clamp(20px, 4vmin, 34px); box-shadow:var(--shadow-lg); overflow:hidden; background:var(--ink); }
   #stage.kick { animation:shake .25s; }
   #video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  /* Like the iPhone Camera: the selfie *preview* is mirrored; captures, prints and saved photos are not. */
+  #video.mirror { transform:scaleX(-1); }
   #dots { position:absolute; top:var(--gap); left:0; right:0; display:flex; gap:10px; justify-content:center; z-index:2; }
   #dots i { width:calc(var(--tap) * .33); height:calc(var(--tap) * .33); border-radius:8px; border:var(--line) solid var(--ink); background:var(--white); box-shadow:var(--shadow-sm); }
   #dots i.done { background:var(--accent); animation:pop-in .35s var(--ease-pop); }
@@ -416,6 +418,7 @@ async function startCam() {
       video: { facingMode: facing, width: { ideal: 1920 }, height: { ideal: 1440 } } });
     streamFacing = facing;
     $("video").srcObject = stream;
+    $("video").classList.toggle("mirror", facing === "user");
     setTimeout(loadFaceDetector, 1500);   // lazy: after first paint + camera start
   } catch { sfx.boo(); $("camErr").classList.add("on"); }
 }
@@ -442,8 +445,8 @@ function applyTheme() {
 }
 
 /**
- * Grab the current frame as the camera sees it (never mirrored, not even for
- * selfies: the preview isn't mirrored either), upright,
+ * Grab the current frame as the camera sees it (never mirrored — only the
+ * on-screen selfie preview is, like the iPhone Camera), upright,
  * capped at 1440px for compose. `full` is the camera's native-size frame for
  * the archive (not rotated yet: that happens when it's encoded, in the background).
  */
