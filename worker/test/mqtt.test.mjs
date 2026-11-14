@@ -114,11 +114,11 @@ test("serverSetting builds the Trigger POST settings", () => {
   assert.deepEqual(s, {
     title: "star_cloudprnt_server_setting",
     version: "1.0.0",
-    reloadIntervalMin: 60,
+    reloadIntervalMin: 1440,
     serverSupportProtocol: ["HTTP", "MQTT"],
     settingForMQTT: {
       useTriggerPOST: true,
-      pollingTimeSec: 30,
+      pollingTimeSec: 300,
       mqttConnectionSetting: {
         hostName: "abc123.ala.us-east-1.emqxsl.com",
         portNumber: 8883,

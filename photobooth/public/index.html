@@ -721,8 +721,14 @@ async function printFlow() {
     for (let i = 0; i < n; i++) printTimes.push(Date.now());   // copies count toward anti-mash
     const until = Date.now() + 60000 + 30000 * n;
     const perCopyMs = 1500 + lastBits.h * 2;   // rough print time per strip
-    let printingSince = 0, shown = 0;
+    let printingSince = 0, shown = 0, nudges = 0;
+    const sentAt = Date.now();
     while (Date.now() < until) {
+      // If the printer hasn't finished after ~6 s (+ print time), re-send the
+      // MQTT "poll now" in case the first trigger got lost. Up to 5 nudges.
+      if (nudges < 5 && Date.now() - sentAt > 6000 * (nudges + 1) + perCopyMs * (n - 1)) {
+        nudges++; api("/api/nudge", { method: "POST" }).catch(() => {});
+      }
       const s = await api("/api/jobs/" + encodeURIComponent(id)).catch(() => ({}));
       showPrinter(s.printer);
       if (s.status === "completed") { renderTicks(n, n); break; }

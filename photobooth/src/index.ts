@@ -161,6 +161,15 @@ export default {
       return json(200, { id: m[1], ...s, printer: printerHealth(raw) });
     }
 
+    // POST /api/nudge — re-send the MQTT "poll now" (the booth calls this if a
+    // job hasn't printed after a few seconds, so a lost trigger never waits
+    // for the long fallback poll).
+    if (url.pathname === "/api/nudge" && req.method === "POST") {
+      const r = await triggerPrinterPoll(env, env.PRINTER_MAC);
+      console.log("mqtt-nudge", JSON.stringify(r));
+      return json(200, r);
+    }
+
     // GET /api/printer — paper / cover / online, for the kid-facing 🧻 sticker.
     if (url.pathname === "/api/printer" && req.method === "GET") {
       return json(200, printerHealth(await env.JOBS_KV.get(`printer:${env.PRINTER_ID}:status`)));

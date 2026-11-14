@@ -55,7 +55,8 @@ MQTT_API_URL = "https://u2f2f216.ala.us-east-1.emqxsl.com:8443/api/v5"
 MQTT_BROKER_HOST = "u2f2f216.ala.us-east-1.emqxsl.com"
 MQTT_BROKER_PORT = "8883"
 MQTT_PRINTER_USERNAME = "printer-prod-3838"
-MQTT_FALLBACK_POLL_SEC = "30"
+MQTT_FALLBACK_POLL_SEC = "300"   # safety-net poll; MQTT triggers + booth nudges do the real work
+MQTT_SETTINGS_RELOAD_MIN = "1440" # printer re-reads its MQTT settings daily (power cycle = immediate)
 # Max KV TTL on job signals (seconds). 24h default — Fly should DELETE on ack.
 JOB_SIGNAL_TTL = "86400"
 

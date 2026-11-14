@@ -34,6 +34,8 @@ export type MqttEnv = {
    *  Without it the printer stops periodic polling entirely, so a lost
    *  trigger would strand a job until the next one. */
   MQTT_FALLBACK_POLL_SEC?: string;
+  /** Printer re-reads cloudprnt-setting.json every N minutes (default 1440 = daily). */
+  MQTT_SETTINGS_RELOAD_MIN?: string;
   /** Kill switch: "0"/"false"/"off" serves 404 (HTTP-only) and no-ops triggers. */
   MQTT_ENABLED?: string;
 };
@@ -204,11 +206,14 @@ export function serverSetting(env: MqttEnv, printerId: string): ServerSetting | 
   return {
     title: "star_cloudprnt_server_setting",
     version: "1.0.0",
-    reloadIntervalMin: 60,
+    // How often the printer re-reads this file. Long by default: a power cycle
+    // always applies changes immediately.
+    reloadIntervalMin: intOr(env.MQTT_SETTINGS_RELOAD_MIN, 1440, 5, 10080),
     serverSupportProtocol: ["HTTP", "MQTT"],
     settingForMQTT: {
       useTriggerPOST: true,
-      pollingTimeSec: intOr(env.MQTT_FALLBACK_POLL_SEC, 30, 5, 3600),
+      // Safety-net HTTP poll; triggers do the real work (and the booth re-nudges).
+      pollingTimeSec: intOr(env.MQTT_FALLBACK_POLL_SEC, 300, 5, 3600),
       mqttConnectionSetting: {
         hostName: host,
         portNumber: intOr(env.MQTT_BROKER_PORT, 8883, 1, 65535),
