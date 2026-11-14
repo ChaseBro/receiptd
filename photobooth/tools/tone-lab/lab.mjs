@@ -5,7 +5,7 @@ import { readdirSync, mkdirSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { decodePNG, encodeGrayPNG } from "./png.mjs";
-import { currentToneMap, photoReceiptsTone, photoReceiptsParams, faceTone, unsharp, gaussian, inverseLUT } from "./tone.mjs";
+import { PR_PORTRAIT, currentToneMap, photoReceiptsTone, photoReceiptsParams, faceTone, unsharp, gaussian, inverseLUT } from "./tone.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const OUT = join(HERE, "out");
@@ -75,12 +75,14 @@ const LUT = inverseLUT(TRC);
 // ------------------------------------------------------------ candidates
 const CANDS = {
   current: (g) => currentToneMap(g),
-  photoReceipts: (g) => photoReceiptsTone(g),
+  "pr-auto": (g) => photoReceiptsTone(g),
+  "pr-portrait": (g) => photoReceiptsTone(g, PR_PORTRAIT),
   "current+usm": (g, w, h) => unsharp(currentToneMap(g), w, h, 0.7),
   "clahe-only": (g, w, h) => faceTone(g, w, h, { mid: 0.5, black: 0, shoulder: 1, white: 255, local: 0.6, sharpen: 0 }),
   "face-nolut": (g, w, h) => faceTone(g, w, h),
   face: (g, w, h) => faceTone(g, w, h, { lut: LUT }),
   "face-soft": (g, w, h) => faceTone(g, w, h, { lut: LUT, local: 0.3, sharpen: 0.5, black: 18, white: 244 }),
+  "face-punch": (g, w, h) => faceTone(g, w, h, { lut: LUT, mid: 0.55, black: 6, local: 0.5, sharpen: 0.8 }),
 };
 
 // ------------------------------------------------------------ metrics
@@ -132,7 +134,7 @@ function metrics(orig, target, bits, w, h) {
 // ------------------------------------------------------------ run
 const files = readdirSync(SRC).filter((f) => !f.startsWith("."));
 const rows = [], agg = {};
-const SHEET = ["current", "photoReceipts", "face", "face-soft"];
+const SHEET = (process.env.SHEET || "current,pr-portrait,face,face-punch").split(",");
 for (const f of files) {
   let img;
   try { img = decodePNG(join(SRC, f)); } catch (e) { console.log(`skip ${f}: ${e.message}`); continue; }
@@ -142,7 +144,7 @@ for (const f of files) {
   for (const [k, fn] of Object.entries(CANDS)) {
     const target = fn(orig, TW, TH);
     for (const serp of [false, true]) {
-      if (serp && !["current", "face"].includes(k)) continue;
+      if (serp && !["current", "face", "face-punch"].includes(k)) continue;
       const key = serp ? `${k}+serp` : k;
       const bits = atkinson(target, TW, TH, { serpentine: serp });
       const m = metrics(orig, target, bits, TW, TH);
@@ -190,3 +192,16 @@ console.log(`faceTone: ${((performance.now() - t0) / 20).toFixed(1)} ms per 3 ti
 const t1 = performance.now();
 for (let i = 0; i < 20; i++) for (const r of rows.slice(0, 3)) currentToneMap(r.orig);
 console.log(`current toneMap: ${((performance.now() - t1) / 20).toFixed(1)} ms per 3 tiles`);
+
+// 2× zoom crops of the centre (face) region: current | face | face+serp | face-punch
+{
+  const zc = ["current", "face", "face+serp", "face-punch"], cw = 200, chh = 170, Z = 2;
+  const zw = zc.length * cw * Z + (zc.length - 1) * G, zh = rows.length * (chh * Z + G);
+  const z = new Float32Array(zw * zh).fill(255);
+  rows.forEach((r, ri) => zc.forEach((c, ci) => {
+    const g = bitsToGray(r.out[c]), x0 = (TW - cw) >> 1, y0 = 60;
+    for (let y = 0; y < chh * Z; y++) for (let x = 0; x < cw * Z; x++)
+      z[(ri * (chh * Z + G) + y) * zw + ci * (cw * Z + G) + x] = g[(y0 + ((y / Z) | 0)) * TW + x0 + ((x / Z) | 0)];
+  }));
+  encodeGrayPNG(join(OUT, "zoom-centre.png"), z, zw, zh);
+}

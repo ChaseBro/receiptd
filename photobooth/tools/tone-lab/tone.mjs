@@ -98,8 +98,9 @@ export function photoReceiptsParams(gray) {
   }
   return p;
 }
-export function photoReceiptsTone(gray) {
-  const p = photoReceiptsParams(gray);
+export const PR_PORTRAIT = { brightness: 15, contrast: 10, gamma: 1.3, norm: [2, 97], scene: "portrait" };
+export function photoReceiptsTone(gray, fixed) {
+  const p = fixed || photoReceiptsParams(gray);
   const q = (v) => Math.round(clamp255(v));
   let g = Float32Array.from(gray, (v) => q(v + (p.brightness / 100) * 255));
   const f = (p.contrast + 100) / 100;

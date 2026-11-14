@@ -66,13 +66,14 @@ const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
  *                 tones print exactly like plain dithering.
  *   refRadius: box radius for the local target density used by "tone".
  *   neg: allow negative penalty (cold head → model adds dots).
+ *   jitter: threshold noise amplitude (breaks Atkinson worms/mazes).
  *   tailRows/tailKeep: inside solid black, within tailRows rows above a light
  *                 area, fire only ~tailKeep (ramped) of dots on a Bayer mask to
  *                 cool the head before the edge.
  */
 export function ditherModel(gray, w, h, opts = {}) {
   const p = { ...RASTER_DEFAULTS, kernel: "atkinson", serpentine: false, ref: "abs", refRadius: 2, neg: false,
-    tailRows: 0, tailKeep: 1, ...opts };
+    tailRows: 0, tailKeep: 1, jitter: 0, ...opts };
   const K = KERNELS[p.kernel];
   const want = new Float32Array(w * h);
   for (let i = 0; i < want.length; i++) want[i] = 1 - gray[i] / 255;
@@ -116,7 +117,9 @@ export function ditherModel(gray, w, h, opts = {}) {
         bits[i] = BAYER4[(y & 3) * 4 + (x & 3)] < keep * 16 ? 1 : 0;
         continue;
       }
-      fired = want[i] > (ifFired + ifNot) / 2;
+      let thr = (ifFired + ifNot) / 2;
+      if (p.jitter) { let k = Math.imul(x, 0x27d4eb2d) ^ Math.imul(y, 0x165667b1); k = Math.imul(k ^ (k >>> 15), 0x85ebca6b); k ^= k >>> 13; thr += p.jitter * ((k >>> 0) / 4294967296 - 0.5); }
+      fired = want[i] > thr;
       bits[i] = fired ? 1 : 0;
       const e = want[i] - (fired ? ifFired : ifNot);
       for (const [dx, dy, wt] of K) {

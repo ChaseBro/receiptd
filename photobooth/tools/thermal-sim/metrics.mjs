@@ -63,3 +63,29 @@ export function photoMetrics(P, Pplain, target, w, h) {
   const sa = stats(a), sb = stats(b);
   return { bias: sa.mean - sb.mean, contrast: sa.std / sb.std, localC: lc / lcp, mseT: mse / a.length };
 }
+
+/** Zig-zag / outline+offset / partial offset ghosts on skin grey (edges()). */
+export function edgeMetrics(P, im) {
+  const { w } = im, m = (x0, y0, x1, y1) => regionMean(P, w, x0, y0, x1, y1);
+  return {
+    gZig: m(0, 14, w, 34) - m(0, 100, w, 134),
+    gBlock: m(0, 150, w, 170) - m(0, 236, w, 270),
+    gOffset: m(300, 280, w, 300) - m(0, 280, 276, 300),
+    skin: m(0, 236, w, 270),
+  };
+}
+
+/** Visible texture (worms/maze) in flat tones: std of P minus its 21px box mean. */
+export function textureMetrics(P, im) {
+  const { w, h } = im, lo = boxBlur(P, w, h, 10);
+  const out = {};
+  im.levels.forEach((v, k) => {
+    let s = 0, n = 0, mean = 0;
+    for (let y = k * 120 + 20; y < k * 120 + 100; y++) for (let x = 20; x < w - 20; x++) {
+      const i = y * w + x; s += (P[i] - lo[i]) ** 2; mean += P[i]; n++;
+    }
+    out[`tex${v}`] = Math.sqrt(s / n); out[`tone${v}`] = mean / n;
+  });
+  out.tex = (out.tex230 + out.tex200 + out.tex170 + out.tex128) / 4;
+  return out;
+}
