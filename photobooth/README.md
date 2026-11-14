@@ -47,6 +47,20 @@ Guests unlock with a shared PIN (`BOOTH_PIN`), cached in `localStorage`.
 Settings (long-press top-right) set footer, countdown, anti-ghost gain,
 density, speed, and sounds per device, and can re-lock the booth.
 
+## Release flow (don't test on the live booth)
+
+```sh
+npm test                 # raster tests + design lint
+npm run deploy:staging   # → https://booth-staging.receiptd.sh (real printer)
+#   …verify on the iPad / WebKit…
+npm run deploy           # → https://booth.receiptd.sh
+```
+
+Open kiosks poll `/api/version` and reload themselves after a production
+deploy, but only once they have been untouched for 2 minutes on the camera
+screen. To stop Safari asking for the camera on every load, set
+**aA → Website Settings → Camera → Allow**.
+
 ## Deploy
 
 ```sh

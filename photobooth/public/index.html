@@ -375,12 +375,17 @@ $("lockForm").onsubmit = async (e) => {
 
 // ---------- camera ----------
 let stream = null, facing = "user";
+let streamFacing = null;
 async function startCam() {
-  show("cam"); stopCam(); $("camErr").classList.remove("on");
+  show("cam"); $("camErr").classList.remove("on");
   applyTheme(); renderMode(); keepAwake();
+  // Reuse a live stream: every new getUserMedia can re-trigger Safari's prompt.
+  if (stream && streamFacing === facing && stream.getVideoTracks().some((t) => t.readyState === "live")) return;
+  stopCam();
   try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: false,
       video: { facingMode: facing, width: { ideal: 1920 }, height: { ideal: 1440 } } });
+    streamFacing = facing;
     $("video").srcObject = stream;
     $("video").classList.toggle("mirror", facing === "user");
   } catch { sfx.boo(); $("camErr").classList.add("on"); }
@@ -611,11 +616,14 @@ $("calib").onclick = async () => {
 };
 
 // ---------- auto-update: reload idle kiosks after a deploy ----------
-let version = null;
+let version = null, lastTouch = Date.now();
+document.addEventListener("pointerdown", () => { lastTouch = Date.now(); }, true);
 async function checkVersion() {
   try {
     const { id } = await (await fetch("/api/version", { cache: "no-store" })).json();
-    if (version && id !== version && $("cam").classList.contains("on") && !busy) location.reload();
+    // Only reload an untouched booth (reloads can re-prompt for the camera).
+    const idle = Date.now() - lastTouch > 120000;
+    if (version && id !== version && idle && $("cam").classList.contains("on") && !busy) location.reload();
     version ??= id;
   } catch {}
 }
