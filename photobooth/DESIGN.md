@@ -15,10 +15,8 @@ It should feel like a **toy**, not an app. If a screen could ship in a banking a
    `--ease-pop`. One-shot animations run ≤ 600 ms; only ambient loops run longer.
 5. **Paper is the hero.** The preview is real receipt paper with torn zig-zag
    edges, and it feeds out of a printer drawn on screen.
-6. **Prints are ink only, and light on solid black.** Strip art is pure
-   `#000`/`#fff`: outlines, thin sunburst rays, halftone dots, zig-zags. Only
-   photos have tones. Big solid blacks overheat the print head and leave grey
-   haze on the paper after them, so prefer outlines to solid masses. No titles; the
+6. **Prints are ink only.** Strip art is pure `#000`/`#fff`: offset blocks,
+   sunbursts, halftone dots, zig-zags. Only photos have tones. No titles; the
    ticket stub (number + date) is the only type on paper.
 
 ## Tokens (`:root` in `public/index.html`)
@@ -40,10 +38,9 @@ Tap targets for kids are at least **72px**, and the shutter is at least **140px*
 
 ## Print themes (`public/frames.js`)
 
-Every strip has photos in fat outlined frames with a black shadow down their
-right edge (never under them: black rows haze the paper that follows), zig-zag
-torn edges at the top and bottom, and a perforated ticket stub with an outlined
-`№042` and an outlined date pill. Each theme adds a header band with no text plus
+Every strip has photos in fat outlined frames with a black offset block behind
+them, zig-zag torn edges at the top and bottom, and a perforated ticket stub
+with `№ 042` and the date. Each theme adds a header band with no text plus
 scattered decorations: 🎞️ film · ⭐ sunburst · 💖 scallops · 🎉 bunting +
 halftone · 🦖 footprints + grass · 🚀 orbits + starfield · 📷 bold (stub only).
 
