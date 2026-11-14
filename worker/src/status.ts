@@ -1,7 +1,7 @@
 // Printer status capture. Each POST poll updates KV:printer:<id>:status
 // with a change-detection + heartbeat gate so write volume stays bounded.
 //
-// Budget: ~17,280 polls/day/printer at 5s cadence.
+// Budget: ~43,200 polls/day/printer at the 2s idle cadence (17,280 at 5s).
 //   - Reads: 1/poll (to check prior snapshot).
 //   - Writes: only when material fields change OR lastSeenAt > 60s old.
 //     Steady-state → ~1,440 writes/day/printer (liveness heartbeats) plus

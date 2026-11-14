@@ -1,10 +1,17 @@
 import { Hono } from "hono";
 import { parseBasicAuth, timingSafeEqual, verifyAdminSignature } from "./auth";
-import { ackPop, drain, enqueue, peek } from "./queue";
+import { ackPop, drain, enqueue, peek, type QueueNamespace } from "./queue";
 import { statusKey, updatePrinterStatus } from "./status";
 
+// The Durable Object class must be exported from the main module so wrangler
+// can bind it (here, and from receiptd-booth via script_name).
+export { PrinterQueue } from "./queue";
+
 export type Env = {
+  // Printer secrets + status snapshots (rarely-changing / admin-read only, so
+  // KV's eventual consistency is fine). The job queue lives in PRINTER_QUEUE.
   JOBS_KV: KVNamespace;
+  PRINTER_QUEUE: QueueNamespace;
   JOBS_R2: R2Bucket;
   FLY_HMAC_SECRET: string;
   JOB_SIGNAL_TTL: string;
@@ -12,6 +19,14 @@ export type Env = {
 
 const CPRNT_CONTENT_TYPE = "application/vnd.star.cloudprnt";
 const STARPRNT_MEDIA = "application/vnd.star.starprnt";
+
+// Empty-queue poll cadence. 2s (was 5s) is a stopgap to cut enqueue→print
+// latency until MQTT trigger-POST lands. Cost: every poll is 1 DO request +
+// 2 KV reads (secret, status) — ~43k/day/printer at 2s vs ~17k at 5s. Status
+// KV writes stay heartbeat-gated (~1/min), so they don't scale with this.
+const IDLE_POLL_INTERVAL_SEC = 2;
+// With a job ready the printer GETs immediately; keep the old cadence.
+const JOB_POLL_INTERVAL_SEC = 5;
 
 const secretKey = (printerId: string) => `printer:${printerId}:secret`;
 
@@ -60,13 +75,13 @@ app.post("/cprnt/:printerId", async (c) => {
   }
   c.executionCtx.waitUntil(updatePrinterStatus(c.env.JOBS_KV, printerId, parsed));
 
-  const head = await peek(c.env.JOBS_KV, printerId);
+  const head = await peek(c.env.PRINTER_QUEUE, printerId);
   if (!head) {
     return c.json(
       {
         jobReady: false,
         mediaTypes: [STARPRNT_MEDIA],
-        pollInterval: 5,
+        pollInterval: IDLE_POLL_INTERVAL_SEC,
         deleteMethod: "DELETE",
       },
       200,
@@ -78,7 +93,7 @@ app.post("/cprnt/:printerId", async (c) => {
       jobReady: true,
       mediaTypes: [head.contentType],
       jobToken: head.jobId,
-      pollInterval: 5,
+      pollInterval: JOB_POLL_INTERVAL_SEC,
       deleteMethod: "DELETE",
     },
     200,
@@ -94,7 +109,7 @@ app.get("/cprnt/:printerId", async (c) => {
   // CloudPRNT spec: printer may pass the `token` from the poll response as
   // a query param. When present, verify we're serving the expected job.
   const token = new URL(c.req.url).searchParams.get("token");
-  const head = await peek(c.env.JOBS_KV, printerId);
+  const head = await peek(c.env.PRINTER_QUEUE, printerId);
   if (!head) return new Response("no job", { status: 404 });
   if (token && token !== head.jobId) {
     // Head advanced between poll and GET — printer should re-poll for the
@@ -123,7 +138,7 @@ app.delete("/cprnt/:printerId", async (c) => {
   // (e.g. a slow printer's ack that arrived after the queue advanced) is
   // silently dropped rather than clobbering newer jobs.
   const token = new URL(c.req.url).searchParams.get("token");
-  const popped = await ackPop(c.env.JOBS_KV, printerId, token);
+  const popped = await ackPop(c.env.PRINTER_QUEUE, printerId, token);
   if (popped) {
     // Fly is source of truth for job state; R2 cleanup is best-effort.
     c.executionCtx.waitUntil(c.env.JOBS_R2.delete(popped.r2Key).catch(() => {}));
@@ -139,7 +154,7 @@ app.delete("/cprnt/:printerId", async (c) => {
  * POST /admin/jobs
  * Body: raw StarPRNT binary (application/vnd.star.starprnt).
  * Headers: X-Printer-Id, X-Job-Id, X-Signature, X-Timestamp.
- * Effect: store binary in R2, set KV signal. Printer's next poll returns jobReady.
+ * Effect: store binary in R2, enqueue on the PrinterQueue DO. Printer's next poll returns jobReady.
  */
 app.post("/admin/jobs", async (c) => {
   const printerId = c.req.header("X-Printer-Id");
@@ -163,7 +178,7 @@ app.post("/admin/jobs", async (c) => {
     httpMetadata: { contentType },
   });
 
-  const result = await enqueue(c.env.JOBS_KV, printerId, {
+  const result = await enqueue(c.env.PRINTER_QUEUE, printerId, {
     jobId,
     r2Key,
     contentType,
@@ -226,7 +241,7 @@ app.delete("/admin/printers/:printerId/secret", async (c) => {
   const verify = await verifyAdminSignature(c.req.raw, c.env.FLY_HMAC_SECRET, bodyBytes);
   if (!verify.ok) return c.json({ error: verify.reason }, 401);
 
-  const dropped = await drain(c.env.JOBS_KV, printerId);
+  const dropped = await drain(c.env.PRINTER_QUEUE, printerId);
   await Promise.all([
     c.env.JOBS_KV.delete(secretKey(printerId)),
     c.env.JOBS_KV.delete(statusKey(printerId)),

@@ -16,7 +16,19 @@ routes = [
 [observability]
 enabled = true
 
-# KV: signals "job ready for printer <id>" + per-printer HTTP Basic secrets.
+# Durable Object: per-printer job queue (one SQLite-backed instance per
+# printerId). Strongly consistent, atomic enqueue/ack. receiptd-booth binds
+# the same class via script_name = "receiptd-cprnt".
+[[durable_objects.bindings]]
+name = "PRINTER_QUEUE"
+class_name = "PrinterQueue"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["PrinterQueue"]
+
+# KV: per-printer HTTP Basic secrets + status snapshots. (Pre-DO it also held
+# the job queue at printer:<id>:jobs; the DO imports + deletes that once.)
 # Create with: wrangler kv namespace create receiptd_jobs
 # Then paste the returned id below.
 [[kv_namespaces]]

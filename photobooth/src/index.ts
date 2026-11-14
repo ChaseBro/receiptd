@@ -3,16 +3,17 @@
 // No Fly, no laptop: the browser composes and dithers the strip to a 1-bit
 // 576px raster, this Worker wraps it in StarPRNT (the same bytes cputil emits
 // for an `[image]` + `[cut]` job) and drops it on the printer's existing
-// CloudPRNT queue in KV/R2. The receiptd-cprnt Worker serves it on the
-// printer's next poll over WiFi.
+// CloudPRNT queue (PrinterQueue Durable Object, bodies in R2). The
+// receiptd-cprnt Worker owns the DO class and serves it on the printer's next
+// poll over WiFi.
 
-import { enqueueMany, jobsKey, type JobSignal } from "../../worker/src/queue";
+import { enqueueMany, jobStatus, type JobSignal, type QueueNamespace } from "../../worker/src/queue";
 import { buildStarPRNT, RASTER_WIDTH_PX } from "./starprnt";
 
 interface Env {
   ASSETS: Fetcher;
   CF_VERSION_METADATA?: { id: string };
-  JOBS_KV: KVNamespace;
+  PRINTER_QUEUE: QueueNamespace;
   JOBS_R2: R2Bucket;
   PRINTER_ID: string;
   BOOTH_PIN: string;
@@ -46,17 +47,6 @@ function b64decode(s: string): Uint8Array {
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
-}
-
-async function queueIds(env: Env): Promise<string[]> {
-  const raw = await env.JOBS_KV.get(jobsKey(env.PRINTER_ID));
-  if (!raw) return [];
-  try {
-    const q = JSON.parse(raw) as { jobs?: JobSignal[] };
-    return (q.jobs ?? []).map((j) => j.jobId);
-  } catch {
-    return [];
-  }
 }
 
 export default {
@@ -140,7 +130,7 @@ export default {
       });
       await Promise.all(sigs.map((s, i) =>
         env.JOBS_R2.put(s.r2Key, bins[Math.min(i, bins.length - 1)]!, { httpMetadata: { contentType: STARPRNT_MEDIA } })));
-      const res = await enqueueMany(env.JOBS_KV, env.PRINTER_ID, sigs);
+      const res = await enqueueMany(env.PRINTER_QUEUE, env.PRINTER_ID, sigs);
       for (const ev of res.evicted) ctx.waitUntil(env.JOBS_R2.delete(ev.r2Key).catch(() => {}));
       const ids = sigs.map((s) => s.jobId);
       // `id` is the last copy: it completes once every copy has printed (FIFO).
@@ -150,11 +140,8 @@ export default {
     // GET /api/jobs/:id — "completed" once the printer has acked (popped it).
     const m = url.pathname.match(/^\/api\/jobs\/([A-Za-z0-9_-]+)$/);
     if (m && req.method === "GET") {
-      const ids = await queueIds(env);
-      const idx = ids.indexOf(m[1]!);
-      return idx === -1
-        ? json(200, { id: m[1], status: "completed" })
-        : json(200, { id: m[1], status: idx === 0 ? "printing" : "pending", position: idx + 1 });
+      const s = await jobStatus(env.PRINTER_QUEUE, env.PRINTER_ID, m[1]!);
+      return json(200, { id: m[1], ...s });
     }
 
     return json(404, { error: "not_found" });
