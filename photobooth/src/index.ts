@@ -6,7 +6,7 @@
 // CloudPRNT queue in KV/R2. The receiptd-cprnt Worker serves it on the
 // printer's next poll over WiFi.
 
-import { enqueue, jobsKey, type JobSignal } from "../../worker/src/queue";
+import { enqueueMany, jobsKey, type JobSignal } from "../../worker/src/queue";
 import { buildStarPRNT, RASTER_WIDTH_PX } from "./starprnt";
 
 interface Env {
@@ -21,6 +21,7 @@ interface Env {
 const STARPRNT_MEDIA = "application/vnd.star.starprnt";
 const MAX_HEIGHT_PX = 4000; // ~50cm of paper
 const MAX_BODY = 2 * 1024 * 1024;
+const MAX_COPIES = 6; // keep in sync with public/copies.js
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -76,13 +77,14 @@ export default {
       return json(200, { ok: true });
     }
 
-    // POST /api/print { width: 576, height, bits: base64 } — 1 bit/px, MSB
-    // first, 1 = black, rows packed to width/8 bytes.
+    // POST /api/print { width: 576, height, bits: base64, copies?: 1..6 } —
+    // 1 bit/px, MSB first, 1 = black, rows packed to width/8 bytes. Returns
+    // { id, ids } — one job per copy, in print order.
     if (url.pathname === "/api/print" && req.method === "POST") {
       if (Number(req.headers.get("content-length") ?? "0") > MAX_BODY) {
         return json(413, { error: "too_large" });
       }
-      let body: { width?: unknown; height?: unknown; bits?: unknown; density?: unknown; speed?: unknown };
+      let body: { width?: unknown; height?: unknown; bits?: unknown; density?: unknown; speed?: unknown; copies?: unknown };
       try {
         body = await req.json();
       } catch {
@@ -111,21 +113,25 @@ export default {
         typeof v === "number" && Number.isInteger(v) && v >= lo && v <= hi ? v : undefined;
       const settings = { density: intIn(body.density, 0, 6), speed: intIn(body.speed, 0, 2) };
 
-      const jobId = `booth-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 8)}`;
-      const r2Key = `jobs/${jobId}.bin`;
-      await env.JOBS_R2.put(r2Key, buildStarPRNT(raster, height, settings), {
-        httpMetadata: { contentType: STARPRNT_MEDIA },
+      const copies = body.copies === undefined ? 1 : intIn(body.copies, 1, MAX_COPIES);
+      if (copies === undefined) return json(400, { error: "invalid_copies" });
+
+      // One R2 object per copy: receiptd-cprnt deletes a job's r2Key when the
+      // printer acks it, so a shared key would vanish after the first copy.
+      const base = `booth-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 8)}`;
+      const bin = buildStarPRNT(raster, height, settings);
+      const now = Date.now();
+      const sigs: JobSignal[] = Array.from({ length: copies }, (_, i) => {
+        const jobId = copies === 1 ? base : `${base}-c${i + 1}`;
+        return { jobId, r2Key: `jobs/${jobId}.bin`, contentType: STARPRNT_MEDIA, createdAt: now };
       });
-      const res = await enqueue(env.JOBS_KV, env.PRINTER_ID, {
-        jobId,
-        r2Key,
-        contentType: STARPRNT_MEDIA,
-        createdAt: Date.now(),
-      });
-      if (res.evicted) {
-        ctx.waitUntil(env.JOBS_R2.delete(res.evicted.r2Key).catch(() => {}));
-      }
-      return json(201, { id: jobId, status: "pending", position: res.depth });
+      await Promise.all(sigs.map((s) =>
+        env.JOBS_R2.put(s.r2Key, bin, { httpMetadata: { contentType: STARPRNT_MEDIA } })));
+      const res = await enqueueMany(env.JOBS_KV, env.PRINTER_ID, sigs);
+      for (const ev of res.evicted) ctx.waitUntil(env.JOBS_R2.delete(ev.r2Key).catch(() => {}));
+      const ids = sigs.map((s) => s.jobId);
+      // `id` is the last copy: it completes once every copy has printed (FIFO).
+      return json(201, { id: ids[ids.length - 1], ids, status: "pending", position: res.depth });
     }
 
     // GET /api/jobs/:id — "completed" once the printer has acked (popped it).

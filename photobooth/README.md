@@ -19,6 +19,15 @@ finish, and an anti-mashing cooldown ring (1–15 s; UX borrowed from
 `ChaseBro/photo-receipts`). The screen stays awake (Wake Lock). Long-press the
 top-right corner for 1.5 s to open adult settings.
 
+The review screen has a copies picker (➖ 🧾×N ➕, 1–6). It defaults to one
+copy per face: `public/faces.js` runs MediaPipe's BlazeFace short-range
+detector on-device (self-hosted WASM in `public/vendor/`, lazy-loaded after
+the camera starts; falls back to 1 copy if it's missing or slow) and takes the
+most faces in any frame. The face boxes are also passed to `compose()` as
+`faces`. `POST /api/print` takes `copies` and enqueues one job (and one R2
+object, since the printer worker deletes it on ack) per copy; the printing
+screen ticks off a 🧾 per copy, and every copy counts toward the cooldown.
+
 Photos are turned upright from the phone's tilt sensor at capture time; tap ↻
 on a photo in the review screen to fix one by hand. Strips are laid out at
 576px (80mm @ 203dpi) with a theme frame (`public/frames.js`), a date/time

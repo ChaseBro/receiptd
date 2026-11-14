@@ -90,6 +90,27 @@ export async function enqueue(
   return { depth: q.jobs.length, evicted };
 }
 
+export type EnqueueManyResult = {
+  depth: number;
+  evicted: JobSignal[];
+};
+
+/**
+ * Append several jobs with one KV read + write, so they land contiguously
+ * (e.g. multiple copies of one booth strip). Same FIFO eviction as enqueue.
+ */
+export async function enqueueMany(
+  kv: KVNamespace,
+  printerId: string,
+  sigs: JobSignal[],
+): Promise<EnqueueManyResult> {
+  const q = await loadQueue(kv, printerId);
+  q.jobs.push(...sigs);
+  const evicted = q.jobs.length > MAX_QUEUE ? q.jobs.splice(0, q.jobs.length - MAX_QUEUE) : [];
+  await saveQueue(kv, printerId, q);
+  return { depth: q.jobs.length, evicted };
+}
+
 /**
  * Return the head of the queue without modifying it.
  * Used by POST poll and GET binary fetch.

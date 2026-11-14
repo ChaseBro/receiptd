@@ -54,6 +54,7 @@
     --tap:clamp(46px, 9.5vmin, 80px);
     --shutter:clamp(96px, 22vmin, 190px);
     --gap:clamp(8px, 2vmin, 18px);
+    --pick:clamp(64px, 11vmin, 84px);
     --zigzag:
       conic-gradient(from -45deg at bottom, transparent, var(--ink) 1deg 89deg, transparent 90deg) bottom / var(--zz) 51% repeat-x,
       conic-gradient(from 135deg at top, transparent, var(--ink) 1deg 89deg, transparent 90deg) top / var(--zz) 51% repeat-x;
@@ -164,11 +165,25 @@
   @keyframes feed-in { from { translate:0 -60px; opacity:0 } }
   .rot { position:absolute; right:-22px; width:52px; height:52px; font-size:28px; background:var(--sky); --tilt:8deg; z-index:2; }
   #review .row { position:relative; }
+  #actions { position:relative; display:flex; flex-direction:column; align-items:center; gap:calc(var(--gap) * 1.2); }
+  /* copies picker: ➖ [🧾 × N] ➕, with 🙂 per face found above it */
+  #copies { display:flex; flex-direction:column; align-items:center; gap:6px; }
+  #faces { display:flex; gap:2px; min-height:calc(var(--tap) * .5); font-size:calc(var(--tap) * .42); align-items:center; }
+  #faces span { animation:pop-in .35s var(--ease-pop) backwards; }
+  .pick { display:flex; align-items:center; gap:calc(var(--gap) * 1.1); }
+  .pm { width:var(--pick); height:var(--pick); font-size:calc(var(--pick) * .48); background:var(--white); }
+  #less { --tilt:-6deg; } #more { --tilt:6deg; background:var(--accent-2); }
+  .pm.off { opacity:.4; }
+  #nCopies { height:calc(var(--pick) * 1.08); padding:0 calc(var(--pick) * .22); gap:4px; border-radius:22px; --tilt:-2deg;
+    font-family:var(--font-display); font-size:calc(var(--pick) * .62); }
+  #nCopies .emoji { font-size:calc(var(--pick) * .56); }
+  #nCopies.tick { animation:bump .3s var(--ease-pop); }
+  @keyframes bump { 40% { scale:1.22 } }
   @media (orientation: landscape) {
     #review { flex-direction:row; justify-content:center; gap:6vw; padding-top:calc(env(safe-area-inset-top) + 12px); }
     #paper { flex:0 0 auto; width:auto; height:100%; padding:10px 24px 26px; }
     #receipt { width:min(38vw, 330px); }
-    #review .row { flex-direction:column; }
+    #actions { gap:calc(var(--gap) * 2); }
   }
   #printBtn span { display:block; animation:bob 1.2s ease-in-out infinite; }
 
@@ -186,6 +201,11 @@
   @keyframes feed { to { height:var(--slip-h, 300px); } }
   #queue { position:relative; margin-top:26px; display:flex; gap:10px; min-height:56px; }
   #queue .sticker { width:56px; height:56px; font-size:28px; background:var(--white); }
+  #ticks { position:relative; margin-top:22px; display:flex; flex-wrap:wrap; justify-content:center; gap:8px; max-width:92vw; }
+  #ticks .sticker { width:52px; height:52px; font-size:26px; border-radius:14px; opacity:.55; }
+  #ticks .sticker:nth-child(odd) { --tilt:-5deg; } #ticks .sticker:nth-child(even) { --tilt:4deg; }
+  #ticks .now { opacity:1; animation:bob .6s ease-in-out infinite; }
+  #ticks .done { opacity:1; background:var(--mint); animation:pop-in .35s var(--ease-pop); }
   #done { position:fixed; inset:0; z-index:8; display:none; align-items:center; justify-content:center; pointer-events:none; }
   #done.on { display:flex; }
   #done .sticker { width:min(64vw,300px); height:min(64vw,300px); font-size:min(38vw,170px); background:var(--sun); --tilt:-6deg;
@@ -243,9 +263,19 @@
 
 <section id="review" class="screen">
   <div id="paper"><div id="receipt"><canvas id="preview"></canvas></div></div>
-  <div class="row">
-    <button class="sticker fat big no emoji" id="retake" aria-label="Retake">✖️</button>
-    <button class="sticker fat big yes emoji" id="printBtn" aria-label="Print"><span>🖨️</span></button>
+  <div id="actions">
+    <div id="copies">
+      <div id="faces" class="emoji" aria-hidden="true"></div>
+      <div class="pick">
+        <button class="sticker pm emoji" id="less" aria-label="Fewer copies">➖</button>
+        <div class="sticker sq" id="nCopies" role="status" aria-label="Copies"><span class="emoji">🧾</span>×<span id="copyN">1</span></div>
+        <button class="sticker pm emoji" id="more" aria-label="More copies">➕</button>
+      </div>
+    </div>
+    <div class="row">
+      <button class="sticker fat big no emoji" id="retake" aria-label="Retake">✖️</button>
+      <button class="sticker fat big yes emoji" id="printBtn" aria-label="Print"><span>🖨️</span></button>
+    </div>
   </div>
 </section>
 
@@ -254,6 +284,7 @@
     <div id="printer"><span class="face emoji">😺</span><span class="led"></span></div>
     <div id="slip"></div>
   </div>
+  <div id="ticks" aria-hidden="true"></div>
   <div id="queue"></div>
   <div class="err" id="printErr"><div class="sticker fat face emoji">😕</div>
     <div class="row"><button class="sticker big no emoji" id="printBack" aria-label="Back">✖️</button>
@@ -284,6 +315,8 @@
 <script type="module">
 import { THEMES, compose, calibrationGray } from "./frames.js";
 import { PRINT_WIDTH as W, luminance, packBits, toBase64 } from "./raster.js";
+import { clampCopies, defaultCopies, maxFaces, MAX_COPIES } from "./copies.js";
+import { detectFaces, loadFaceDetector, rotateBoxes } from "./faces.js";
 
 const $ = (id) => document.getElementById(id);
 const GAINS = [0, 0.1, 0.15, 0.25, 0.4];               // calibration bands A..E
@@ -393,6 +426,7 @@ async function startCam() {
     streamFacing = facing;
     $("video").srcObject = stream;
     $("video").classList.toggle("mirror", facing === "user");
+    setTimeout(loadFaceDetector, 1500);   // lazy: after first paint + camera start
   } catch { sfx.boo(); $("camErr").classList.add("on"); }
 }
 function stopCam() { stream?.getTracks().forEach((t) => t.stop()); stream = null; }
@@ -463,6 +497,7 @@ function ring(mode, ms, label) {
 
 // ---------- capture ----------
 let busy = false, frames = [], rotations = [], seed = 1, lastBits = null;
+let faceBoxes = null;   // per frame: [{ x, y, w, h, score }] in grab() coords, or null (no detector)
 $("shutter").onclick = async () => {
   if (busy || !stream) return;
   busy = true; $("shutter").disabled = true; askMotion(); sfx.tap();
@@ -478,8 +513,24 @@ $("shutter").onclick = async () => {
       if (i < c.shots - 1) await sleep(700);
     }
     seed = (Math.random() * 2 ** 31) | 0;
+    const shot = frames;
+    faceBoxes = null; setCopies(1, null);
+    // Usually instant once the model is loaded; wait briefly so the copies
+    // default (and compose's face boxes) are ready when review appears. A slow
+    // detector still lands later: re-tone and re-default unless a kid already
+    // picked a number.
+    let landed = false;
+    const faces = detectFaces(shot).then((boxes) => {
+      if (frames !== shot) return;
+      faceBoxes = boxes; landed = true;
+      const counts = boxes && boxes.map((b) => b.length);
+      if (!copiesTouched) setCopies(defaultCopies(counts), maxFaces(counts));
+    });
+    await Promise.race([faces, sleep(1200)]);
+    const early = landed;
     await buildPreview();
     show("review"); armIdle();
+    if (!early) faces.then(() => { if (frames === shot && faceBoxes?.some((b) => b.length) && $("review").classList.contains("on")) buildPreview(); });
   } finally { busy = false; $("shutter").disabled = false; renderDots(0); }
 };
 
@@ -504,7 +555,9 @@ async function buildPreview() {
   const c = cfg();
   await document.fonts.load("40px Lilita");
   const upright = frames.map((f, i) => rotate(f, rotations[i]));
-  const { canvas, layout } = compose(upright, { theme: c.theme, seed, footer: c.footer, ticket: c.ticket + 1 });
+  // Face boxes in each upright photo's pixel coords (for face-aware tone), or null.
+  const faces = faceBoxes && frames.map((f, i) => rotateBoxes(faceBoxes[i] ?? [], f.width, f.height, rotations[i]));
+  const { canvas, layout } = compose(upright, { theme: c.theme, seed, footer: c.footer, ticket: c.ticket + 1, faces });
   const gray = luminance(canvas.getContext("2d").getImageData(0, 0, W, layout.H).data, W, layout.H);
   const bits = await dither(gray, layout.H, [{ y0: 0, y1: layout.H, opts: { gain: c.gain, bleed: 0 } }]);
   lastBits = { bits, h: layout.H };
@@ -519,6 +572,29 @@ async function buildPreview() {
   });
 }
 
+// ---------- copies picker ----------
+let copies = 1, copiesTouched = false;
+function setCopies(n, faces) {
+  const prev = copies;
+  copies = clampCopies(n);
+  $("copyN").textContent = copies;
+  $("nCopies").setAttribute("aria-label", `${copies} ${copies === 1 ? "copy" : "copies"}`);
+  $("less").classList.toggle("off", copies <= 1); $("more").classList.toggle("off", copies >= MAX_COPIES);
+  if (copies !== prev) restart($("nCopies"), "tick");
+  if (faces !== undefined) {
+    copiesTouched = false;
+    $("faces").innerHTML = Array.from({ length: Math.min(faces ?? 0, 8) },
+      (_, i) => `<span style="animation-delay:${i * 70}ms">🙂</span>`).join("");
+  }
+}
+function bump(d) {
+  armIdle();
+  if (copies + d < 1 || copies + d > MAX_COPIES) { sfx.boo(); restart($("nCopies"), "tick"); return; }
+  copiesTouched = true; d > 0 ? sfx.tap() : sfx.boop(); setCopies(copies + d);
+}
+$("less").onclick = () => bump(-1);
+$("more").onclick = () => bump(1);
+
 let idleT;
 function armIdle() { clearTimeout(idleT); idleT = setTimeout(() => { if ($("review").classList.contains("on")) show("cam"); }, 45000); }
 $("retake").onclick = () => { sfx.boop(); clearTimeout(idleT); show("cam"); };
@@ -530,10 +606,16 @@ function cooldownMs() {   // 1s, growing to 15s when the button gets mashed (fro
   while (printTimes.length && now - printTimes[0] > 60000) printTimes.shift();
   return printTimes.length < 2 ? 1000 : Math.min(15000, 1000 + (printTimes.length - 1) * 3500);
 }
-async function sendBits(bits, h) {
+async function sendBits(bits, h, n = 1) {
   const c = cfg();
   return api("/api/print", { method: "POST",
-    body: JSON.stringify({ width: W, height: h, bits: toBase64(packBits(bits, W, h)), density: c.density, speed: c.speed }) });
+    body: JSON.stringify({ width: W, height: h, bits: toBase64(packBits(bits, W, h)), density: c.density, speed: c.speed, copies: n }) });
+}
+/** One 🧾 per copy: done ones turn mint, the one printing now bobs. */
+function renderTicks(n, done) {
+  const el = $("ticks");
+  if (el.children.length !== (n > 1 ? n : 0)) el.innerHTML = n > 1 ? `<div class="sticker emoji">🧾</div>`.repeat(n) : "";
+  [...el.children].forEach((t, i) => { t.classList.toggle("done", i < done); t.classList.toggle("now", i === done); });
 }
 
 async function printFlow() {
@@ -544,14 +626,22 @@ async function printFlow() {
   slip.style.setProperty("--slip-h", `${Math.min(innerHeight * 0.55, (sw * lastBits.h) / W)}px`);
   restart($("printing"), "go"); sfx.whirr();
   $("queue").innerHTML = "";
+  const n = copies;
+  renderTicks(n, 0);
   try {
-    const job = await sendBits(lastBits.bits, lastBits.h);
+    const job = await sendBits(lastBits.bits, lastBits.h, n);
+    const ids = job.ids ?? [job.id];   // one job per copy, in print order
     S.set("ticket", cfg().ticket + 1);
-    printTimes.push(Date.now());
-    const until = Date.now() + 90000;
-    while (Date.now() < until) {
-      const s = await api("/api/jobs/" + encodeURIComponent(job.id)).catch(() => ({}));
-      if (s.status === "completed") break;
+    for (const _ of ids) printTimes.push(Date.now());   // copies count toward anti-mash
+    const until = Date.now() + 60000 + 30000 * ids.length;
+    let done = 0;
+    while (done < ids.length && Date.now() < until) {
+      const s = await api("/api/jobs/" + encodeURIComponent(ids[done])).catch(() => ({}));
+      if (s.status === "completed") {
+        renderTicks(ids.length, ++done);
+        if (done < ids.length) { sfx.whirr(); buzz(30); restart($("printing"), "go"); }
+        continue;
+      }
       $("queue").innerHTML = s.position > 1
         ? `<div class="sticker emoji">⏳</div>` + `<div class="sticker emoji">🧾</div>`.repeat(Math.min(4, s.position - 1)) : "";
       await sleep(2000);
