@@ -1,0 +1,11 @@
+load("@rules_go//go:def.bzl", "go_library")
+load("//:srcs.bzl", "srcs_filegroup")
+
+go_library(
+    name = "stub",
+    srcs = ["stub.go"],
+    importpath = "github.com/ChaseBro/receiptd/internal/stub",
+    visibility = ["//:__subpackages__"],
+)
+
+srcs_filegroup()

@@ -1,0 +1,18 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library")
+load("//:srcs.bzl", "srcs_filegroup")
+
+go_library(
+    name = "receiptd_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/ChaseBro/receiptd/cmd/receiptd",
+    visibility = ["//visibility:private"],
+    deps = ["//internal/cli"],
+)
+
+go_binary(
+    name = "receiptd",
+    embed = [":receiptd_lib"],
+    visibility = ["//visibility:public"],
+)
+
+srcs_filegroup()

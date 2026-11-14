@@ -30,6 +30,17 @@ type CloudPRNTPollResponse struct {
 }
 
 func TestMain(m *testing.M) {
+	// Under Bazel the binary is built by //cmd/receiptd and passed in, since
+	// a test action has no `go` toolchain or source tree to build from.
+	if prebuilt := os.Getenv("RECEIPTD_BINARY"); prebuilt != "" {
+		abs, err := filepath.Abs(prebuilt)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "RECEIPTD_BINARY: %s\n", err)
+			os.Exit(1)
+		}
+		binary = abs
+		os.Exit(m.Run())
+	}
 	tmp, _ := os.MkdirTemp("", "receiptd-inttest-*")
 	binary = filepath.Join(tmp, "receiptd")
 	out, err := exec.Command("go", "build", "-o", binary, "../cmd/receiptd").CombinedOutput()

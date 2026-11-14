@@ -1,0 +1,26 @@
+load("@gazelle//:def.bzl", "gazelle")
+load("//:srcs.bzl", "srcs_filegroup")
+
+# gazelle:prefix github.com/ChaseBro/receiptd
+# gazelle:exclude worker
+# gazelle:exclude scripts
+gazelle(name = "gazelle")
+
+# The tracked tree, Go packages included: what notes' Repositories/receiptd
+# page depends on. Gitignored and vendored material stays out (the heavy parts
+# are in .bazelignore too), so a local run sees what CI sees.
+srcs_filegroup(
+    name = "files",
+    exclude = [
+        ".env",
+        ".env.*",
+        ".cursor/**",
+        "worker/.dev.vars",
+        ".projects/cache/**",
+        ".projects/vault/**",
+        ".projects/*.local.json",
+        "receiptd",
+        "**/*.test",
+        "**/*.out",
+    ],
+)

@@ -1,0 +1,39 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+load("//:srcs.bzl", "srcs_filegroup")
+
+go_library(
+    name = "services",
+    srcs = [
+        "auth.go",
+        "device_flow.go",
+        "jobs.go",
+        "render.go",
+    ],
+    importpath = "github.com/ChaseBro/receiptd/internal/services",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/db",
+        "//internal/imageproc",
+        "//internal/jobs",
+        "//internal/render",
+        "//internal/shortid",
+        "@com_github_rs_zerolog//:zerolog",
+    ],
+)
+
+go_test(
+    name = "services_test",
+    srcs = [
+        "auth_test.go",
+        "device_flow_test.go",
+        "jobs_test.go",
+    ],
+    embed = [":services"],
+    deps = [
+        "//internal/db",
+        "//internal/jobs",
+        "@com_github_rs_zerolog//:zerolog",
+    ],
+)
+
+srcs_filegroup()

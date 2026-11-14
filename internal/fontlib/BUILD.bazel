@@ -1,0 +1,26 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+load("//:srcs.bzl", "srcs_filegroup")
+
+go_library(
+    name = "fontlib",
+    srcs = [
+        "bitmap_fonts.go",
+        "fontlib.go",
+        "fun_fonts.go",
+        "inject.go",
+        "install.go",
+    ],
+    importpath = "github.com/ChaseBro/receiptd/internal/fontlib",
+    visibility = ["//:__subpackages__"],
+)
+
+go_test(
+    name = "fontlib_test",
+    srcs = [
+        "fontlib_test.go",
+        "inject_test.go",
+    ],
+    deps = [":fontlib"],
+)
+
+srcs_filegroup()

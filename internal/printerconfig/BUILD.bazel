@@ -1,0 +1,19 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+load("//:srcs.bzl", "srcs_filegroup")
+
+go_library(
+    name = "printerconfig",
+    srcs = ["printerconfig.go"],
+    importpath = "github.com/ChaseBro/receiptd/internal/printerconfig",
+    visibility = ["//:__subpackages__"],
+)
+
+go_test(
+    name = "printerconfig_test",
+    srcs = ["printerconfig_test.go"],
+    embed = [":printerconfig"],
+    # an httptest server on 127.0.0.1; left out of the default run (see .bazelrc)
+    tags = ["local-port"],
+)
+
+srcs_filegroup()

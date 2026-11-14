@@ -1,0 +1,9 @@
+.git
+.claude
+.worktrees
+.wrangler
+build
+cputil-bin
+fonts-seed
+worker/node_modules
+worker/.wrangler

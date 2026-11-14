@@ -1,0 +1,11 @@
+load("@rules_go//go:def.bzl", "go_library")
+load("//:srcs.bzl", "srcs_filegroup")
+
+go_library(
+    name = "shortid",
+    srcs = ["shortid.go"],
+    importpath = "github.com/ChaseBro/receiptd/internal/shortid",
+    visibility = ["//:__subpackages__"],
+)
+
+srcs_filegroup()

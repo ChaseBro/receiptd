@@ -1,0 +1,27 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+load("//:srcs.bzl", "srcs_filegroup")
+
+go_library(
+    name = "render",
+    srcs = [
+        "png.go",
+        "render.go",
+    ],
+    importpath = "github.com/ChaseBro/receiptd/internal/render",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/shortid",
+        "@com_github_chromedp_chromedp//:chromedp",
+    ],
+)
+
+go_test(
+    name = "render_test",
+    srcs = ["render_test.go"],
+    data = glob(["testdata/**"]),
+    embed = [":render"],
+    # renders through a real headless Chrome; left out of the default run (see .bazelrc)
+    tags = ["chrome"],
+)
+
+srcs_filegroup()

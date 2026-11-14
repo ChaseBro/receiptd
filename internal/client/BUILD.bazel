@@ -1,0 +1,19 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+load("//:srcs.bzl", "srcs_filegroup")
+
+go_library(
+    name = "client",
+    srcs = ["client.go"],
+    importpath = "github.com/ChaseBro/receiptd/internal/client",
+    visibility = ["//:__subpackages__"],
+)
+
+go_test(
+    name = "client_test",
+    srcs = ["client_test.go"],
+    embed = [":client"],
+    # an httptest server on 127.0.0.1; left out of the default run (see .bazelrc)
+    tags = ["local-port"],
+)
+
+srcs_filegroup()

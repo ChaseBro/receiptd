@@ -1,0 +1,45 @@
+load("@rules_go//go:def.bzl", "go_library")
+load("//:srcs.bzl", "srcs_filegroup")
+
+go_library(
+    name = "cli",
+    srcs = [
+        "auth.go",
+        "auth_bootstrap.go",
+        "auth_state.go",
+        "config.go",
+        "font_flags.go",
+        "fonts.go",
+        "jobs.go",
+        "lib.go",
+        "print.go",
+        "printer.go",
+        "printer_cloud.go",
+        "printer_pair.go",
+        "proc_flags.go",
+        "render.go",
+        "renders.go",
+        "root.go",
+        "server.go",
+        "status.go",
+    ],
+    importpath = "github.com/ChaseBro/receiptd/internal/cli",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/client",
+        "//internal/cloudcprnt",
+        "//internal/db",
+        "//internal/fontlib",
+        "//internal/imageproc",
+        "//internal/printerconfig",
+        "//internal/printlib",
+        "//internal/render",
+        "//internal/server",
+        "//internal/services",
+        "//internal/stub",
+        "@com_github_rs_zerolog//:zerolog",
+        "@com_github_spf13_cobra//:cobra",
+    ],
+)
+
+srcs_filegroup()

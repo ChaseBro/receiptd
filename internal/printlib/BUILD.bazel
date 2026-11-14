@@ -1,0 +1,27 @@
+load("@rules_go//go:def.bzl", "go_library")
+load("//:srcs.bzl", "srcs_filegroup")
+
+go_library(
+    name = "printlib",
+    srcs = [
+        "font_specimen_item.go",
+        "image_items.go",
+        "markup_items.go",
+        "printlib.go",
+        "render_items.go",
+    ],
+    embedsrcs = [
+        "testdata/images/checkerboard.png",
+        "testdata/images/gradient.png",
+        "testdata/images/photo-sample.png",
+    ],
+    importpath = "github.com/ChaseBro/receiptd/internal/printlib",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/fontlib",
+        "//internal/imageproc",
+        "//internal/render",
+    ],
+)
+
+srcs_filegroup()

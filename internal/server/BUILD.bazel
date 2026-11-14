@@ -1,0 +1,43 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+load("//:srcs.bzl", "srcs_filegroup")
+
+go_library(
+    name = "server",
+    srcs = [
+        "api.go",
+        "apikey_verifier.go",
+        "auth.go",
+        "cloudprnt.go",
+        "daemon.go",
+    ],
+    importpath = "github.com/ChaseBro/receiptd/internal/server",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/cloudcprnt",
+        "//internal/cputil",
+        "//internal/db",
+        "//internal/jobs",
+        "//internal/services",
+        "@com_github_rs_zerolog//:zerolog",
+    ],
+)
+
+go_test(
+    name = "server_test",
+    srcs = [
+        "api_test.go",
+        "auth_test.go",
+        "daemon_test.go",
+    ],
+    embed = [":server"],
+    # an httptest server on 127.0.0.1; left out of the default run (see .bazelrc)
+    tags = ["local-port"],
+    deps = [
+        "//internal/db",
+        "//internal/jobs",
+        "//internal/services",
+        "@com_github_rs_zerolog//:zerolog",
+    ],
+)
+
+srcs_filegroup()

@@ -1,0 +1,13 @@
+# No bazel-* convenience symlinks in the tree; find outputs with
+# `bazel info output_path` instead.
+common --symlink_prefix=/
+
+# Some tests cannot run where nothing may listen on a port or start Chrome —
+# the Claude Code sandbox among them — so the default run leaves them out:
+#   local-port   starts an httptest server or the daemon on 127.0.0.1
+#   chrome       renders HTML through a real headless Chrome
+# They are still built. Run everything, as `go test ./...` does, with
+#   bazel test --config=full //...
+test --test_tag_filters=-local-port,-chrome
+test:full --test_tag_filters=
+test --test_output=errors

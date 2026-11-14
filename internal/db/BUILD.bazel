@@ -1,0 +1,18 @@
+load("@rules_go//go:def.bzl", "go_library")
+load("//:srcs.bzl", "srcs_filegroup")
+
+go_library(
+    name = "db",
+    srcs = [
+        "apikeys.go",
+        "db.go",
+        "device_codes.go",
+        "jobs.go",
+        "printers.go",
+    ],
+    importpath = "github.com/ChaseBro/receiptd/internal/db",
+    visibility = ["//:__subpackages__"],
+    deps = ["@org_modernc_sqlite//:sqlite"],
+)
+
+srcs_filegroup()

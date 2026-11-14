@@ -1,0 +1,22 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+load("//:srcs.bzl", "srcs_filegroup")
+
+go_library(
+    name = "imageproc",
+    srcs = [
+        "adjust.go",
+        "dither.go",
+        "process.go",
+    ],
+    importpath = "github.com/ChaseBro/receiptd/internal/imageproc",
+    visibility = ["//:__subpackages__"],
+    deps = ["@com_github_makeworld_the_better_one_dither_v2//:dither"],
+)
+
+go_test(
+    name = "imageproc_test",
+    srcs = ["process_test.go"],
+    embed = [":imageproc"],
+)
+
+srcs_filegroup()
