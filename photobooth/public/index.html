@@ -108,6 +108,11 @@
   #stage { grid-area:stage; position:relative; min-height:0; margin-right:10px; margin-bottom:10px;
     border:var(--line-fat) solid var(--ink); border-radius:clamp(20px, 4vmin, 34px); box-shadow:var(--shadow-lg); overflow:hidden; background:var(--ink); }
   #stage.kick { animation:shake .25s; }
+  /* Printer needs a human (paper out / cover open): wordless sticker. */
+  #paperBadge { position:absolute; left:var(--gap); bottom:var(--gap); z-index:2; width:calc(var(--tap) * 1.2); height:calc(var(--tap) * 1.2);
+    font-size:calc(var(--tap) * .7); background:var(--sun); --tilt:-8deg; animation:wiggle 1.6s infinite; }
+  #paperWait { position:relative; margin-top:22px; width:clamp(120px, 26vmin, 200px); height:clamp(120px, 26vmin, 200px);
+    font-size:clamp(48px, 11vmin, 90px); background:var(--sun); --tilt:6deg; animation:wiggle 1.6s infinite; }
   #video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
   /* Like the iPhone Camera: the selfie *preview* is mirrored; captures, prints and saved photos are not. */
   #video.mirror { transform:scaleX(-1); }
@@ -250,6 +255,7 @@
   <div id="stage">
     <video id="video" playsinline autoplay muted></video>
     <div id="dots"></div>
+    <div id="paperBadge" class="sticker fat emoji" hidden>🧻</div>
   </div>
   <div id="hotspot" aria-hidden="true"></div>
   <div id="tray">
@@ -290,6 +296,7 @@
   </div>
   <div id="ticks" aria-hidden="true"></div>
   <div id="queue"></div>
+  <div id="paperWait" class="sticker fat emoji" hidden>🧻❗</div>
   <div class="err" id="printErr"><div class="sticker fat face emoji">😕</div>
     <div class="row"><button class="sticker big no emoji" id="printBack" aria-label="Back">✖️</button>
       <button class="sticker big again emoji" id="printRetry" aria-label="Try again">🔁</button></div></div>
@@ -409,6 +416,18 @@ async function cameraPermissionHint() {
 }
 cameraPermissionHint();
 
+// ---------- printer health (paper out / cover open) ----------
+function showPrinter(h) {
+  if (!h) return;
+  const paper = !!h.paperOut, other = !!(h.coverOpen || h.error);
+  $("paperBadge").hidden = !(paper || other);
+  $("paperBadge").textContent = paper ? "🧻" : "🖨️";
+  $("paperWait").hidden = !(paper || other);
+  $("paperWait").textContent = paper ? "🧻❗" : "🖨️❗";
+}
+async function refreshPrinter() { try { showPrinter(await api("/api/printer")); } catch {} }
+setInterval(() => { if ($("cam").classList.contains("on") && document.visibilityState === "visible") refreshPrinter(); }, 15000);
+
 // ---------- lock ----------
 $("lockForm").onsubmit = async (e) => {
   e.preventDefault();
@@ -423,7 +442,7 @@ let stream = null, facing = "user";
 let streamFacing = null;
 async function startCam() {
   show("cam"); $("camErr").classList.remove("on");
-  applyTheme(); renderMode(); keepAwake();
+  applyTheme(); renderMode(); keepAwake(); refreshPrinter();
   // Reuse a live stream: every new getUserMedia can re-trigger Safari's prompt.
   if (stream && streamFacing === facing && stream.getVideoTracks().some((t) => t.readyState === "live")) return;
   stopCam();
@@ -705,6 +724,7 @@ async function printFlow() {
     let printingSince = 0, shown = 0;
     while (Date.now() < until) {
       const s = await api("/api/jobs/" + encodeURIComponent(id)).catch(() => ({}));
+      showPrinter(s.printer);
       if (s.status === "completed") { renderTicks(n, n); break; }
       if (s.status === "printing" && n > 1) {
         printingSince ||= Date.now();

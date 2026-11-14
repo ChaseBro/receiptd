@@ -41,6 +41,10 @@ bucket_name = "receiptd-jobs"
 binding = "PHOTOS"
 bucket_name = "receiptd-photos"
 
+[[kv_namespaces]]
+binding = "JOBS_KV"   # read printer status snapshots (paper out etc.)
+id = "f7b184e88c364ae588d56652bbabe7d9"
+
 [vars]
 PRINTER_ID = "printer-prod-3838"
 PRINTER_MAC = "00:11:62:5a:a9:8b"
@@ -81,6 +85,10 @@ bucket_name = "receiptd-jobs"
 [[env.staging.r2_buckets]]
 binding = "PHOTOS"
 bucket_name = "receiptd-photos"
+
+[[env.staging.kv_namespaces]]
+binding = "JOBS_KV"   # read printer status snapshots (paper out etc.)
+id = "f7b184e88c364ae588d56652bbabe7d9"
 
 [env.staging.vars]
 PRINTER_ID = "printer-prod-3838"

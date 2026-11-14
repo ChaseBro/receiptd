@@ -9,6 +9,7 @@
 
 import { enqueueMany, jobStatus, type JobSignal, type QueueNamespace } from "../../worker/src/queue";
 import { triggerPrinterPoll, type MqttEnv } from "../../worker/src/mqtt";
+import { printerHealth } from "./printer-status";
 import { buildStarPRNT, RASTER_WIDTH_PX } from "./starprnt";
 import { handleArchive } from "./archive-api";
 
@@ -17,6 +18,7 @@ interface Env extends MqttEnv {
   CF_VERSION_METADATA?: { id: string };
   PRINTER_QUEUE: QueueNamespace;
   JOBS_R2: R2Bucket;
+  JOBS_KV: KVNamespace;   // read-only here: printer status snapshots from receiptd-cprnt
   PRINTER_ID: string;
   PRINTER_MAC?: string;
   BOOTH_PIN: string;
@@ -152,8 +154,16 @@ export default {
     // GET /api/jobs/:id — "completed" once the printer has acked (popped it).
     const m = url.pathname.match(/^\/api\/jobs\/([A-Za-z0-9_-]+)$/);
     if (m && req.method === "GET") {
-      const s = await jobStatus(env.PRINTER_QUEUE, env.PRINTER_ID, m[1]!);
-      return json(200, { id: m[1], ...s });
+      const [s, raw] = await Promise.all([
+        jobStatus(env.PRINTER_QUEUE, env.PRINTER_ID, m[1]!),
+        env.JOBS_KV.get(`printer:${env.PRINTER_ID}:status`),
+      ]);
+      return json(200, { id: m[1], ...s, printer: printerHealth(raw) });
+    }
+
+    // GET /api/printer — paper / cover / online, for the kid-facing 🧻 sticker.
+    if (url.pathname === "/api/printer" && req.method === "GET") {
+      return json(200, printerHealth(await env.JOBS_KV.get(`printer:${env.PRINTER_ID}:status`)));
     }
 
     return json(404, { error: "not_found" });
