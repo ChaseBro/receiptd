@@ -34,8 +34,16 @@ script_name = "receiptd-cprnt"
 binding = "JOBS_R2"
 bucket_name = "receiptd-jobs"
 
+# Private photo archive: every session's original frames + the printed 1-bit
+# strip. Never public (no r2.dev, no custom domain); read via PIN-gated
+# /api/photos. Create once: `wrangler r2 bucket create receiptd-photos`.
+[[r2_buckets]]
+binding = "PHOTOS"
+bucket_name = "receiptd-photos"
+
 [vars]
 PRINTER_ID = "printer-prod-3838"
+ARCHIVE_PREFIX = ""
 
 # Secrets (wrangler secret put <NAME>):
 #   BOOTH_PIN — shared passcode guests type once per device
@@ -62,5 +70,11 @@ script_name = "receiptd-cprnt"
 binding = "JOBS_R2"
 bucket_name = "receiptd-jobs"
 
+# Same bucket, but staging only ever reads/writes under staging/.
+[[env.staging.r2_buckets]]
+binding = "PHOTOS"
+bucket_name = "receiptd-photos"
+
 [env.staging.vars]
 PRINTER_ID = "printer-prod-3838"
+ARCHIVE_PREFIX = "staging/"

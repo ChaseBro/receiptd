@@ -6,6 +6,7 @@
     "lint": "node --test test/design-lint.test.mjs",
     "test": "node --test test/",
     "deploy:staging": "npm test && wrangler deploy --env staging",
-    "deploy": "npm test && wrangler deploy"
+    "deploy": "npm test && wrangler deploy",
+    "photos:pull": "node scripts/pull-photos.mjs"
   }
 }

@@ -54,3 +54,4 @@ halftone · 🦖 footprints + grass · 🚀 orbits + starfield · 📷 bold (stu
 - kid screens have no Latin letters in visible text, and every kid `<button>` has an `aria-label`
 - print art in `frames.js` only paints `#000` / `#fff`
 - one-shot animations ≤ 600 ms (ambient loops listed in `AMBIENT`)
+- the colour / shadow / font / motion rules also cover the adult `gallery.html`

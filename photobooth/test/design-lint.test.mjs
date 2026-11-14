@@ -6,7 +6,10 @@ import { readFileSync } from "node:fs";
 
 const html = readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
 const frames = readFileSync(new URL("../public/frames.js", import.meta.url), "utf8");
-const css = html.match(/<style>([\s\S]*?)<\/style>/)[1];
+const gallery = readFileSync(new URL("../public/gallery.html", import.meta.url), "utf8");
+const styleOf = (doc) => doc.match(/<style>([\s\S]*?)<\/style>/)[1];
+// Token / shadow / font / motion rules apply to every page; the no-words rules only to kid screens.
+const SHEETS = { "index.html": styleOf(html), "gallery.html": styleOf(gallery) };
 
 // Long-running, deliberate animations (loops or the paper feed).
 const AMBIENT = new Set(["wiggle", "bob", "spin", "blink", "feed", "fall"]);
@@ -14,6 +17,9 @@ const KID_SCREENS = ["cam", "review", "printing", "done"];
 
 /** CSS declarations with line numbers; :root and @font-face (token homes) blanked out. */
 function declarations() {
+  return Object.entries(SHEETS).flatMap(([file, css]) => sheetDecls(css).map((d) => ({ ...d, file })));
+}
+function sheetDecls(css) {
   const body = css.replace(/(:root|@font-face)\s*\{[^}]*\}/g, (m) => m.replace(/[^\n]/g, " "));
   const out = [];
   body.split("\n").forEach((line, i) => {
@@ -21,7 +27,7 @@ function declarations() {
   });
   return out;
 }
-const fail = (bad) => bad.map((d) => `  style line ${d.line}: ${d.prop}: ${d.value}`).join("\n");
+const fail = (bad) => bad.map((d) => `  ${d.file} style line ${d.line}: ${d.prop}: ${d.value}`).join("\n");
 
 test("colours come from tokens (no raw hex/rgb/hsl outside :root)", () => {
   const bad = declarations().filter((d) => /#[0-9a-f]{3,8}\b|\b(rgb|hsl)a?\(/i.test(d.value));

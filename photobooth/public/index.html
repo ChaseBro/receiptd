@@ -318,6 +318,7 @@ import { PRINT_WIDTH as W, luminance, packBits, toBase64 } from "./raster.js";
 import { uprightRotation as orient } from "./orient.js";
 import { clampCopies, defaultCopies, maxFaces, MAX_COPIES } from "./copies.js";
 import { detectFaces, loadFaceDetector, rotateBoxes } from "./faces.js";
+import { archiveOriginals, archiveStrip, newSessionId, pause as pauseArchive, resume as resumeArchive, startArchive } from "./archive.js";
 
 const $ = (id) => document.getElementById(id);
 const GAINS = [0, 0.1, 0.15, 0.25, 0.4];               // calibration bands A..E
@@ -442,14 +443,23 @@ function applyTheme() {
   for (const btn of $("themes").children) btn.onclick = () => { sfx.tap(); S.set("theme", btn.dataset.k); applyTheme(); };
 }
 
-/** Grab the current frame in screen space (mirrored for selfies), upright. */
+/**
+ * Grab the current frame in screen space (mirrored for selfies), upright,
+ * capped at 1440px for compose. `full` is the camera's native-size frame for
+ * the archive (not rotated yet: that happens when it's encoded, in the background).
+ */
 function grab() {
-  const v = $("video"), scale = Math.min(1, 1440 / Math.max(v.videoWidth, v.videoHeight));
-  const fw = Math.round(v.videoWidth * scale), fh = Math.round(v.videoHeight * scale);
-  const base = new OffscreenCanvas(fw, fh), bctx = base.getContext("2d");
-  if (facing === "user") { bctx.translate(fw, 0); bctx.scale(-1, 1); }
-  bctx.drawImage(v, 0, 0, fw, fh);
-  return rotate(base, uprightRotation());
+  const v = $("video"), vw = v.videoWidth, vh = v.videoHeight, deg = uprightRotation();
+  const native = new OffscreenCanvas(vw, vh), nctx = native.getContext("2d");
+  if (facing === "user") { nctx.translate(vw, 0); nctx.scale(-1, 1); }
+  nctx.drawImage(v, 0, 0, vw, vh);
+  const scale = Math.min(1, 1440 / Math.max(vw, vh));
+  let base = native;
+  if (scale < 1) {
+    base = new OffscreenCanvas(Math.round(vw * scale), Math.round(vh * scale));
+    base.getContext("2d").drawImage(native, 0, 0, base.width, base.height);
+  }
+  return { frame: rotate(base, deg), full: { canvas: native, deg } };
 }
 function rotate(src, deg) {
   if (!deg) return src;
@@ -489,15 +499,33 @@ function ring(mode, ms, label) {
 // ---------- capture ----------
 let busy = false, frames = [], rotations = [], seed = 1, lastBits = null;
 let faceBoxes = null;   // per frame: [{ x, y, w, h, score }] in grab() coords, or null (no detector)
+// Archive session: id, capture time and native-size frames of the current shoot.
+let session = null;
+function sessionMeta(extra = {}) {
+  const c = cfg();
+  return { id: session.id, capturedAt: session.capturedAt, theme: c.theme, shots: session.full.length,
+    faces: faceBoxes ? faceBoxes.map((b) => b.length) : null, rotations: rotations.slice(),
+    mirrored: session.mirrored, ticket: c.ticket + 1, ua: navigator.userAgent, printed: false, ...extra };
+}
+/** (Re-)upload the originals unless they were already sent with the current ↻ rotations. */
+function syncOriginals() {
+  if (!session || session.sentRot === rotations.join()) return;
+  session.sentRot = rotations.join();
+  archiveOriginals(session.id, session.full, rotations, sessionMeta(), rotate);
+}
 $("shutter").onclick = async () => {
   if (busy || !stream) return;
   busy = true; $("shutter").disabled = true; askMotion(); sfx.tap();
   const c = cfg(); frames = []; rotations = [];
+  const full = [];
+  session = null;
   try {
     renderDots(0);
     for (let i = 0; i < c.shots; i++) {
       await ring("countdown", c.count * 1000);
-      frames.push(grab()); rotations.push(0);
+      const g = grab();
+      frames.push(g.frame); full.push(g.full); rotations.push(0);
+      if (i === 0) session = { id: newSessionId(), capturedAt: new Date().toISOString(), mirrored: facing === "user", full, sentRot: null };
       sfx.snap(); buzz(40); restart($("stage"), "kick");
       $("flash").classList.add("pop"); await sleep(70); $("flash").classList.remove("pop");
       renderDots(i + 1);
@@ -521,6 +549,7 @@ $("shutter").onclick = async () => {
     const early = landed;
     await buildPreview();
     show("review"); armIdle();
+    syncOriginals();   // background: encodes + queues once the review screen is up
     if (!early) faces.then(() => { if (frames === shot && faceBoxes?.some((b) => b.length) && $("review").classList.contains("on")) buildPreview(); });
   } finally { busy = false; $("shutter").disabled = false; renderDots(0); }
 };
@@ -600,8 +629,8 @@ $("less").onclick = () => bump(-1);
 $("more").onclick = () => bump(1);
 
 let idleT;
-function armIdle() { clearTimeout(idleT); idleT = setTimeout(() => { if ($("review").classList.contains("on")) show("cam"); }, 45000); }
-$("retake").onclick = () => { sfx.boop(); clearTimeout(idleT); show("cam"); };
+function armIdle() { clearTimeout(idleT); idleT = setTimeout(() => { if ($("review").classList.contains("on")) { syncOriginals(); show("cam"); } }, 45000); }
+$("retake").onclick = () => { sfx.boop(); clearTimeout(idleT); syncOriginals(); show("cam"); };
 
 // ---------- print ----------
 const printTimes = [];
@@ -635,11 +664,17 @@ async function printFlow() {
   $("queue").innerHTML = "";
   const n = copies;
   renderTicks(n, 0);
+  pauseArchive();   // the print request gets the Wi-Fi to itself
   try {
     // Re-render every copy from the head heat right now (time has passed since
     // the preview, and copy k+1 starts as hot as copy k left the head).
     const r = await dither(lastBits.gray, lastBits.h, lastBits.segs, n, headHeat());
     const job = await sendBits(r.bits, lastBits.h, n);
+    resumeArchive();
+    if (session) {   // background: the exact printed bitmap (copy 1) + any ↻ fixes
+      archiveStrip(session.id, r.bits[0], W, lastBits.h, sessionMeta({ copies: n }));
+      syncOriginals();
+    }
     S.set("head", { sink: r.sink, t: Date.now() });
     const ids = job.ids ?? [job.id];   // one job per copy, in print order
     S.set("ticket", cfg().ticket + 1);
@@ -665,7 +700,7 @@ async function printFlow() {
     $("shutter").disabled = false;
   } catch (err) {
     if (err.message !== "locked") { sfx.boo(); $("printErr").classList.add("on"); }
-  }
+  } finally { resumeArchive(); }
 }
 $("printBtn").onclick = () => { sfx.tap(); printFlow(); };
 $("printRetry").onclick = () => { sfx.tap(); printFlow(); };
@@ -752,6 +787,7 @@ for (const ev of ["gesturestart", "gesturechange", "gestureend"]) document.addEv
 document.addEventListener("touchmove", (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
 
 // ---------- boot ----------
+startArchive(() => cfg().pin);
 if (cfg().pin) api("/api/unlock", { method: "POST" }).then(startCam, () => show("lock"));
 else show("lock");
 </script>

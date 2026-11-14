@@ -9,6 +9,7 @@
 
 import { enqueueMany, jobStatus, type JobSignal, type QueueNamespace } from "../../worker/src/queue";
 import { buildStarPRNT, RASTER_WIDTH_PX } from "./starprnt";
+import { handleArchive } from "./archive-api";
 
 interface Env {
   ASSETS: Fetcher;
@@ -17,6 +18,10 @@ interface Env {
   JOBS_R2: R2Bucket;
   PRINTER_ID: string;
   BOOTH_PIN: string;
+  /** Private photo archive (receiptd-photos). Never served publicly. */
+  PHOTOS?: R2Bucket;
+  /** Key prefix inside PHOTOS: "" in prod, "staging/" in staging. */
+  ARCHIVE_PREFIX?: string;
 }
 
 const STARPRNT_MEDIA = "application/vnd.star.starprnt";
@@ -136,6 +141,10 @@ export default {
       // `id` is the last copy: it completes once every copy has printed (FIFO).
       return json(201, { id: ids[ids.length - 1], ids, status: "pending", position: res.depth });
     }
+
+    // Photo archive: POST /api/archive, GET /api/photos{,/days,/file}.
+    const archived = await handleArchive(req, url, env);
+    if (archived) return archived;
 
     // GET /api/jobs/:id — "completed" once the printer has acked (popped it).
     const m = url.pathname.match(/^\/api\/jobs\/([A-Za-z0-9_-]+)$/);

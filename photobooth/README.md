@@ -65,6 +65,41 @@ Guests unlock with a shared PIN (`BOOTH_PIN`), cached in `localStorage`.
 Settings (long-press top-right) set footer, countdown, anti-ghost gain,
 density, speed, and sounds per device, and can re-lock the booth.
 
+## Photo archive
+
+Every session is kept in the private R2 bucket `receiptd-photos` (binding
+`PHOTOS`; staging writes under `staging/` via `ARCHIVE_PREFIX`):
+
+```
+${prefix}YYYY-MM-DD/<id>/orig-N.jpg   camera frames, upright + ↻ fixes, as seen on screen (selfies mirrored)
+                         strip.png    the exact 1-bit bitmap that printed (copy 1), 1-bit greyscale PNG
+                         meta.json    theme, shots, faces/frame, rotations, copies, printed, sizes, UA…
+```
+
+The day is New York time, taken from the timestamp inside the session id
+(`<base36 ms>-<8 hex>`), so retries and re-uploads land in the same folder.
+Originals are capped at 2048 px (long side), JPEG q 0.82 (~250–450 KB each);
+strips are ~25–70 KB.
+
+`public/archive.js` uploads in the background (`POST /api/archive`,
+multipart): originals once the review screen is up, then `strip.png` +
+`printed: true` once the print is enqueued (and the originals again if ↻
+changed them). Uploads pause while a print is being sent. The queue lives in
+IndexedDB, retries with backoff (on load, `online`, every minute), and drops
+the oldest sessions beyond 300 MB. Failures are reported to `/api/log`
+(rate-limited, no image data). On iPad, use the Home Screen app: Safari can
+evict a plain tab's IndexedDB after 7 days without a visit.
+
+- **Gallery**: https://booth.receiptd.sh/gallery.html (same PIN) — browse by
+  day, tap for full size, "Download day (.zip)" builds a zip in the browser.
+- **Pull to the Mac**: `BOOTH_PIN=… npm run photos:pull -- --day 2026-11-14 --out ~/Pictures/Cheese`
+  (`--all` for every day; existing files are skipped).
+- API (PIN header): `GET /api/photos/days`, `GET /api/photos?day=YYYY-MM-DD`,
+  `GET /api/photos/file?key=…`.
+
+One-time setup: `wrangler r2 bucket create receiptd-photos` (keep it private:
+no r2.dev URL, no custom domain).
+
 ## Release flow (don't test on the live booth)
 
 ```sh
