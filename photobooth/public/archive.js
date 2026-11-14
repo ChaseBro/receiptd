@@ -231,8 +231,7 @@ export function startArchive(pinFn) {
 // Session helpers used by index.html.
 
 /**
- * frames: [{ canvas, deg }] — full-resolution, screen-space (mirrored for
- * selfies), plus the tilt rotation to make it upright. `rotate(canvas, deg)`
+ * frames: [{ canvas, deg }] — full-resolution, unmirrored camera frames, plus the tilt rotation to make it upright. `rotate(canvas, deg)`
  * is the page's rotation helper. Encoding runs after `delay` so the review
  * screen and dithering get the CPU first.
  */
