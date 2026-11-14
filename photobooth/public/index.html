@@ -621,6 +621,18 @@ async function checkVersion() {
 }
 checkVersion(); setInterval(checkVersion, 60000);
 
+// ---------- un-zoom: kids pinched before zoom was blocked, and Safari keeps
+// the zoom across reloads. Re-setting the viewport meta snaps it back. ----------
+function unzoom() {
+  const vv = window.visualViewport;
+  if (!vv || vv.scale < 1.02) return;
+  fetch("/api/log", { method: "POST", body: JSON.stringify({ msg: "zoomed", scale: vv.scale, ua: navigator.userAgent }) }).catch(() => {});
+  const m = document.querySelector('meta[name="viewport"]'), orig = m.content;
+  m.content = orig.replace("initial-scale=1", "initial-scale=1.01");
+  requestAnimationFrame(() => { m.content = orig; window.scrollTo(0, 0); });
+}
+unzoom(); window.visualViewport?.addEventListener("resize", unzoom);
+
 // ---------- no pinch-zoom (iOS ignores user-scalable=no) ----------
 for (const ev of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
 document.addEventListener("touchmove", (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
