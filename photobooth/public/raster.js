@@ -345,6 +345,13 @@ export const DEFAULT_RELIEF = Object.freeze({
   tail: 0,          // last rows of a dark run left solid
   heatDecay: 0.85,  // per-line retention of the duty EMA (~6 lines)
   heatOn: 0.6,      // duty where relief starts; full relief at duty 1
+  // Head-wide "heatsink" term: the whole head warms over centimetres of dark
+  // printing and then greys paper ~5 mm past dark areas (seen on real prints;
+  // the printer ignores ESC RS d density). Track an EMA of row duty with a
+  // ~5 cm memory and thin interior blacks further while it's high.
+  sinkDecay: 0.9975, // per-line retention (~400 lines ≈ 5 cm)
+  sinkOn: 0.2,       // average duty where extra thinning starts
+  sinkGain: 0.35,    // extra fraction of interior dots skipped at full sink heat
 });
 
 // Hole mask: interleaved gradient noise (Jimenez 2014) as a threshold field.
@@ -380,8 +387,14 @@ export function relieveSolids(bits, w, h, opts = {}) {
   }
   const heat = new Float32Array(w);
   const a = p.heatDecay;
+  let sink = 0;
   for (let y = 0; y < h; y++) {
     const row = y * w;
+    let duty = 0;
+    for (let x = 0; x < w; x++) duty += bits[row + x];
+    sink = p.sinkDecay * sink + (1 - p.sinkDecay) * (duty / w);
+    const sinkS = p.sinkGain > 0 ? Math.min(1, Math.max(0, (sink - p.sinkOn) / (1 - p.sinkOn))) : 0;
+    const sinkKeep = 1 - p.sinkGain * sinkS;
     for (let x = 0; x < w; x++) {
       const l = bits[row + (x > 0 ? x - 1 : x)], r = bits[row + (x < w - 1 ? x + 1 : x)];
       heat[x] = a * heat[x] + (1 - a) * (0.25 * l + 0.5 * bits[row + x] + 0.25 * r);
@@ -390,14 +403,14 @@ export function relieveSolids(bits, w, h, opts = {}) {
       const i = row + x;
       if (!bits[i] || !bits[row + (x > 0 ? x - 1 : x)] || !bits[row + (x < w - 1 ? x + 1 : x)]) continue;
       const s = Math.min(1, Math.max(0, (heat[x] - p.heatOn) / (1 - p.heatOn)));
-      if (s <= 0) continue;
+      if (s <= 0 && sinkS <= 0) continue;
       // rows incl. this one until light paper (1 = last dark row); past the end of
       // the image is paper too
       const d = Math.min(toLight[i], h - y);
       if (d <= p.tail) continue;
       const t = p.ramp > 0 ? Math.min(1, (d - 1 - p.tail) / p.ramp) : 1;
       const k = p.edgeKeep + (p.keep - p.edgeKeep) * t;
-      const keep = 1 - p.strength * s * (1 - k);
+      const keep = (1 - p.strength * s * (1 - k)) * (1 - p.strength * (1 - sinkKeep));
       if (holeRank(x, y) >= keep) out[i] = 0;
     }
   }

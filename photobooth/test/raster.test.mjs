@@ -173,3 +173,16 @@ test("facesToTile maps frame boxes through the cover-crop", () => {
   assert.ok(g.x === 0 && Math.abs(g.w - 25) < 1e-9);
   assert.deepEqual(facesToTile(undefined, crop, 400, 300), []);
 });
+
+test("relieveSolids: head-wide heat thins long dark runs more as the head warms", () => {
+  // 1600 rows of a wide dark band (cols 40..535) with a white margin.
+  const h = 1600, b = new Uint8Array(W * h);
+  for (let y = 0; y < h; y++) for (let x = 40; x < 536; x++) b[y * W + x] = 1;
+  const r = relieveSolids(b, W, h);
+  const early = dens(r, 60, 516, 100, 200), late = dens(r, 60, 516, 1300, 1400);
+  console.log({ early, late });
+  assert.ok(late < early - 0.08, `warm head thins more (${early} → ${late})`);
+  assert.ok(late > 0.6, `still reads as black (${late})`);
+  const off = relieveSolids(b, W, h, { sinkGain: 0 });
+  assert.ok(Math.abs(dens(off, 60, 516, 1300, 1400) - dens(off, 60, 516, 100, 200)) < 0.03, "sinkGain 0 → no slow drift");
+});
