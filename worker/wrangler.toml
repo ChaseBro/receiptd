@@ -48,3 +48,35 @@ bucket_name = "receiptd-jobs"
 [vars]
 # Max KV TTL on job signals (seconds). 24h default — Fly should DELETE on ack.
 JOB_SIGNAL_TTL = "86400"
+
+# ---------------------------------------------------------------------------
+# Staging: `wrangler deploy --env staging` → receiptd-cprnt-staging.
+# Isolated Worker with its OWN PrinterQueue DO namespace (DO storage is
+# per-script) and its own FLY_HMAC_SECRET; shares the KV namespace + R2 bucket
+# with prod, so only use test printer ids (printer-dq-test-*) here. No route:
+# reachable on workers.dev only. Bindings/vars are not inherited by envs.
+[env.staging]
+name = "receiptd-cprnt-staging"
+routes = []
+workers_dev = true
+
+[[env.staging.durable_objects.bindings]]
+name = "PRINTER_QUEUE"
+class_name = "PrinterQueue"
+
+[[env.staging.migrations]]
+tag = "v1"
+new_sqlite_classes = ["PrinterQueue"]
+
+[[env.staging.kv_namespaces]]
+binding = "JOBS_KV"
+id = "f7b184e88c364ae588d56652bbabe7d9"
+
+[[env.staging.r2_buckets]]
+binding = "JOBS_R2"
+bucket_name = "receiptd-jobs"
+
+[env.staging.vars]
+JOB_SIGNAL_TTL = "86400"
+# Short KV dual-read window so dq-smoke.mjs can observe it ending (prod: 30m).
+LEGACY_KV_WINDOW_SEC = "120"

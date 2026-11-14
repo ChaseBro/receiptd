@@ -92,3 +92,39 @@ export function parseKvQueue(raw: string | null, legacy: string | null): JobSign
   }
   return out;
 }
+
+/**
+ * How long after its first access the DO keeps re-reading the pre-DO KV
+ * queue. Covers the rollout gap where receiptd-cprnt (DO) is live but an
+ * older receiptd-booth is still appending to KV — and KV's own propagation
+ * delay (~60s) on top. After the window the KV keys are deleted once.
+ */
+export const LEGACY_KV_WINDOW_MS = 30 * 60 * 1000;
+/** Min gap between KV re-reads during the window (polls are ~2s apart). */
+export const LEGACY_KV_RECHECK_MS = 2000;
+
+/**
+ * Merge jobs read from the pre-DO KV queue into the DO queue. A job is taken
+ * only the first time its id is seen: `importedIds` remembers every id ever
+ * imported, so a job that was imported and since acked is not re-delivered
+ * when an old writer's read-modify-write puts it back into KV (or a stale
+ * edge-cached KV read returns it again). Appended in KV order, after the
+ * current queue, subject to the usual cap.
+ */
+export function mergeLegacy(
+  jobs: readonly JobSignal[],
+  importedIds: readonly string[],
+  kvJobs: readonly JobSignal[],
+  max = MAX_QUEUE,
+): { jobs: JobSignal[]; evicted: JobSignal[]; added: JobSignal[]; importedIds: string[] } {
+  const known = new Set([...importedIds, ...jobs.map((j) => j.jobId)]);
+  const added: JobSignal[] = [];
+  for (const j of kvJobs) {
+    if (known.has(j.jobId)) continue;
+    known.add(j.jobId);
+    added.push(j);
+  }
+  const ids = [...importedIds, ...added.map((j) => j.jobId)];
+  if (added.length === 0) return { jobs: [...jobs], evicted: [], added, importedIds: ids };
+  return { ...appendJobs(jobs, added, max), added, importedIds: ids };
+}

@@ -8,8 +8,10 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
-    "cf-typegen": "wrangler types",
-    "test": "node --test test/"
+    "test": "node --test test/",
+    "deploy:staging": "npm test && wrangler deploy --env staging",
+    "smoke:staging": "NODE_USE_ENV_PROXY=1 CPRNT_URL=${CPRNT_URL:-https://receiptd-cprnt-staging.minigeek.workers.dev} LEGACY_KV_WINDOW_SEC=120 node scripts/dq-smoke.mjs",
+    "cf-typegen": "wrangler types"
   },
   "dependencies": {
     "hono": "^4.6.14"

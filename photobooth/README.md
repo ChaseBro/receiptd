@@ -54,6 +54,13 @@ printer acks (the job leaves the PrinterQueue Durable Object — strongly
 consistent, so status flips on the next check). The DO class lives in
 `worker/`, so deploy `receiptd-cprnt` before the booth when it changes.
 
+KV → DO cutover: for 30 min after a printer's DO first wakes it keeps
+re-reading the old `printer:<id>:jobs` KV queue (deduped by job id), so jobs
+an un-redeployed booth still writes to KV are delivered (after KV's ~60s
+propagation); then it deletes the KV keys. Deploy `worker/` then both booth
+envs within that window. `worker/scripts/dq-smoke.mjs` exercises all of this
+against `receiptd-cprnt-staging` (isolated DO namespace, workers.dev only).
+
 Guests unlock with a shared PIN (`BOOTH_PIN`), cached in `localStorage`.
 Settings (long-press top-right) set footer, countdown, anti-ghost gain,
 density, speed, and sounds per device, and can re-lock the booth.

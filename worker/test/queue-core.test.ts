@@ -1,7 +1,7 @@
 // Run: node --test test/   (Node >= 23.6 strips TS types natively)
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ackHead, appendJobs, parseKvQueue, statusOf, type JobSignal } from "../src/queue-core.ts";
+import { ackHead, appendJobs, mergeLegacy, parseKvQueue, statusOf, type JobSignal } from "../src/queue-core.ts";
 
 const sig = (jobId: string): JobSignal => ({
   jobId,
@@ -54,4 +54,29 @@ test("parseKvQueue reads list, legacy single slot, and tolerates junk", () => {
   assert.deepEqual(parseKvQueue("not json", "{"), []);
   assert.deepEqual(parseKvQueue(JSON.stringify({ jobs: [{ nope: 1 }] }), null), []);
   assert.deepEqual(parseKvQueue(null, null), []);
+});
+
+test("mergeLegacy imports each KV job id once, even after it was acked", () => {
+  // First import into an empty DO.
+  let r = mergeLegacy([], [], [sig("a"), sig("b")]);
+  assert.deepEqual(ids(r.jobs), ["a", "b"]);
+  assert.deepEqual(r.importedIds, ["a", "b"]);
+  // "a" printed + acked; the booth enqueued "n" via the DO; an old booth's
+  // stale read-modify-write puts [a, b, late] back into KV.
+  const q = [sig("b"), sig("n")];
+  r = mergeLegacy(q, r.importedIds, [sig("a"), sig("b"), sig("late")]);
+  assert.deepEqual(ids(r.jobs), ["b", "n", "late"]);
+  assert.deepEqual(ids(r.added), ["late"]);
+  assert.deepEqual(r.importedIds, ["a", "b", "late"]);
+  // Re-reading the same KV value is a no-op.
+  const again = mergeLegacy(r.jobs, r.importedIds, [sig("a"), sig("b"), sig("late")]);
+  assert.deepEqual(ids(again.jobs), ["b", "n", "late"]);
+  assert.deepEqual(again.added, []);
+});
+
+test("mergeLegacy respects the cap and does not re-import ids already queued", () => {
+  const r = mergeLegacy([sig("x"), sig("y")], [], [sig("y"), sig("z")], 2);
+  assert.deepEqual(ids(r.jobs), ["y", "z"]);
+  assert.deepEqual(ids(r.evicted), ["x"]);
+  assert.deepEqual(ids(r.added), ["z"]);
 });

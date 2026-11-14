@@ -18,7 +18,10 @@ import {
   ackHead,
   appendJobs,
   jobsKey,
+  LEGACY_KV_RECHECK_MS,
+  LEGACY_KV_WINDOW_MS,
   legacyJobKey,
+  mergeLegacy,
   parseKvQueue,
   statusOf,
   type JobSignal,
@@ -27,10 +30,17 @@ import {
 
 export { jobsKey, legacyJobKey, MAX_QUEUE, type JobSignal, type JobStatus } from "./queue-core";
 
-type QueueEnv = { JOBS_KV: KVNamespace };
+type QueueEnv = {
+  JOBS_KV: KVNamespace;
+  JOBS_R2?: R2Bucket;
+  // Override for LEGACY_KV_WINDOW_MS (seconds); staging sets it short for tests.
+  LEGACY_KV_WINDOW_SEC?: string;
+};
 
 export class PrinterQueue extends DurableObject<QueueEnv> {
   private ready = false;
+  private legacyDone = false;
+  private lastKvCheck = 0;
 
   constructor(ctx: DurableObjectState, env: QueueEnv) {
     super(ctx, env);
@@ -55,34 +65,78 @@ export class PrinterQueue extends DurableObject<QueueEnv> {
     this.set("jobs", JSON.stringify(jobs));
   }
 
+  private windowMs(): number {
+    const s = Number(this.env.LEGACY_KV_WINDOW_SEC);
+    return Number.isFinite(s) && s >= 0 ? s * 1000 : LEGACY_KV_WINDOW_MS;
+  }
+
   /**
-   * One-time import of the pre-DO KV queue. Runs under blockConcurrencyWhile
-   * so no other call observes the queue before the import lands. The
-   * `migrated` flag is written in the same synchronous step as the import,
-   * so the KV keys are never imported twice even if the delete fails.
+   * Read the pre-DO KV queue and merge any job ids not seen before. The KV
+   * read is async, but the merge (load → mergeLegacy → save) is synchronous,
+   * so concurrent imports can't double-insert: the second sees the first's
+   * importedIds.
+   */
+  private async importLegacy(printerId: string): Promise<void> {
+    const [raw, legacy] = await Promise.all([
+      this.env.JOBS_KV.get(jobsKey(printerId)),
+      this.env.JOBS_KV.get(legacyJobKey(printerId)),
+    ]);
+    if (raw === null && legacy === null) return;
+    const prev = JSON.parse(this.get("importedIds") ?? "[]") as string[];
+    const r = mergeLegacy(this.load(), prev, parseKvQueue(raw, legacy));
+    if (r.added.length === 0) return;
+    this.save(r.jobs);
+    this.set("importedIds", JSON.stringify(r.importedIds));
+    for (const ev of r.evicted) this.env.JOBS_R2?.delete(ev.r2Key).catch(() => {});
+    console.log("kv-imported", printerId, r.added.map((j) => j.jobId).join(","));
+  }
+
+  /** End the dual-read window: stop reading KV and delete the old keys once. */
+  private async finishLegacy(printerId: string): Promise<void> {
+    if (this.get("legacyDone") !== null) return;
+    this.set("legacyDone", String(Date.now()));
+    await Promise.all([
+      this.env.JOBS_KV.delete(jobsKey(printerId)),
+      this.env.JOBS_KV.delete(legacyJobKey(printerId)),
+    ]).catch((e) => console.error("kv-legacy-delete", printerId, String(e)));
+  }
+
+  /**
+   * Pre-DO KV queue import. First access imports under blockConcurrencyWhile
+   * so nothing observes the queue before the import lands. Then, for
+   * LEGACY_KV_WINDOW_MS after that, KV is re-read (at most every
+   * LEGACY_KV_RECHECK_MS) so jobs appended by a not-yet-redeployed booth are
+   * still delivered; mergeLegacy's importedIds keeps acked jobs from coming
+   * back. The first access after the window deletes the KV keys.
    */
   private async ensureReady(printerId: string): Promise<void> {
-    if (this.ready) return;
-    await this.ctx.blockConcurrencyWhile(async () => {
-      if (this.ready) return;
-      if (this.get("migrated") === null) {
-        const [raw, legacy] = await Promise.all([
-          this.env.JOBS_KV.get(jobsKey(printerId)),
-          this.env.JOBS_KV.get(legacyJobKey(printerId)),
-        ]);
-        const imported = parseKvQueue(raw, legacy);
-        if (this.load().length === 0 && imported.length > 0) this.save(imported);
-        this.set("migrated", String(Date.now()));
-        if (raw !== null || legacy !== null) {
-          await Promise.all([
-            this.env.JOBS_KV.delete(jobsKey(printerId)),
-            this.env.JOBS_KV.delete(legacyJobKey(printerId)),
-          ]).catch((e) => console.error("kv-migrate-delete", printerId, String(e)));
-          console.log("kv-migrated", printerId, imported.length);
+    if (!this.ready) {
+      await this.ctx.blockConcurrencyWhile(async () => {
+        if (this.ready) return;
+        if (this.get("migrated") === null) {
+          await this.importLegacy(printerId);
+          this.set("migrated", String(Date.now()));
+          this.lastKvCheck = Date.now();
         }
-      }
-      this.ready = true;
-    });
+        this.ready = true;
+      });
+      // Fall through: a fresh instance (after eviction) must still run the
+      // window check below, or the KV keys may never be cleaned up.
+    }
+    if (this.legacyDone || this.get("legacyDone") !== null) {
+      this.legacyDone = true;
+      return;
+    }
+    const now = Date.now();
+    if (now - Number(this.get("migrated")) > this.windowMs()) {
+      this.legacyDone = true;
+      await this.importLegacy(printerId);
+      await this.finishLegacy(printerId);
+      return;
+    }
+    if (now - this.lastKvCheck < LEGACY_KV_RECHECK_MS) return;
+    this.lastKvCheck = now;
+    await this.importLegacy(printerId);
   }
 
   async enqueue(printerId: string, sigs: JobSignal[]): Promise<{ depth: number; evicted: JobSignal[] }> {
@@ -108,6 +162,10 @@ export class PrinterQueue extends DurableObject<QueueEnv> {
     await this.ensureReady(printerId);
     const jobs = this.load();
     this.save([]);
+    // An explicit drain also ends the KV dual-read, so old KV entries can't
+    // refill the queue afterwards.
+    this.legacyDone = true;
+    await this.finishLegacy(printerId);
     return jobs;
   }
 
