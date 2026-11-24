@@ -65,6 +65,12 @@ Guests unlock with a shared PIN (`BOOTH_PIN`), cached in `localStorage`.
 Settings (long-press top-right) set footer, countdown, anti-ghost gain,
 density, speed, and sounds per device, and can re-lock the booth.
 
+### Native app
+
+`ios/` is a SwiftUI booth for iPhone and iPad. It uses the same API and prints
+the same strips: `frames.js` + `raster.js` are ported to Swift, and the printed
+dots are checked to match the web app's in WebKit. See [ios/README.md](ios/README.md).
+
 ## Parties, albums, QR codes
 
 Adults manage parties at **/party.html** (booth PIN): name, date, which frames

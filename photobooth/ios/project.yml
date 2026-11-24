@@ -4,6 +4,9 @@ options:
   deploymentTarget:
     iOS: "18.0"
   createIntermediateGroups: true
+packages:
+  BoothCore:
+    path: BoothCore
 settings:
   base:
     DEVELOPMENT_TEAM: TA2ZM8GXJD
@@ -15,6 +18,8 @@ targets:
     platform: iOS
     sources:
       - path: App
+    dependencies:
+      - package: BoothCore
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.chasebro.booth
@@ -39,6 +44,11 @@ targets:
           - CFBundleURLName: com.chasebro.booth.setup
             CFBundleURLSchemes: [booth]
         UILaunchScreen: {}
+        UIRequiresFullScreen: true
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        UIStatusBarHidden: true
+        NSCameraUsageDescription: The photo booth takes your picture to print on the receipt printer.
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         UISupportedInterfaceOrientations~ipad:
@@ -47,3 +57,17 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
     scheme: {}
+  PhotoBoothUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: PhotoBooth
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.chasebro.booth.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
+    scheme:
+      testTargets: [PhotoBoothUITests]

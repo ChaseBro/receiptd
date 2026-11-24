@@ -273,11 +273,10 @@ public final class Canvas {
 
     // MARK: text
 
-    private static let lilita: CGFont = {
-        let url = Bundle.module.url(forResource: "LilitaOne", withExtension: "ttf", subdirectory: "Resources")
-            ?? Bundle.module.url(forResource: "LilitaOne", withExtension: "ttf")!
-        return CGFont(CGDataProvider(url: url as CFURL)!)!
-    }()
+    /// Lilita One TTF in the package (register it to use it in UI).
+    public static let lilitaURL: URL = Bundle.module.url(forResource: "LilitaOne", withExtension: "ttf", subdirectory: "Resources")
+        ?? Bundle.module.url(forResource: "LilitaOne", withExtension: "ttf")!
+    private static let lilita: CGFont = CGFont(CGDataProvider(url: lilitaURL as CFURL)!)!
     /// The CTFont for Lilita at `size` (also used by the app's UI numerals).
     public static func lilitaFont(_ size: Double) -> CTFont { CTFontCreateWithGraphicsFont(lilita, CGFloat(size), nil, nil) }
 
