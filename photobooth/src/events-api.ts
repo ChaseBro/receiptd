@@ -146,6 +146,7 @@ export async function handleEvents(req: Request, url: URL, env: EventsEnv): Prom
     const next: BoothEvent = { ...event, ...c.value, updatedAt: new Date().toISOString() };
     if (next.theme && next.themes.length && !next.themes.includes(next.theme)) next.theme = next.themes[0];
     if (c.value.date === undefined && "date" in c.value) delete next.date;
+    if (c.value.theme === undefined && "theme" in c.value) delete next.theme;
     await putJSON(bucket, eventKey(prefix, slug), next);
     return json(200, { event: next });
   }

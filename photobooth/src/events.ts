@@ -96,7 +96,7 @@ export function cleanEventInput(raw: unknown, partial = false):
   if (r.theme !== undefined && r.theme !== null && r.theme !== "") {
     if (typeof r.theme !== "string" || !THEME_RE.test(r.theme)) return { ok: false, error: "invalid_theme" };
     out.theme = r.theme;
-  }
+  } else if (r.theme === null || r.theme === "") out.theme = undefined;   // explicit clear
   if (r.footer !== undefined) out.footer = str(r.footer, 40) ?? "";
   if (r.qr !== undefined) {
     if (typeof r.qr !== "boolean") return { ok: false, error: "invalid_qr" };

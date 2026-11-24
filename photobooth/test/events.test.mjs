@@ -163,6 +163,11 @@ test("create → activate → shoot → album lists it → files gated by album"
   assert.equal(r.body.event.date, undefined);
   assert.equal(r.body.event.share, next);
 
+  // Clearing the default ("None (= all)" on the party page) really clears it.
+  r = await call(env, "PUT", `/api/events/${ev.slug}`, { themes: [], theme: null });
+  assert.deepEqual(r.body.event.themes, []);
+  assert.equal(r.body.event.theme, undefined);
+
   // Deactivate.
   await call(env, "POST", "/api/events/active", { slug: null });
   assert.equal((await call(env, "GET", "/api/events/active")).body.event, null);
