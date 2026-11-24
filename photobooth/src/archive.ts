@@ -89,6 +89,8 @@ export interface ArchiveMeta {
   id: string;
   capturedAt: string;
   theme?: string;
+  /** Event (party/album) slug the booth was shooting for. */
+  event?: string;
   shots?: number;
   faces?: (number | null)[] | null;
   rotations?: number[];
@@ -122,6 +124,7 @@ export function sanitizeMeta(raw: unknown, id: string, idMs: number): ArchiveMet
     if (Number.isFinite(t)) out.capturedAt = new Date(t).toISOString();
   }
   if (typeof r.theme === "string" && /^[a-z0-9-]{1,20}$/.test(r.theme)) out.theme = r.theme;
+  if (typeof r.event === "string" && /^[a-z0-9][a-z0-9-]{0,39}$/.test(r.event)) out.event = r.event;
   const shots = int(r.shots, 1, MAX_SHOTS);
   if (shots !== undefined) out.shots = shots;
   if (Array.isArray(r.faces) && r.faces.length <= MAX_SHOTS) {

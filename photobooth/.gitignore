@@ -1,3 +1,6 @@
 node_modules/
 # generated contact sheets / search logs from the tuning tools
 tools/*/out/
+.dev.vars
+.wrangler/
+e2e/out/

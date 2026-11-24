@@ -65,6 +65,42 @@ Guests unlock with a shared PIN (`BOOTH_PIN`), cached in `localStorage`.
 Settings (long-press top-right) set footer, countdown, anti-ghost gain,
 density, speed, and sounds per device, and can re-lock the booth.
 
+## Parties, albums, QR codes
+
+Adults manage parties at **/party.html** (booth PIN): name, date, which frames
+the booth offers (the 🦃 Thanksgiving set is one tap: 🦃 turkey · 🥧 feast ·
+🍂 leaves · 🌟 starry · 🌽 harvest), the default frame, a footer, and whether
+strips carry a QR code. **▶️ Shoot for this party** makes it the active event:
+open booths pick it up within a minute (theme picker narrows, footer +
+QR switch on, every session's archive upload carries `event`, which adds it to
+the album index).
+
+- **Album** (public, unguessable token): `/a/<token>` — every session, tap to
+  view, ⬇️ save (or 📤 share on phones), ⬇️ download all (.zip built in the
+  browser), 📺 slideshow (`?show=1`, for a TV: auto-advances, picks up new
+  photos, shows the album QR in the corner). Hosts with the PIN saved on that
+  device get 🙈 to hide a session from the album (it stays in the archive).
+- **Strip QR**: `/a/<token>/<session id>` → "Your photos" at the top (waits
+  for the background upload). The QR block skips the solid-black relief pass
+  so modules stay whole; module = 5 dots.
+- **Sign**: 🪧 on the party page → letter-size poster (browser print) or a
+  576px sign on the receipt printer; optional "be the booth" QR that unlocks
+  the booth on a guest's phone (`/#pin=…`, contains the PIN).
+- 📥 adds every session from a day (e.g. shot before the party was set up);
+  ♻️ rotates the album link (old sign + strip QRs stop working).
+
+Storage (PHOTOS bucket, same prefix as the archive): `events/<slug>/event.json`,
+`events/<slug>/s/<day>/<id>` (album index), `share/<token>` → slug,
+`active-event`. API: `src/events-api.ts`.
+
+### Testing
+
+```sh
+npm test                 # unit + API (in-memory R2) + design lint
+npm run dev:e2e          # local booth + cprnt DO (PIN from .dev.vars: BOOTH_PIN=1234)
+npm run test:e2e         # Playwright: party → booth (fake camera) → 5 strips, QR decoded → print → album
+```
+
 ## Photo archive
 
 Every session is kept in the private R2 bucket `receiptd-photos` (binding

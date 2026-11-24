@@ -4,6 +4,7 @@
 // solid black/white art survives dithering untouched.
 
 import { PRINT_WIDTH as W, luminance, toneMap } from "./raster.js";
+import { drawQR, qrSide } from "./qr.js";
 
 const INK = "#000", PAPER = "#fff";
 const DISPLAY = `"Lilita", "Arial Rounded MT Bold", sans-serif`;
@@ -110,6 +111,92 @@ function footprint(ctx, x, y, s, angle) {
   ctx.save(); ctx.translate(x, y); ctx.rotate(angle); ctx.fillStyle = INK;
   ctx.beginPath(); ctx.ellipse(0, 0, s * 0.55, s * 0.7, 0, 0, Math.PI * 2); ctx.fill();
   for (const dx of [-0.55, 0, 0.55]) { ctx.beginPath(); ctx.ellipse(dx * s, -s * 1.0, s * 0.18, s * 0.32, dx * 0.6, 0, Math.PI * 2); ctx.fill(); }
+  ctx.restore();
+}
+
+/** Maple leaf (stem down) as the current path: the classic 11-point outline. */
+const MAPLE = [[0, -1], [0.13, -0.74], [0.32, -0.84], [0.27, -0.45], [0.58, -0.7], [0.55, -0.5], [0.92, -0.48],
+  [0.75, -0.28], [0.82, -0.12], [0.45, -0.02], [0.52, 0.18], [0.1, 0.08], [0.05, 0.42], [0.03, 0.8]];
+function maple(ctx, cx, cy, s, rot = 0) {
+  const pts = [...MAPLE, ...MAPLE.slice().reverse().map(([x, y]) => [-x, y])];
+  const c = Math.cos(rot), n = Math.sin(rot);
+  ctx.beginPath();
+  for (const [x, y] of pts) ctx.lineTo(cx + s * (x * c - y * n), cy + s * (x * n + y * c));
+  ctx.closePath();
+}
+
+function acorn(ctx, x, y, s, rot = 0) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+  ctx.fillStyle = PAPER; ctx.strokeStyle = INK; ctx.lineWidth = Math.max(2, s * 0.14);
+  ctx.beginPath(); ctx.ellipse(0, s * 0.25, s * 0.5, s * 0.62, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = INK;
+  ctx.beginPath(); ctx.ellipse(0, -s * 0.12, s * 0.62, s * 0.34, 0, Math.PI, Math.PI * 2); ctx.closePath(); ctx.fill();
+  ctx.fillRect(-s * 0.07, -s * 0.72, s * 0.14, s * 0.3);
+  ctx.restore();
+}
+
+/** One tail feather: outlined (or solid) teardrop with a quill and barbs. */
+function feather(ctx, cx, cy, len, wid, angle, solid) {
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate(angle);
+  ctx.beginPath(); ctx.moveTo(0, 0);
+  ctx.bezierCurveTo(wid, len * 0.2, wid * 1.1, len * 0.8, 0, len);
+  ctx.bezierCurveTo(-wid * 1.1, len * 0.8, -wid, len * 0.2, 0, 0);
+  ctx.closePath();
+  ctx.lineWidth = 4; ctx.strokeStyle = INK; ctx.fillStyle = solid ? INK : PAPER; ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = solid ? PAPER : INK; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(0, len * 0.12); ctx.lineTo(0, len * 0.92); ctx.stroke();
+  ctx.lineWidth = 2;
+  for (let k = 0.3; k < 0.9; k += 0.14) {
+    ctx.beginPath(); ctx.moveTo(0, len * k); ctx.lineTo(wid * 0.55, len * (k + 0.07)); ctx.moveTo(0, len * k); ctx.lineTo(-wid * 0.55, len * (k + 0.07)); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/** Wheat stalk from (x, y) going up at `angle`: stem + paired kernels. */
+function wheat(ctx, x, y, len, angle, k = 1) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(angle);
+  ctx.strokeStyle = INK; ctx.fillStyle = INK; ctx.lineWidth = 3 * k;
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -len); ctx.stroke();
+  for (let i = 0; i < 6; i++) {
+    const yy = -len * 0.45 - i * len * 0.09;
+    for (const side of [-1, 1]) {
+      ctx.beginPath(); ctx.ellipse(side * 6 * k, yy, 4.5 * k, 9 * k, side * 0.5, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  ctx.beginPath(); ctx.ellipse(0, -len - 6 * k, 4 * k, 9 * k, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+/** Gingham: stripes every other row/column; crossings solid, single stripes hatched. */
+function gingham(ctx, box, sq = 24) {
+  ctx.save();
+  ctx.beginPath(); ctx.rect(box.x, box.y, box.w, box.h); ctx.clip();
+  ctx.fillStyle = INK; ctx.strokeStyle = INK; ctx.lineWidth = 2.5;
+  for (let j = 0; j * sq < box.h; j++) {
+    for (let i = 0; i * sq < box.w; i++) {
+      const x = box.x + i * sq, y = box.y + j * sq, a = i % 2 === 0, b = j % 2 === 0;
+      if (a && b) ctx.fillRect(x, y, sq, sq);
+      else if (a || b) {
+        ctx.save(); ctx.beginPath(); ctx.rect(x, y, sq, sq); ctx.clip();
+        ctx.beginPath();
+        for (let d = -sq; d < sq * 2; d += 7) { ctx.moveTo(x + d, y); ctx.lineTo(x + d + sq, y + sq); }
+        ctx.stroke(); ctx.restore();
+      }
+    }
+  }
+  ctx.restore();
+}
+
+function forkKnife(ctx, x, y, h) {
+  ctx.save(); ctx.fillStyle = INK;
+  // fork
+  ctx.beginPath(); ctx.roundRect(x - 4, y + h * 0.35, 8, h * 0.65, 4); ctx.fill();
+  ctx.beginPath(); ctx.roundRect(x - 13, y + h * 0.2, 26, h * 0.2, 6); ctx.fill();
+  for (const dx of [-12, -4, 4]) ctx.fillRect(x + dx, y, 7, h * 0.3);
+  // knife
+  const kx = x + 40;
+  ctx.beginPath(); ctx.roundRect(kx - 5, y + h * 0.45, 10, h * 0.55, 5); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(kx - 6, y + h * 0.48); ctx.lineTo(kx - 6, y + h * 0.05); ctx.quadraticCurveTo(kx + 10, y + h * 0.1, kx + 7, y + h * 0.48); ctx.closePath(); ctx.fill();
   ctx.restore();
 }
 
@@ -261,6 +348,128 @@ export const THEMES = {
     },
   },
 
+  // ---- Thanksgiving ----
+
+  turkey: {
+    icon: "🦃", margin: 48, top: 186, gap: 36,
+    bg(ctx) {
+      // Tail fan: 11 feathers, alternating solid / outlined, behind the body.
+      ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, 172); ctx.clip();
+      for (let i = 0; i < 11; i++) {
+        const a = Math.PI / 2 + (Math.PI * (i - 5)) / 6.2;   // fan around straight up
+        feather(ctx, W / 2, 150, 140, 30, a + Math.PI, i % 2 === 0);
+      }
+      ctx.restore();
+    },
+    fg(ctx, L, rand) {
+      ctx.save(); ctx.fillStyle = PAPER; ctx.strokeStyle = INK; ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.arc(W / 2, 128, 46, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.restore();
+      sticker(ctx, "🦃", W / 2, 120, 78, 0);
+      L.photos.forEach((p, i) => sticker(ctx, ["🦃", "🥧", "🌽", "🍗"][i % 4], i % 2 ? p.x + 22 : p.x + p.w - 22, p.y + p.h - 16, 70, (rand() - 0.5) * 0.5));
+      scatter(rand, 16, margins(L), (x, y, r) => {
+        ctx.save(); ctx.translate(x, y); ctx.rotate(r() * Math.PI * 2); ctx.fillStyle = INK;
+        ctx.beginPath(); ctx.ellipse(0, 0, 4, 11, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+      });
+    },
+  },
+
+  feast: {
+    icon: "🥧", margin: 48, top: 176, gap: 36,
+    bg(ctx) {
+      gingham(ctx, { x: 0, y: 0, w: W, h: 150 }, 24);
+    },
+    fg(ctx, L, rand) {
+      // Plate on the tablecloth, cutlery either side.
+      ctx.save(); ctx.fillStyle = PAPER; ctx.strokeStyle = INK;
+      ctx.lineWidth = 14; ctx.beginPath(); ctx.arc(W / 2, 82, 70, 0, Math.PI * 2); ctx.stroke();
+      ctx.lineWidth = 0; ctx.fill();
+      ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(W / 2, 82, 64, 0, Math.PI * 2); ctx.stroke();
+      ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(W / 2, 82, 50, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+      sticker(ctx, "🥧", W / 2, 82, 70, 0);
+      for (const fx of [W / 2 - 160, W / 2 + 112]) {
+        ctx.save(); ctx.fillStyle = PAPER; ctx.beginPath(); ctx.roundRect(fx - 24, 18, 88, 128, 16); ctx.fill(); ctx.restore();
+        forkKnife(ctx, fx, 26, 112);
+      }
+      L.photos.forEach((p, i) => sticker(ctx, ["🍗", "🌽", "🥧", "🍠"][i % 4], i % 2 ? p.x + 22 : p.x + p.w - 22, p.y + p.h - 16, 72, (rand() - 0.5) * 0.5));
+      scatter(rand, 26, margins(L), (x, y, r) => { ctx.save(); ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(x, y, 2 + r() * 3, 0, Math.PI * 2); ctx.fill(); ctx.restore(); });
+    },
+  },
+
+  leaves: {
+    icon: "🍂", margin: 48, top: 166, gap: 38,
+    bg(ctx, L, rand) {
+      // A twig across the top with leaves hanging off it.
+      ctx.save(); ctx.strokeStyle = INK; ctx.lineCap = "round"; ctx.lineWidth = 9;
+      ctx.beginPath(); ctx.moveTo(-10, 34); ctx.bezierCurveTo(W * 0.3, 70, W * 0.6, 10, W + 10, 52); ctx.stroke();
+      ctx.restore();
+      for (let i = 0; i < 7; i++) {
+        const x = 40 + i * ((W - 80) / 6), y = 74 + (i % 2) * 34;
+        stamp(ctx, () => maple(ctx, x, y, 30 + rand() * 8, (rand() - 0.5) * 0.9), { fill: i % 2 === 0, halo: 4, line: 4 });
+      }
+    },
+    fg(ctx, L, rand) {
+      for (const p of L.photos) {
+        const [cx, cy] = rand() < 0.5 ? [p.x + 8, p.y + 10] : [p.x + p.w - 8, p.y + p.h - 10];
+        stamp(ctx, () => maple(ctx, cx, cy, 34 + rand() * 10, (rand() - 0.5) * 1.4), { fill: rand() < 0.6, halo: 6 });
+      }
+      scatter(rand, 26, margins(L), (x, y, r) => {
+        if (r() < 0.25) acorn(ctx, x, y, 9 + r() * 4, (r() - 0.5));
+        else stamp(ctx, () => maple(ctx, x, y, 7 + r() * 7, r() * 6), { halo: 0, fill: r() < 0.7, line: 2 });
+      });
+      L.photos.forEach((p, i) => sticker(ctx, ["🍁", "🐿️", "🍂", "🌰"][i % 4], i % 2 ? p.x + p.w - 22 : p.x + 22, p.y + p.h - 16, 66, (rand() - 0.5) * 0.5));
+    },
+  },
+
+  starry: {
+    icon: "🌟", margin: 48, top: 176, gap: 36,
+    bg(ctx, L, rand) {
+      // Night sky band with rolling hills along its bottom edge.
+      ctx.save(); ctx.fillStyle = INK; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(W, 0); ctx.lineTo(W, 118);
+      for (let x = W; x >= 0; x -= 8) ctx.lineTo(x, 132 + 12 * Math.sin(x / 70) + 6 * Math.sin(x / 23));
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = PAPER;
+      for (let i = 0; i < 46; i++) { const x = rand() * W, y = 16 + rand() * 96; ctx.beginPath(); ctx.arc(x, y, 0.8 + rand() * 1.8, 0, Math.PI * 2); ctx.fill(); }
+      for (let i = 0; i < 6; i++) { star(ctx, 30 + rand() * (W - 220), 24 + rand() * 80, 6 + rand() * 6, 5, 0.42, rand()); ctx.fill(); }
+      // Harvest moon with craters.
+      ctx.beginPath(); ctx.arc(W - 110, 66, 46, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = INK; ctx.lineWidth = 3;
+      for (const [dx, dy, r] of [[-14, -12, 9], [16, 8, 12], [-8, 20, 6], [20, -20, 5]]) { ctx.beginPath(); ctx.arc(W - 110 + dx, 66 + dy, r, 0, Math.PI * 2); ctx.stroke(); }
+      ctx.restore();
+    },
+    fg(ctx, L, rand) {
+      sticker(ctx, "🦉", 96, 80, 72, -0.1);
+      for (const p of L.photos) {
+        const [cx, cy] = rand() < 0.5 ? [p.x + 4, p.y + 4] : [p.x + p.w - 4, p.y + p.h - 4];
+        stamp(ctx, () => star(ctx, cx, cy, 28 + rand() * 12, 5, 0.45, rand()), { fill: rand() < 0.5 });
+      }
+      scatter(rand, 30, margins(L), (x, y, r) =>
+        stamp(ctx, () => star(ctx, x, y, 4 + r() * 7, r() < 0.3 ? 4 : 5, 0.42, r()), { halo: 0, fill: r() < 0.7, line: 2 }));
+      L.photos.forEach((p, i) => sticker(ctx, ["🦃", "🌟", "🥧", "🌙"][i % 4], i % 2 ? p.x + 22 : p.x + p.w - 22, p.y + p.h - 16, 64, (rand() - 0.5) * 0.5));
+    },
+  },
+
+  harvest: {
+    icon: "🌽", margin: 50, top: 176, gap: 36,
+    bg(ctx) {
+      halftone(ctx, { x: 0, y: 14, w: W, h: 140 }, (u, v) => 0.5 * (1 - v) * (0.4 + 0.6 * Math.abs(u - 0.5) * 2), 11);
+    },
+    fg(ctx, L, rand) {
+      // Wheat sheaves either side of a big corn cob.
+      for (const [x, dir] of [[96, 1], [W - 96, -1]]) {
+        ctx.save(); ctx.fillStyle = PAPER; ctx.beginPath(); ctx.ellipse(x, 92, 70, 66, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+        for (const a of [-0.45, -0.15, 0.15, 0.45]) wheat(ctx, x + dir * 4, 150, 118, a, 1);
+        ctx.save(); ctx.fillStyle = INK; ctx.beginPath(); ctx.roundRect(x - 30, 112, 60, 14, 7); ctx.fill(); ctx.restore();
+      }
+      sticker(ctx, "🌽", W / 2, 86, 92, 0.25);
+      L.photos.forEach((p) => {
+        wheat(ctx, 24, p.y + p.h - 4, p.h * 0.55, 0.05, 0.7);
+        wheat(ctx, W - 24, p.y + p.h * 0.6, p.h * 0.45, -0.05, 0.7);
+      });
+      L.photos.forEach((p, i) => sticker(ctx, ["🎃", "🍎", "🌽", "🍇"][i % 4], i % 2 ? p.x + 22 : p.x + p.w - 22, p.y + p.h - 16, 68, (rand() - 0.5) * 0.5));
+    },
+  },
+
   plain: {
     icon: "📷", margin: 40, top: 70, gap: 30,
     bg(ctx) { checker(ctx, 22, 2, 16); },
@@ -274,8 +483,11 @@ export const THEMES = {
 const slotAspect = (w, h) => (w >= h ? 4 / 3 : 4 / 5);
 const OFFSET = 10;          // black block behind each photo
 const STUB = 150;           // ticket stub height (+ footer line)
+const QR_MODULE = 5;        // px per QR module: 5 dots ≈ 0.6 mm, scans off thermal paper
 
-export function layout(theme, frames, footer = "") {
+const QR_PAD = 30;          // paper above + below the QR block
+
+export function layout(theme, frames, footer = "", qr = "") {
   const t = THEMES[theme] ?? THEMES.plain;
   const pw = W - 2 * t.margin - OFFSET;
   let y = t.top;
@@ -286,7 +498,9 @@ export function layout(theme, frames, footer = "") {
     return r;
   });
   const stubY = y - t.gap + 34;
-  return { photos, stubY, H: stubY + STUB + (footer ? 40 : 0) };
+  const qrY = stubY + STUB + (footer ? 40 : 0);
+  const qrSz = qr ? qrSide(qr, QR_MODULE) : 0;
+  return { photos, stubY, qrY, qrSide: qrSz, H: qrY + (qr ? qrSz + QR_PAD : 0) };
 }
 
 /** Centre cover-crop of an fw×fh source into a w×h slot: source rect. */
@@ -368,15 +582,31 @@ function ticketStub(ctx, L, { ticket, date, footer }) {
   ctx.restore();
 }
 
+/** "Scan me for your photos": phone sticker → arrow → QR code (no words). */
+function qrBlock(ctx, L, url) {
+  const side = L.qrSide, x = W - side - 26, y = L.qrY + 6;
+  ctx.save();
+  ctx.fillStyle = INK; ctx.fillRect(x + 8, y + 8, side, side);              // hard offset block, like the photos
+  drawQR(ctx, url, x, y, QR_MODULE);
+  ctx.strokeStyle = INK; ctx.lineWidth = 5; ctx.strokeRect(x - 2, y - 2, side + 4, side + 4);
+  // arrow from the phone to the code
+  const ay = y + side / 2, ax0 = 200, ax1 = x - 26;
+  ctx.lineWidth = 10; ctx.lineCap = "round"; ctx.setLineDash([2, 18]);
+  ctx.beginPath(); ctx.moveTo(ax0, ay); ctx.lineTo(ax1 - 16, ay); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = INK; ctx.beginPath(); ctx.moveTo(ax1, ay); ctx.lineTo(ax1 - 30, ay - 22); ctx.lineTo(ax1 - 30, ay + 22); ctx.closePath(); ctx.fill();
+  ctx.restore();
+  sticker(ctx, "📲", 110, ay, 96, -0.12);
+}
+
 /**
  * Build the full grayscale strip. frames: canvases already rotated upright.
  * faces (optional): one array per frame of face boxes {x,y,w,h} in that
  * frame's pixel coords (missing/empty → centre-weighted metering).
  * Returns { canvas, layout }.
  */
-export function compose(frames, { theme = "stars", seed = 1, footer = "", ticket = 1, date = new Date(), faces = [] } = {}) {
+export function compose(frames, { theme = "stars", seed = 1, footer = "", ticket = 1, date = new Date(), faces = [], qr = "" } = {}) {
   const t = THEMES[theme] ?? THEMES.plain;
-  const L = layout(theme, frames, footer);
+  const L = layout(theme, frames, footer, qr);
   const rand = rng(seed);
   const c = new OffscreenCanvas(W, L.H);
   const ctx = c.getContext("2d", { willReadFrequently: true });
@@ -400,6 +630,7 @@ export function compose(frames, { theme = "stars", seed = 1, footer = "", ticket
   zigzag(ctx, 0, 1, 18, 10);
   zigzag(ctx, L.H, -1, 18, 10);
   ticketStub(ctx, L, { ticket, date, footer });
+  if (qr) qrBlock(ctx, L, qr);
   return { canvas: c, layout: L };
 }
 

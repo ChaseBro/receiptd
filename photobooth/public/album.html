@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#FFF4DC">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Photos">
+<title>Party photos 📸</title>
+<link rel="icon" href="/icons/icon-180.png">
+<link rel="apple-touch-icon" href="/icons/icon-180.png">
+<style>
+  /* Guest page (served at /a/<token>[/<session>]): words allowed. Tokens + stickers per ../DESIGN.md; `npm run lint` checks it. */
+  @font-face { font-family:"Lilita"; src:url("/fonts/lilita-one.woff2") format("woff2"); font-display:swap; }
+  :root {
+    --paper:#FFF4DC; --ink:#1A1423; --white:#FFFFFF;
+    --pink:#FF5DA2; --sun:#FFD23F; --mint:#2EE6A6; --sky:#3EC1FF; --grape:#9B6BFF; --tomato:#FF6B4A;
+    --accent:var(--sun); --accent-2:var(--tomato);
+    --line:4px; --line-fat:6px;
+    --shadow-sm:3px 3px 0 var(--ink); --shadow:6px 6px 0 var(--ink); --shadow-lg:10px 10px 0 var(--ink);
+    --r:24px;
+    --font-display:"Lilita", "Arial Rounded MT Bold", ui-rounded, system-ui, sans-serif;
+    --font-body:ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", system-ui, sans-serif;
+    --font-emoji:"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+    --ease-pop:cubic-bezier(.34,1.56,.64,1);
+    --dots:radial-gradient(color-mix(in srgb, var(--ink) 14%, transparent) 1.6px, transparent 1.8px);
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  [hidden] { display:none !important; }
+  body { margin:0; min-height:100dvh; color:var(--ink); background:var(--paper); background-image:var(--dots); background-size:22px 22px;
+    font-family:var(--font-body); padding:calc(env(safe-area-inset-top) + 18px) 14px 60px; }
+  button, a { font:inherit; color:inherit; }
+  button { cursor:pointer; }
+  .emoji { font-family:var(--font-emoji); line-height:1; }
+  .sticker { background:var(--white); border:var(--line) solid var(--ink); box-shadow:var(--shadow); border-radius:var(--r);
+    transform:rotate(var(--tilt, 0deg)); transition:transform .14s var(--ease-pop), box-shadow .14s; }
+  button.sticker:active, a.sticker:active { transform:translate(4px,4px) rotate(var(--tilt, 0deg)) scale(.97); box-shadow:var(--shadow-sm); }
+  @keyframes pop-in { 0% { transform:scale(.6) rotate(-8deg); opacity:0 } 100% { transform:scale(1) rotate(var(--tilt,0deg)); opacity:1 } }
+  @keyframes bob { 0%,100% { translate:0 0 } 50% { translate:0 -6px } }
+
+  header { max-width:1100px; margin:0 auto 16px; display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
+  #logo { width:64px; height:64px; display:flex; align-items:center; justify-content:center; font-size:36px; background:var(--accent); border-radius:50%; --tilt:-8deg; }
+  .title { flex:1; min-width:200px; }
+  h1 { font-family:var(--font-display); font-weight:400; font-size:clamp(28px, 6vw, 40px); margin:0; line-height:1.05; }
+  .sub { font-weight:700; opacity:.75; }
+  .pill { display:inline-block; padding:10px 16px; border-radius:999px; font-weight:800; text-decoration:none; font-size:15px; }
+  .pill.go { background:var(--mint); } .pill.hot { background:var(--sun); }
+  .pill:disabled { opacity:.5; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  #status { max-width:1100px; margin:0 auto 14px; font-weight:700; min-height:1.3em; }
+
+  #mine { max-width:1100px; margin:0 auto 26px; padding:16px; background:color-mix(in srgb, var(--accent) 35%, var(--white)); }
+  #mine h2 { font-family:var(--font-display); font-weight:400; font-size:28px; margin:0 0 10px; }
+  #mine .wait { font-weight:800; font-size:18px; display:flex; gap:12px; align-items:center; }
+  #mine .wait .emoji { font-size:40px; animation:bob 1.2s infinite; }
+
+  #grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:20px; max-width:1100px; margin:0 auto; }
+  .card { padding:10px; display:flex; flex-direction:column; gap:8px; animation:pop-in .35s var(--ease-pop) backwards; }
+  .card:nth-child(3n+1) { --tilt:-.7deg; } .card:nth-child(3n+2) { --tilt:.5deg; }
+  .card.me { outline:6px solid var(--accent); }
+  .card .top { display:flex; align-items:center; gap:8px; font-weight:800; }
+  .card .top .t { font-family:var(--font-display); font-weight:400; font-size:20px; flex:1; }
+  .pics { display:grid; grid-template-columns:repeat(2, 1fr); gap:8px; }
+  .pics .thumb:first-child:nth-last-child(odd) { grid-column:1 / -1; }
+  #mine .pics { grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); }
+  .thumb { display:block; width:100%; padding:0; border:3px solid var(--ink); border-radius:12px; overflow:hidden; background:var(--paper); aspect-ratio:4 / 3; }
+  .thumb.strip { aspect-ratio:auto; }
+  .thumb img { display:block; width:100%; height:100%; object-fit:cover; }
+  .thumb.strip img { height:auto; image-rendering:pixelated; }
+  .none { opacity:.6; font-size:13px; font-weight:700; padding:6px; }
+  .tiny { font-size:13px; padding:6px 10px; }
+
+  #view { position:fixed; inset:0; z-index:10; display:none; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+    padding:16px; background:color-mix(in srgb, var(--ink) 90%, transparent); }
+  #view.on { display:flex; }
+  #view img { max-width:100%; max-height:calc(100dvh - 130px); border:var(--line) solid var(--white); border-radius:12px; background:var(--white); }
+  #view.bw img { image-rendering:pixelated; }
+  #view .nav { position:absolute; top:50%; translate:0 -50%; width:56px; height:56px; border-radius:50%; font-size:26px; }
+  #view .prev { left:10px; } #view .next { right:10px; }
+
+  /* ---------- slideshow (?show=1): for a TV / tablet at the party ---------- */
+  #show { position:fixed; inset:0; z-index:30; background:var(--ink); display:none; align-items:center; justify-content:center; }
+  #show.on { display:flex; }
+  #show img { max-width:96vw; max-height:94vh; border:var(--line-fat) solid var(--white); border-radius:18px; box-shadow:var(--shadow-lg); transition:opacity .5s; }
+  #show img.fade { opacity:0; }
+  #show .corner { position:absolute; right:22px; bottom:22px; display:flex; gap:14px; align-items:center; padding:12px 16px; }
+  #show .corner .qr { width:clamp(90px, 14vmin, 170px); }
+  #show .corner .qr svg { display:block; width:100%; height:auto; }
+  #show .corner b { font-family:var(--font-display); font-weight:400; font-size:clamp(18px, 2.6vmin, 30px); max-width:12ch; line-height:1.1; }
+  #show .x { position:absolute; left:18px; top:18px; padding:8px 14px; opacity:.4; }
+</style>
+</head>
+<body>
+<header>
+  <div id="logo" class="sticker emoji" aria-hidden="true">📸</div>
+  <div class="title"><h1 id="name">Party photos</h1><div class="sub" id="sub"></div></div>
+  <div class="row">
+    <button class="sticker pill go" id="zip" disabled>⬇️ Download all</button>
+    <button class="sticker pill" id="showBtn">📺 Slideshow</button>
+  </div>
+</header>
+<section id="mine" class="sticker" hidden></section>
+<div id="status" role="status">Loading…</div>
+<div id="grid"></div>
+
+<div id="view" role="dialog" aria-label="Photo">
+  <button class="sticker nav prev emoji" id="prev" aria-label="Previous">◀</button>
+  <img id="viewImg" alt="">
+  <button class="sticker nav next emoji" id="next" aria-label="Next">▶</button>
+  <div class="row">
+    <a class="sticker pill go" id="viewSave">⬇️ Save</a>
+    <button class="sticker pill hot" id="viewShare" hidden>📤 Share</button>
+    <button class="sticker pill" id="viewClose">✖️ Close</button>
+  </div>
+</div>
+
+<div id="show" aria-label="Slideshow">
+  <img id="showImg" alt="">
+  <div class="corner sticker"><div class="qr" id="showQR"></div><b>Scan for your photos 📲</b></div>
+  <button class="sticker pill x" id="showX" aria-label="Exit slideshow">✖️</button>
+</div>
+
+<script type="module">
+import { zipStore } from "/archive-codecs.js";
+import { THEMES } from "/frames.js";
+import { qrSVG } from "/qr.js";
+
+const $ = (id) => document.getElementById(id);
+const [, , token, mineId] = location.pathname.replace(/\/$/, "").split("/");
+const params = new URLSearchParams(location.search);
+const setStatus = (t) => { $("status").textContent = t; };
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const fileURL = (key, dl) => `/api/album/${token}/file?key=${encodeURIComponent(key)}${dl ? "&dl=1" : ""}`;
+const pin = (() => { try { return JSON.parse(localStorage.getItem("booth.pin") || '""'); } catch { return ""; } })();
+const UI = { turkey: "--tomato", feast: "--sun", leaves: "--tomato", starry: "--grape", harvest: "--sun", stars: "--sun", hearts: "--pink", party: "--sky", dino: "--mint", space: "--grape", film: "--tomato" };
+
+let event = null, sessions = [], seen = new Set();
+const time = (s) => new Date(s.meta?.capturedAt ?? 0).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+const origs = (s) => Object.keys(s.files).filter((n) => n.startsWith("orig-")).sort();
+/** Every viewable picture in album order: [{ s, name, key }] — originals first, then the strip. */
+const pictures = () => sessions.flatMap((s) => [...origs(s), ...(s.files["strip.png"] ? ["strip.png"] : [])].map((name) => ({ s, name, key: s.files[name] })));
+
+async function load() {
+  const res = await fetch(`/api/album/${token}`, { cache: "no-store" });
+  if (res.status === 404) { setStatus("This album link doesn't work (it may have been replaced). Ask the host for the new one."); $("name").textContent = "Album not found"; throw new Error("gone"); }
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  ({ event, sessions } = await res.json());
+  document.title = `${event.name} 📸`;
+  $("name").textContent = event.name;
+  if (UI[event.theme]) document.documentElement.style.setProperty("--accent", `var(${UI[event.theme]})`);
+  $("logo").textContent = THEMES[event.theme]?.icon ?? "📸";
+  const n = sessions.length;
+  $("sub").textContent = [event.date && new Date(event.date + "T12:00:00").toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" }),
+    `${n} photo session${n === 1 ? "" : "s"}`].filter(Boolean).join(" · ");
+  $("zip").disabled = !n;
+  setStatus(n ? "" : "No photos yet — they show up here a few seconds after each strip prints.");
+  render();
+}
+
+function card(s, big) {
+  const m = s.meta ?? {};
+  const pics = origs(s).map((n) => thumb(s.files[n], `Photo ${n.match(/\d/)[0]}`)).join("") || `<div class="none">📤 uploading…</div>`;
+  return `<article class="card sticker ${s.id === mineId ? "me" : ""}" data-id="${s.id}" id="s-${s.id}">
+    <div class="top"><span class="emoji">${THEMES[m.theme]?.icon ?? "📸"}</span><span class="t">${time(s)}</span>
+      ${pin && !big ? `<button class="sticker pill tiny" data-hide="${s.id}" data-day="${s.day}" title="Hide from album (host only)">🙈</button>` : ""}</div>
+    <div class="pics">${pics}</div>
+    ${s.files["strip.png"] ? `<div class="row"><button class="sticker pill tiny" data-key="${s.files["strip.png"]}">🧾 Printed strip</button></div>` : ""}
+  </article>`;
+}
+function thumb(key, label) {
+  return `<button class="thumb" data-key="${esc(key)}" aria-label="${label}"><img loading="lazy" src="${fileURL(key)}" alt="${label}"></button>`;
+}
+
+let waitT = null, waitUntil = Date.now() + 4 * 60000;
+function render() {
+  const fresh = sessions.filter((s) => !seen.has(s.id + origs(s).length));
+  if (fresh.length || !$("grid").children.length) $("grid").innerHTML = sessions.map((s) => card(s)).join("");
+  sessions.forEach((s) => seen.add(s.id + origs(s).length));
+  if (mineId) {
+    const me = sessions.find((s) => s.id === mineId);
+    $("mine").hidden = false;
+    if (me && origs(me).length) {
+      $("mine").innerHTML = `<h2>Your photos ✨</h2><div class="pics">${origs(me).map((n) => thumb(me.files[n], "Your photo")).join("")}</div>
+        <div class="row" style="margin-top:12px"><button class="sticker pill go" id="saveMine">⬇️ Save mine</button>
+        ${navigator.canShare ? `<button class="sticker pill hot" id="shareMine">📤 Share</button>` : ""}</div>`;
+      $("saveMine").onclick = () => saveAll(origs(me).map((n) => ({ s: me, name: n, key: me.files[n] })), `${event.slug}-mine`);
+      $("shareMine")?.addEventListener("click", () => share(origs(me).map((n) => me.files[n])));
+      clearTimeout(waitT);
+    } else if (Date.now() < waitUntil) {
+      $("mine").innerHTML = `<div class="wait"><span class="emoji">📤</span>Your photos are on their way from the booth — this page updates by itself.</div>`;
+      clearTimeout(waitT); waitT = setTimeout(() => load().catch(() => {}), 4000);
+    } else {
+      $("mine").innerHTML = `<div class="wait"><span class="emoji">🤔</span>Your photos haven't arrived yet. They'll appear below once the booth is back online.</div>`;
+    }
+  }
+}
+
+// ---------- viewer ----------
+let viewIdx = -1;
+function openView(key) {
+  const list = pictures(); viewIdx = list.findIndex((p) => p.key === key);
+  if (viewIdx < 0) return;
+  showView();
+}
+function showView() {
+  const list = pictures(), p = list[viewIdx];
+  if (!p) return;
+  $("view").classList.toggle("bw", p.name.endsWith(".png"));
+  $("viewImg").src = fileURL(p.key);
+  $("viewSave").href = fileURL(p.key, true);
+  $("viewShare").hidden = !navigator.canShare;
+  $("view").classList.add("on");
+}
+const step = (d) => { const n = pictures().length; if (!n) return; viewIdx = (viewIdx + d + n) % n; showView(); };
+$("prev").onclick = () => step(-1); $("next").onclick = () => step(1);
+$("viewShare").onclick = () => share([pictures()[viewIdx].key]);
+$("viewClose").onclick = () => $("view").classList.remove("on");
+$("view").addEventListener("click", (e) => { if (e.target === $("view")) $("view").classList.remove("on"); });
+document.addEventListener("keydown", (e) => {
+  if (!$("view").classList.contains("on")) return;
+  if (e.key === "Escape") $("view").classList.remove("on");
+  if (e.key === "ArrowLeft") step(-1); if (e.key === "ArrowRight") step(1);
+});
+let touchX = null;
+$("view").addEventListener("touchstart", (e) => { touchX = e.touches[0].clientX; }, { passive: true });
+$("view").addEventListener("touchend", (e) => { if (touchX === null) return; const dx = e.changedTouches[0].clientX - touchX; if (Math.abs(dx) > 50) step(dx < 0 ? 1 : -1); touchX = null; });
+
+document.body.addEventListener("click", async (e) => {
+  const h = e.target.closest("button[data-hide]");
+  if (h) {
+    if (!confirm("Hide this session from the album? (The photos stay in the private archive.)")) return;
+    const r = await fetch(`/api/events/${event.slug}/detach`, { method: "POST", headers: { "content-type": "application/json", "x-booth-pin": pin }, body: JSON.stringify({ day: h.dataset.day, id: h.dataset.hide }) });
+    if (r.ok) { seen.clear(); $("grid").innerHTML = ""; await load(); } else alert("Couldn't hide it (host PIN needed).");
+    return;
+  }
+  const b = e.target.closest("button[data-key]");
+  if (b) openView(b.dataset.key);
+});
+
+// ---------- save / share ----------
+async function blobOf(key) { const r = await fetch(fileURL(key)); if (!r.ok) throw new Error("HTTP " + r.status); return r.blob(); }
+async function share(keys) {
+  try {
+    const files = await Promise.all(keys.map(async (k, i) => new File([await blobOf(k)], `${event.slug}-${i + 1}.${k.endsWith(".png") ? "png" : "jpg"}`, { type: k.endsWith(".png") ? "image/png" : "image/jpeg" })));
+    if (navigator.canShare?.({ files })) await navigator.share({ files, title: event.name });
+    else for (const k of keys) location.href = fileURL(k, true);
+  } catch (e) { if (e.name !== "AbortError") setStatus("Couldn't share: " + e.message); }
+}
+async function saveAll(list, base) {
+  // One picture: plain download. Several: a zip (built here, nothing leaves the album).
+  if (list.length === 1) { location.href = fileURL(list[0].key, true); return; }
+  const entries = [];
+  for (const [i, f] of list.entries()) {
+    setStatus(`Fetching ${i + 1}/${list.length}…`);
+    const at = new Date(f.s.meta?.capturedAt ?? Date.now());
+    const folder = at.toLocaleTimeString("en-GB").replaceAll(":", "") + "-" + f.s.id.slice(-4);
+    entries.push({ name: `${base}/${folder}/${f.name}`, data: new Uint8Array(await (await blobOf(f.key)).arrayBuffer()), date: at });
+  }
+  const blob = new Blob(zipStore(entries), { type: "application/zip" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = `${base}.zip`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+  setStatus(`Saved ${base}.zip (${(blob.size / 1048576).toFixed(1)} MB, ${list.length} files)`);
+}
+$("zip").onclick = async () => {
+  $("zip").disabled = true;
+  try { await saveAll(pictures(), event.slug); } catch (e) { setStatus("Download failed: " + e.message); }
+  finally { $("zip").disabled = false; }
+};
+
+// ---------- slideshow ----------
+let showT = null, showIdx = 0;
+function startShow() {
+  $("show").classList.add("on");
+  $("showQR").innerHTML = qrSVG(`${location.origin}/a/${token}`);
+  document.documentElement.requestFullscreen?.().catch(() => {});
+  navigator.wakeLock?.request("screen").catch(() => {});
+  showIdx = 0; nextSlide();
+}
+function nextSlide() {
+  clearTimeout(showT);
+  const list = pictures().filter((p) => p.name.startsWith("orig-"));
+  if (list.length) {
+    const p = list[showIdx % list.length]; showIdx++;
+    const img = new Image();
+    img.onload = () => { $("showImg").classList.add("fade"); setTimeout(() => { $("showImg").src = img.src; $("showImg").classList.remove("fade"); }, 450); };
+    img.src = fileURL(p.key);
+  }
+  showT = setTimeout(nextSlide, 6000);
+}
+$("showBtn").onclick = startShow;
+$("showX").onclick = () => { $("show").classList.remove("on"); clearTimeout(showT); document.exitFullscreen?.().catch(() => {}); };
+
+// New photos appear by themselves (the slideshow restarts from the newest).
+let prevCount = 0;
+setInterval(() => {
+  if (document.visibilityState !== "visible") return;
+  load().then(() => { if (sessions.length > prevCount && $("show").classList.contains("on")) showIdx = 0; prevCount = sessions.length; }).catch(() => {});
+}, 30000);
+
+load().then(() => {
+  prevCount = sessions.length;
+  if (params.get("show") === "1") startShow();
+  if (mineId) $("mine").scrollIntoView({ block: "start" });
+}).catch((e) => { if (e.message !== "gone") setStatus("Couldn't load the album: " + e.message); });
+</script>
+</body>
+</html>

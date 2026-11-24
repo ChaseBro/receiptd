@@ -28,3 +28,9 @@ Files are copied unmodified.
 To update: download the tarball (`npm pack @mediapipe/tasks-vision@<ver>`),
 copy the three files above, bump the version + hashes here, and check the
 booth on iPad Safari.
+
+## `qrcode/qrcode.mjs` — QR codes on strips and party signs
+
+- Source: npm `qrcode-generator@1.4.4` (`qrcode.js`), Kazuhiko Arase, **MIT**.
+- Modified only to be an ES module: the trailing UMD wrapper is removed and
+  `export default qrcode;` appended. Wrapped by `public/qr.js`.

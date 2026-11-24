@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#FFF4DC">
+<title>Cheese! parties 🎉</title>
+<link rel="icon" href="./icons/icon-180.png">
+<style>
+  /* Adult page: words allowed. Tokens + stickers per ../DESIGN.md; `npm run lint` checks this file too. */
+  @font-face { font-family:"Lilita"; src:url("./fonts/lilita-one.woff2") format("woff2"); font-display:swap; }
+  :root {
+    --paper:#FFF4DC; --ink:#1A1423; --white:#FFFFFF;
+    --pink:#FF5DA2; --sun:#FFD23F; --mint:#2EE6A6; --sky:#3EC1FF; --grape:#9B6BFF; --tomato:#FF6B4A;
+    --accent:var(--sun); --accent-2:var(--grape);
+    --line:4px; --line-fat:6px;
+    --shadow-sm:3px 3px 0 var(--ink); --shadow:6px 6px 0 var(--ink); --shadow-lg:10px 10px 0 var(--ink);
+    --r:24px;
+    --font-display:"Lilita", "Arial Rounded MT Bold", ui-rounded, system-ui, sans-serif;
+    --font-body:ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", system-ui, sans-serif;
+    --font-emoji:"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+    --font-mono:ui-monospace, "SF Mono", Menlo, monospace;
+    --ease-pop:cubic-bezier(.34,1.56,.64,1);
+    --dots:radial-gradient(color-mix(in srgb, var(--ink) 14%, transparent) 1.6px, transparent 1.8px);
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  [hidden] { display:none !important; }
+  body { margin:0; min-height:100dvh; color:var(--ink); background:var(--paper); background-image:var(--dots); background-size:22px 22px;
+    font-family:var(--font-body); padding:calc(env(safe-area-inset-top) + 20px) 16px 60px; }
+  button, select, input { font:inherit; color:inherit; }
+  button { cursor:pointer; }
+  .emoji { font-family:var(--font-emoji); line-height:1; }
+  .sticker { background:var(--white); border:var(--line) solid var(--ink); box-shadow:var(--shadow); border-radius:var(--r);
+    transform:rotate(var(--tilt, 0deg)); transition:transform .14s var(--ease-pop), box-shadow .14s; }
+  button.sticker:active, a.sticker:active { transform:translate(4px,4px) rotate(var(--tilt, 0deg)) scale(.97); box-shadow:var(--shadow-sm); }
+  @keyframes pop-in { 0% { transform:scale(.6) rotate(-8deg); opacity:0 } 100% { transform:scale(1) rotate(var(--tilt,0deg)); opacity:1 } }
+
+  header { display:flex; align-items:center; gap:14px; flex-wrap:wrap; max-width:1000px; margin:0 auto 18px; }
+  #logo { width:64px; height:64px; display:flex; align-items:center; justify-content:center; font-size:36px; background:var(--sun); border-radius:50%; --tilt:-8deg; }
+  h1 { font-family:var(--font-display); font-weight:400; font-size:34px; margin:0; flex:1; min-width:200px; }
+  h2 { font-family:var(--font-display); font-weight:400; font-size:26px; margin:0; }
+  .pill { display:inline-block; padding:9px 14px; border-radius:999px; font-weight:800; color:var(--ink); text-decoration:none; font-size:15px; }
+  .pill.go { background:var(--mint); } .pill.hot { background:var(--sun); } .pill.warn { background:var(--tomato); }
+  .pill:disabled { opacity:.5; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  #status { max-width:1000px; margin:0 auto 14px; font-weight:700; min-height:1.3em; }
+  .muted { opacity:.7; font-weight:600; font-size:14px; }
+
+  #lock { max-width:420px; margin:12vh auto; padding:22px; display:flex; flex-direction:column; gap:14px; font-weight:700; }
+  input[type=text], input[type=date], input[type=password] { padding:10px 12px; border-radius:14px; border:3px solid var(--ink); background:var(--paper); width:100%; }
+  #lock input { font-family:var(--font-display); font-size:28px; letter-spacing:.2em; text-align:center; }
+
+  #list { display:grid; gap:20px; max-width:1000px; margin:0 auto; }
+  .ev { padding:16px; display:flex; flex-direction:column; gap:12px; animation:pop-in .35s var(--ease-pop) backwards; }
+  .ev:nth-child(odd) { --tilt:-.5deg; } .ev:nth-child(even) { --tilt:.4deg; }
+  .ev.active { background:color-mix(in srgb, var(--mint) 22%, var(--white)); }
+  .ev .top { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .ev .top h2 { flex:1; min-width:160px; }
+  .badge { padding:3px 10px; border-radius:999px; border:3px solid var(--ink); font-size:13px; font-weight:800; background:var(--paper); }
+  .badge.on { background:var(--mint); }
+  .icons { font-size:26px; display:flex; gap:6px; flex-wrap:wrap; }
+  .link { font-family:var(--font-mono); font-size:13px; word-break:break-all; background:var(--paper); padding:6px 10px; border-radius:10px; border:2px solid var(--ink); }
+
+  dialog { border:var(--line) solid var(--ink); border-radius:var(--r); box-shadow:var(--shadow-lg); background:var(--white); padding:20px; width:min(560px, 94vw); color:var(--ink); }
+  dialog::backdrop { background:color-mix(in srgb, var(--ink) 60%, transparent); }
+  form.edit { display:flex; flex-direction:column; gap:12px; font-weight:700; }
+  .themes { display:flex; flex-wrap:wrap; gap:8px; }
+  .themes button { width:58px; height:58px; font-size:30px; border-radius:16px; border:3px solid var(--ink); background:var(--paper); position:relative; }
+  .themes button.sel { background:var(--accent); box-shadow:var(--shadow-sm); }
+  .themes button.def::after { content:"★"; position:absolute; right:-8px; top:-10px; font-size:18px; color:var(--ink); background:var(--sun); border:2px solid var(--ink); border-radius:50%; width:24px; height:24px; line-height:20px; font-family:var(--font-body); }
+  label.check { display:flex; gap:10px; align-items:center; }
+  label.check input { width:22px; height:22px; }
+
+  /* ---------- sign (screen + paper) ---------- */
+  #sign { position:fixed; inset:0; z-index:20; overflow:auto; background:var(--paper); padding:20px 16px 60px; }
+  #sign .tools { max-width:760px; margin:0 auto 16px; }
+  #poster { max-width:760px; margin:0 auto; padding:40px 32px; text-align:center; display:flex; flex-direction:column; align-items:center; gap:14px;
+    background:var(--white); border:var(--line-fat) solid var(--ink); border-radius:32px; box-shadow:var(--shadow-lg); }
+  #poster .stickers { font-size:64px; display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
+  #poster .stickers span:nth-child(odd) { rotate:-10deg; } #poster .stickers span:nth-child(even) { rotate:8deg; }
+  #poster h1 { font-size:clamp(40px, 8vw, 72px); flex:none; line-height:1.02; }
+  #poster .date { font-family:var(--font-display); font-size:26px; opacity:.8; }
+  #poster .qr { width:min(70vw, 380px); padding:14px; background:var(--white); border:var(--line-fat) solid var(--ink); border-radius:22px; box-shadow:var(--shadow); }
+  #poster .qr svg { display:block; width:100%; height:auto; }
+  #poster .cta { font-family:var(--font-display); font-size:34px; line-height:1.1; }
+  #poster .small { font-size:16px; font-weight:700; opacity:.8; max-width:520px; }
+  #poster .booth { display:flex; gap:18px; align-items:center; text-align:left; margin-top:10px; padding-top:18px; border-top:4px dashed var(--ink); }
+  #poster .booth .qr { width:150px; padding:8px; border-width:4px; box-shadow:var(--shadow-sm); }
+  @media print {
+    @page { size:letter portrait; margin:0.4in; }
+    body { background:var(--white); padding:0; }
+    main, header, #status, #lock, #sign .tools { display:none !important; }
+    #sign { position:static; padding:0; background:var(--white); overflow:visible; }
+    #poster { box-shadow:none; max-width:none; min-height:9.6in; justify-content:center; break-inside:avoid; }
+  }
+</style>
+</head>
+<body>
+<section id="lock" class="sticker" hidden>
+  <div>Parties — enter the booth PIN</div>
+  <form id="lockForm" style="display:contents">
+    <input id="pin" type="password" inputmode="numeric" autocomplete="off" aria-label="PIN">
+    <button class="sticker pill go" type="submit">Unlock</button>
+  </form>
+</section>
+
+<main id="app" hidden>
+  <header>
+    <div id="logo" class="sticker emoji" aria-hidden="true">🎉</div>
+    <h1>Parties &amp; albums</h1>
+    <button class="sticker pill go" id="new">➕ New party</button>
+    <a class="sticker pill" href="./gallery.html">🗂️ Archive</a>
+    <a class="sticker pill" href="./">📸 Booth</a>
+  </header>
+  <div id="status" role="status"></div>
+  <div id="list"></div>
+</main>
+
+<dialog id="editor">
+  <form class="edit" method="dialog" id="editForm">
+    <h2 id="edTitle">New party</h2>
+    <label>Name<input type="text" id="edName" maxlength="60" required placeholder="Thanksgiving 2026"></label>
+    <label>Date<input type="date" id="edDate"></label>
+    <div>Frames on the booth <span class="muted">(tap to offer; tap again on an offered one to make it the default ★)</span>
+      <div class="themes" id="edThemes"></div>
+      <div class="row" style="margin-top:8px"><button type="button" class="pill sticker" id="edThanks">🦃 Thanksgiving set</button>
+        <button type="button" class="pill sticker" id="edAll">All</button><button type="button" class="pill sticker" id="edNone">None (= all)</button></div>
+    </div>
+    <label>Footer on strips <span class="muted">(optional, e.g. “Thanksgiving 2026 · Brownells”)</span><input type="text" id="edFooter" maxlength="40"></label>
+    <label class="check"><input type="checkbox" id="edQR" checked> Print a QR code on every strip → that guest’s photos</label>
+    <label class="check"><input type="checkbox" id="edActive" checked> Make this the booth’s active party</label>
+    <div class="muted" id="edErr" role="alert"></div>
+    <div class="row"><button class="sticker pill go" id="edSave" value="save">Save</button><button class="sticker pill" value="cancel" formnovalidate>Cancel</button></div>
+  </form>
+</dialog>
+
+<section id="sign" hidden>
+  <div class="tools row">
+    <button class="sticker pill" id="signBack">← Back</button>
+    <button class="sticker pill go" id="signPrint">🖨️ Print poster</button>
+    <button class="sticker pill hot" id="signThermal">🧾 Print on the receipt printer</button>
+    <label class="check"><input type="checkbox" id="signBooth"> Add “use the booth on your phone” QR (contains the PIN)</label>
+  </div>
+  <div id="poster"></div>
+</section>
+
+<script type="module">
+import { THEMES } from "./frames.js";
+import { qrSVG, drawQR, qrSide } from "./qr.js";
+import { PRINT_WIDTH as W, luminance, packBits, toBase64 } from "./raster.js";
+
+const $ = (id) => document.getElementById(id);
+const THANKS = ["turkey", "feast", "leaves", "starry", "harvest"];
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const S = {
+  get(k, d) { try { const v = localStorage.getItem("booth." + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+};
+const pin = () => S.get("pin", "");
+const setStatus = (t) => { $("status").textContent = t; };
+const albumURL = (e) => `${location.origin}/a/${e.share}`;
+
+function lock(msg) {
+  localStorage.removeItem("booth.pin");
+  $("app").hidden = true; $("sign").hidden = true; $("lock").hidden = false; $("pin").focus();
+  if (msg) $("lock").firstElementChild.textContent = msg;
+}
+async function api(path, opts = {}) {
+  const res = await fetch(path, { ...opts, cache: "no-store", headers: { "content-type": "application/json", "x-booth-pin": pin() } });
+  if (res.status === 401) { lock("Wrong or changed PIN — try again"); throw new Error("locked"); }
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || "HTTP " + res.status);
+  return body;
+}
+
+let events = [], active = null;
+async function load() {
+  ({ events, active } = await api("/api/events"));
+  render();
+}
+function render() {
+  setStatus(events.length ? "" : "No parties yet — make one for the next get-together.");
+  $("list").innerHTML = events.map((e) => {
+    const on = e.slug === active;
+    const icons = (e.themes.length ? e.themes : Object.keys(THEMES)).map((k) => THEMES[k]?.icon ?? "").join(" ");
+    return `<article class="ev sticker ${on ? "active" : ""}" data-slug="${esc(e.slug)}">
+      <div class="top"><h2>${esc(e.name)}</h2>
+        ${e.date ? `<span class="badge">${esc(e.date)}</span>` : ""}
+        ${on ? `<span class="badge on">📸 on the booth now</span>` : ""}
+        ${e.qr ? `<span class="badge">QR on strips</span>` : ""}</div>
+      <div class="icons emoji" aria-label="Frames">${icons}</div>
+      ${e.footer ? `<div class="muted">Footer: ${esc(e.footer)}</div>` : ""}
+      <div><div class="muted">Album link (anyone with it can view &amp; download):</div><div class="link">${esc(albumURL(e))}</div></div>
+      <div class="row">
+        ${on ? `<button class="sticker pill" data-act="stop">⏹ Stop shooting for this</button>` : `<button class="sticker pill go" data-act="activate">▶️ Shoot for this party</button>`}
+        <button class="sticker pill hot" data-act="sign">🪧 Sign / QR</button>
+        <a class="sticker pill" href="${esc(albumURL(e))}" target="_blank" rel="noopener">🖼️ Album</a>
+        <a class="sticker pill" href="${esc(albumURL(e))}?show=1" target="_blank" rel="noopener">📺 Slideshow</a>
+        <button class="sticker pill" data-act="copy">🔗 Copy link</button>
+        <button class="sticker pill" data-act="edit">✏️ Edit</button>
+        <button class="sticker pill" data-act="attach">📥 Add a day’s photos</button>
+        <button class="sticker pill warn" data-act="rotate">♻️ New link</button>
+      </div></article>`;
+  }).join("");
+}
+
+$("list").addEventListener("click", async (ev) => {
+  const b = ev.target.closest("button[data-act]");
+  if (!b) return;
+  const e = events.find((x) => x.slug === b.closest(".ev").dataset.slug);
+  try {
+    switch (b.dataset.act) {
+      case "activate": await api("/api/events/active", { method: "POST", body: JSON.stringify({ slug: e.slug }) }); active = e.slug; render(); setStatus(`The booth now shoots for “${e.name}” (kiosks pick it up within a minute).`); break;
+      case "stop": await api("/api/events/active", { method: "POST", body: JSON.stringify({ slug: null }) }); active = null; render(); setStatus("No active party: photos go to the archive only."); break;
+      case "sign": openSign(e); break;
+      case "copy": await navigator.clipboard.writeText(albumURL(e)); setStatus("Album link copied."); break;
+      case "edit": openEditor(e); break;
+      case "attach": {
+        const day = prompt("Add every booth session from which day? (YYYY-MM-DD)", e.date || new Date().toLocaleDateString("en-CA"));
+        if (!day) return;
+        const r = await api(`/api/events/${e.slug}/attach`, { method: "POST", body: JSON.stringify({ day }) });
+        setStatus(`Added ${r.added} session${r.added === 1 ? "" : "s"} from ${day} to “${e.name}”.`); break;
+      }
+      case "rotate": {
+        if (!confirm("Make a new album link? The old link, the old sign and QR codes on strips already printed stop working.")) return;
+        const r = await api(`/api/events/${e.slug}/share`, { method: "POST" });
+        Object.assign(e, r.event); render(); setStatus("New album link made — print a new sign."); break;
+      }
+    }
+  } catch (err) { if (err.message !== "locked") setStatus("Failed: " + err.message); }
+});
+
+// ---------- editor ----------
+let editing = null, sel = [], def = null;
+function renderThemes() {
+  $("edThemes").innerHTML = Object.entries(THEMES).map(([k, t]) =>
+    `<button type="button" class="emoji ${sel.includes(k) ? "sel" : ""} ${def === k ? "def" : ""}" data-k="${k}" aria-label="${k}" title="${k}">${t.icon}</button>`).join("");
+}
+$("edThemes").addEventListener("click", (ev) => {
+  const k = ev.target.closest("button")?.dataset.k;
+  if (!k) return;
+  if (!sel.includes(k)) { sel.push(k); def ??= k; }
+  else if (def !== k) def = k;
+  else { sel = sel.filter((x) => x !== k); def = sel[0] ?? null; }
+  renderThemes();
+});
+$("edThanks").onclick = () => { sel = [...THANKS]; def = "turkey"; renderThemes(); };
+$("edAll").onclick = () => { sel = Object.keys(THEMES); def ??= sel[0]; renderThemes(); };
+$("edNone").onclick = () => { sel = []; def = null; renderThemes(); };
+function openEditor(e) {
+  editing = e;
+  $("edTitle").textContent = e ? "Edit party" : "New party";
+  $("edName").value = e?.name ?? ""; $("edDate").value = e?.date ?? "";
+  $("edFooter").value = e?.footer ?? ""; $("edQR").checked = e?.qr ?? true;
+  $("edActive").checked = e ? e.slug === active : true;
+  sel = e ? [...e.themes] : [...THANKS]; def = e?.theme ?? (e ? sel[0] ?? null : "turkey");
+  $("edErr").textContent = "";
+  renderThemes(); $("editor").showModal();
+}
+$("new").onclick = () => openEditor(null);
+$("editForm").addEventListener("submit", async (ev) => {
+  if (ev.submitter?.value !== "save") return;
+  ev.preventDefault();
+  const body = { name: $("edName").value.trim(), date: $("edDate").value || null, themes: sel, theme: def, footer: $("edFooter").value.trim(), qr: $("edQR").checked };
+  try {
+    const { event } = editing
+      ? await api(`/api/events/${editing.slug}`, { method: "PUT", body: JSON.stringify(body) })
+      : await api("/api/events", { method: "POST", body: JSON.stringify(body) });
+    if ($("edActive").checked && active !== event.slug) await api("/api/events/active", { method: "POST", body: JSON.stringify({ slug: event.slug }) });
+    if (!$("edActive").checked && active === event.slug) await api("/api/events/active", { method: "POST", body: JSON.stringify({ slug: null }) });
+    $("editor").close(); await load(); setStatus(`Saved “${event.name}”.`);
+  } catch (err) { $("edErr").textContent = "Couldn't save: " + err.message; }
+});
+
+// ---------- sign ----------
+let signing = null;
+const fmtDate = (d) => d ? new Date(d + "T12:00:00").toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" }) : "";
+function signIcons(e) { return (e.themes.length ? e.themes : ["stars", "party", "hearts"]).slice(0, 5).map((k) => THEMES[k]?.icon ?? "📸"); }
+function openSign(e) {
+  signing = e;
+  $("sign").hidden = false; renderSign(); scrollTo(0, 0);
+}
+function renderSign() {
+  const e = signing, withBooth = $("signBooth").checked;
+  $("poster").innerHTML = `
+    <div class="stickers emoji" aria-hidden="true">${signIcons(e).map((i) => `<span>${i}</span>`).join("")}</div>
+    <h1>${esc(e.name)}</h1>
+    ${e.date ? `<div class="date">${esc(fmtDate(e.date))}</div>` : ""}
+    <div class="cta">📸 Photo booth! Strike a pose,<br>then scan for your photos</div>
+    <div class="qr">${qrSVG(albumURL(e))}</div>
+    <div class="small">Point your phone camera here to see, save and share every photo from the party. Each printed strip has its own code too.</div>
+    ${withBooth ? `<div class="booth"><div class="qr">${qrSVG(`${location.origin}/#pin=${encodeURIComponent(pin())}`)}</div>
+      <div><div class="cta" style="font-size:26px">📱 Be the booth</div><div class="small">Scan to use your own phone as a camera — strips print on the party printer.</div></div></div>` : ""}`;
+}
+$("signBooth").onchange = renderSign;
+$("signBack").onclick = () => { $("sign").hidden = true; };
+$("signPrint").onclick = () => print();
+$("signThermal").onclick = async () => {
+  const b = $("signThermal"); b.disabled = true;
+  try {
+    const { bits, h } = await thermalSign(signing, $("signBooth").checked);
+    await api("/api/print", { method: "POST", body: JSON.stringify({ width: W, height: h, bits: toBase64(packBits(bits, W, h)), density: S.get("density", 3), speed: S.get("speed", 2), copies: 1 }) });
+    setStatus("Sign sent to the receipt printer.");
+    b.textContent = "✅ Sent — print another?";
+  } catch (err) { if (err.message !== "locked") alert("Couldn't print: " + err.message); }
+  finally { b.disabled = false; }
+};
+
+/** 576px-wide black & white sign for the receipt printer (pure ink → threshold, no dither). */
+async function thermalSign(e, withBooth) {
+  await document.fonts.load("40px Lilita");
+  const DISPLAY = `"Lilita", "Arial Rounded MT Bold", sans-serif`, EMOJI = `"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+  const url = albumURL(e), mod = 11, side = qrSide(url, mod);
+  const boothURL = `${location.origin}/#pin=${encodeURIComponent(pin())}`, bMod = 6, bSide = withBooth ? qrSide(boothURL, bMod) : 0;
+  const H = 120 + 190 + 30 + side + 150 + (withBooth ? bSide + 90 : 0) + 60;
+  const c = new OffscreenCanvas(W, H), ctx = c.getContext("2d");
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#000"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.font = `76px ${EMOJI}`; ctx.fillText(signIcons(e).slice(0, 4).join(" "), W / 2, 64);
+  // Title, wrapped to two lines.
+  let size = 70; ctx.font = `${size}px ${DISPLAY}`;
+  const words = e.name.split(/\s+/), lines = [""];
+  for (const w of words) { const t = (lines.at(-1) + " " + w).trim(); if (ctx.measureText(t).width > W - 40 && lines.at(-1)) lines.push(w); else lines[lines.length - 1] = t; }
+  if (lines.length > 2) { size = 52; ctx.font = `${size}px ${DISPLAY}`; }
+  lines.slice(0, 3).forEach((l, i) => ctx.fillText(l, W / 2, 160 + i * (size + 6), W - 30));
+  let y = 160 + Math.min(3, lines.length) * (size + 6);
+  if (e.date) { ctx.font = `30px ${DISPLAY}`; ctx.fillText(fmtDate(e.date), W / 2, y, W - 30); y += 44; }
+  ctx.font = `38px ${DISPLAY}`; ctx.fillText("SCAN FOR YOUR PHOTOS", W / 2, y + 10, W - 30); y += 40;
+  ctx.fillRect((W - side) / 2 + 10, y + 10, side, side);
+  drawQR(ctx, url, (W - side) / 2, y, mod);
+  ctx.lineWidth = 6; ctx.strokeRect((W - side) / 2 - 3, y - 3, side + 6, side + 6);
+  y += side + 40;
+  ctx.font = `28px ${DISPLAY}`; ctx.fillText("see · save · share 📸", W / 2, y, W - 30); y += 50;
+  if (withBooth) {
+    ctx.setLineDash([12, 10]); ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(20, y); ctx.lineTo(W - 20, y); ctx.stroke(); ctx.setLineDash([]);
+    y += 30; ctx.font = `34px ${DISPLAY}`; ctx.fillText("BE THE BOOTH 📱", W / 2, y); y += 30;
+    drawQR(ctx, boothURL, (W - bSide) / 2, y, bMod); y += bSide + 20;
+  }
+  const h = Math.min(H, Math.ceil(y + 30));
+  const g = luminance(ctx.getImageData(0, 0, W, h).data, W, h);
+  const bits = new Uint8Array(W * h);
+  for (let i = 0; i < bits.length; i++) bits[i] = g[i] < 140 ? 1 : 0;
+  return { bits, h };
+}
+
+$("lockForm").onsubmit = (e) => {
+  e.preventDefault();
+  localStorage.setItem("booth.pin", JSON.stringify($("pin").value.trim()));
+  $("pin").value = ""; start();
+};
+async function start() {
+  if (!pin()) return lock();
+  $("lock").hidden = true; $("app").hidden = false;
+  try { await load(); } catch (e) { if (e.message !== "locked") setStatus("Couldn't load: " + e.message); }
+}
+start();
+</script>
+</body>
+</html>

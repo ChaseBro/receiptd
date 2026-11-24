@@ -7,6 +7,11 @@
     "test": "node --test test/",
     "deploy:staging": "npm test && wrangler deploy --env staging",
     "deploy": "npm test && wrangler deploy",
-    "photos:pull": "node scripts/pull-photos.mjs"
+    "photos:pull": "node scripts/pull-photos.mjs",
+    "dev:e2e": "wrangler dev -c wrangler.toml -c ../worker/wrangler.toml --port 8788 --local --persist-to .wrangler/e2e",
+    "test:e2e": "node e2e/booth.e2e.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.61.1"
   }
 }

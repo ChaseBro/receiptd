@@ -13,6 +13,7 @@ import {
   archiveKey, compactMeta, contentTypeFor, groupSessions, idTime, isDay, mergeMeta, nyDay,
   parseArchiveKey, sanitizeMeta, sniffOK, validPrefix, type ArchiveMeta,
 } from "./archive.ts";
+import { indexSession } from "./events-api.ts";
 
 interface ArchiveEnv {
   PHOTOS?: R2Bucket;
@@ -121,6 +122,8 @@ async function upload(req: Request, bucket: R2Bucket, prefix: string): Promise<R
     httpMetadata: { contentType: "application/json" },
     ...(compact ? { customMetadata: { meta: compact } } : {}),
   });
+  // Join the event's album (idempotent; the event itself needn't exist yet).
+  if (merged.event) await indexSession(bucket, prefix, merged.event, day, id);
   return json(201, { ok: true, id, day, files: merged.files, printed: merged.printed });
 }
 

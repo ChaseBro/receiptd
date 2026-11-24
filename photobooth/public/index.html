@@ -100,8 +100,10 @@
   #cam.on { display:grid; place-items:stretch; place-content:stretch; grid-template:"themes" auto "stage" minmax(0,1fr) "tray" auto / minmax(0,1fr); gap:var(--gap);
     padding:calc(env(safe-area-inset-top) + var(--gap)) calc(env(safe-area-inset-right) + var(--gap))
             calc(env(safe-area-inset-bottom) + var(--gap)) calc(env(safe-area-inset-left) + var(--gap)); }
-  #themes { grid-area:themes; z-index:3; display:flex; justify-content:center; gap:calc(var(--gap) * .7);
+  /* Centred when it fits, scrollable (from the first theme) when it doesn't: auto margins, not justify-content. */
+  #themes { grid-area:themes; z-index:3; display:flex; justify-content:flex-start; gap:calc(var(--gap) * .7);
     padding:4px 6px 10px; overflow:auto; scrollbar-width:none; }
+  #themes > :first-child { margin-inline-start:auto; } #themes > :last-child { margin-inline-end:auto; }
   #themes button { flex:0 0 auto; width:calc(var(--tap) * .82); height:calc(var(--tap) * .82); font-size:calc(var(--tap) * .42); }
   #themes button:nth-child(odd) { --tilt:-6deg; } #themes button:nth-child(even) { --tilt:5deg; }
   #themes button.sel { background:var(--accent); --tilt:0deg; scale:1.14; animation:wiggle 2.6s infinite; }
@@ -123,7 +125,8 @@
   #shutter { width:var(--shutter); height:var(--shutter); font-size:calc(var(--shutter) * .5); background:var(--accent); }
   @media (orientation: landscape) {
     #cam.on { grid-template:"themes stage tray" minmax(0,1fr) / auto minmax(0,1fr) auto; }
-    #themes { flex-direction:column; justify-content:center; padding:6px 10px 6px 4px; }
+    #themes { flex-direction:column; justify-content:flex-start; padding:6px 10px 6px 4px; }
+    #themes > :first-child { margin-inline-start:0; margin-block-start:auto; } #themes > :last-child { margin-inline-end:0; margin-block-end:auto; }
     #tray { flex-direction:column; padding:0 8px 0 0; }
   }
   #shutter span { animation:wiggle 3.2s infinite; display:block; }
@@ -235,6 +238,7 @@
   .chips button { padding:7px 12px; border-radius:999px; border:3px solid var(--ink); background:var(--paper); font-weight:700; font-size:14px; }
   .chips button.sel { background:var(--accent); box-shadow:var(--shadow-sm); }
   .pill { padding:12px 18px; border-radius:999px; font-weight:800; background:var(--white); }
+  a.pill { color:var(--ink); text-decoration:none; border:3px solid var(--ink); }
   .pill.go { background:var(--mint); }
 </style>
 </head>
@@ -305,6 +309,8 @@
 
 <section id="settings" class="screen">
   <h2>Booth settings</h2>
+  <div class="card" id="sParty">Party<div class="hint" id="sPartyName">No party — photos go to the archive only.</div>
+    <div class="chips"><a class="pill" href="./party.html">🎉 Parties, signs &amp; albums</a><a class="pill" href="./gallery.html">🗂️ Archive</a></div></div>
   <div class="card">Footer text (optional)<input type="text" id="sFooter" maxlength="40"></div>
   <div class="card">Countdown seconds<input type="number" id="sCount" min="1" max="10"></div>
   <div class="card">Anti-ghosting
@@ -339,6 +345,8 @@ const CANDY = ["--pink", "--sun", "--mint", "--sky", "--grape", "--tomato"];
 const UI = {                                             // theme → [accent, accent-2] tokens
   stars: ["--sun", "--grape"], hearts: ["--pink", "--sun"], party: ["--sky", "--pink"],
   dino: ["--mint", "--sun"], space: ["--grape", "--sky"], film: ["--tomato", "--sun"], plain: ["--sky", "--mint"],
+  turkey: ["--tomato", "--sun"], feast: ["--sun", "--tomato"], leaves: ["--tomato", "--grape"],
+  starry: ["--grape", "--sun"], harvest: ["--sun", "--mint"],
 };
 
 // ---------- persisted settings ----------
@@ -357,6 +365,27 @@ const cfg = () => ({
   gain: S.get("gain", 0.15), density: S.get("density", 3), speed: S.get("speed", 2), sound: S.get("sound", true),
   ticket: S.get("ticket", 0),
 });
+
+// ---------- active event (party / album), set from party.html ----------
+// The booth shoots "for" the active event: its themes, footer and the QR code
+// on each strip (→ that guest's photos in the event album). Cached so a flaky
+// Wi-Fi at the party never drops it.
+let party = S.get("event", null);
+async function refreshEvent() {
+  try {
+    const { event } = await api("/api/events/active");
+    const prev = party?.slug ?? null;
+    party = event ?? null; S.set("event", party ?? undefined);
+    if ((party?.slug ?? null) !== prev && party?.theme) S.set("theme", party.theme);
+    if ($("cam").classList.contains("on")) applyTheme();
+  } catch {}
+}
+function offeredThemes() {
+  const all = Object.keys(THEMES), want = party?.themes?.filter((k) => THEMES[k]);
+  return want?.length ? want : all;
+}
+const footerText = () => (party?.footer || cfg().footer || "");
+const qrURL = () => (party?.qr && party.share && session ? `${location.origin}/a/${party.share}/${session.id}` : "");
 
 // ---------- screens / api ----------
 function show(id) { for (const s of document.querySelectorAll(".screen")) s.classList.toggle("on", s.id === id); }
@@ -443,6 +472,7 @@ async function refreshPrinter() {
   } catch {}
 }
 setInterval(() => { if ($("cam").classList.contains("on") && document.visibilityState === "visible") refreshPrinter(); }, 15000);
+setInterval(() => { if ($("cam").classList.contains("on") && document.visibilityState === "visible" && !busy) refreshEvent(); }, 60000);
 
 // ---------- lock ----------
 $("lockForm").onsubmit = async (e) => {
@@ -458,7 +488,7 @@ let stream = null, facing = "user";
 let streamFacing = null;
 async function startCam() {
   show("cam"); $("camErr").classList.remove("on");
-  applyTheme(); renderMode(); keepAwake(); refreshPrinter();
+  applyTheme(); renderMode(); keepAwake(); refreshPrinter(); refreshEvent();
   // Reuse a live stream: every new getUserMedia can re-trigger Safari's prompt.
   if (stream && streamFacing === facing && stream.getVideoTracks().some((t) => t.readyState === "live")) return;
   stopCam();
@@ -486,9 +516,11 @@ function renderDots(done) {
   $("dots").innerHTML = n > 1 ? Array.from({ length: n }, (_, i) => `<i class="${i < done ? "done" : ""}"></i>`).join("") : "";
 }
 function applyTheme() {
+  const offered = offeredThemes();
+  if (!offered.includes(cfg().theme)) S.set("theme", party?.theme && offered.includes(party.theme) ? party.theme : offered[0]);
   const t = cfg().theme, [a, b] = UI[t] ?? UI.stars, root = document.documentElement.style;
   root.setProperty("--accent", `var(${a})`); root.setProperty("--accent-2", `var(${b})`);
-  $("themes").innerHTML = Object.entries(THEMES).map(([k, v]) =>
+  $("themes").innerHTML = offered.map((k) => [k, THEMES[k]]).map(([k, v]) =>
     `<button class="sticker emoji ${k === t ? "sel" : ""}" data-k="${k}" aria-label="${k} theme">${v.icon}</button>`).join("");
   for (const btn of $("themes").children) btn.onclick = () => { sfx.tap(); S.set("theme", btn.dataset.k); applyTheme(); };
 }
@@ -559,7 +591,8 @@ function sessionMeta(extra = {}) {
   const c = cfg();
   return { id: session.id, capturedAt: session.capturedAt, theme: c.theme, shots: session.full.length,
     faces: faceBoxes ? faceBoxes.map((b) => b.length) : null, rotations: rotations.slice(),
-    mirrored: session.mirrored, ticket: c.ticket + 1, ua: navigator.userAgent, printed: false, ...extra };
+    mirrored: session.mirrored, ticket: c.ticket + 1, ua: navigator.userAgent, printed: false,
+    ...(session.event ? { event: session.event } : {}), ...extra };
 }
 /** (Re-)upload the originals unless they were already sent with the current ↻ rotations. */
 function syncOriginals() {
@@ -579,7 +612,7 @@ $("shutter").onclick = async () => {
       await ring("countdown", c.count * 1000);
       const g = grab();
       frames.push(g.frame); full.push(g.full); rotations.push(0);
-      if (i === 0) session = { id: newSessionId(), capturedAt: new Date().toISOString(), mirrored: false, full, sentRot: null };
+      if (i === 0) session = { id: newSessionId(), capturedAt: new Date().toISOString(), mirrored: false, full, sentRot: null, event: party?.slug ?? null };
       sfx.snap(); buzz(40); restart($("stage"), "kick");
       $("flash").classList.add("pop"); await sleep(70); $("flash").classList.remove("pop");
       renderDots(i + 1);
@@ -643,9 +676,12 @@ async function buildPreview() {
   const upright = frames.map((f, i) => rotate(f, rotations[i]));
   // Face boxes in each upright photo's pixel coords (for face-aware tone), or null.
   const faces = faceBoxes && frames.map((f, i) => rotateBoxes(faceBoxes[i] ?? [], f.width, f.height, rotations[i]));
-  const { canvas, layout } = compose(upright, { theme: c.theme, seed, footer: c.footer, ticket: c.ticket + 1, faces });
+  const { canvas, layout } = compose(upright, { theme: c.theme, seed, footer: footerText(), ticket: c.ticket + 1, faces, qr: qrURL() });
   const gray = luminance(canvas.getContext("2d").getImageData(0, 0, W, layout.H).data, W, layout.H);
-  const segs = [{ y0: 0, y1: layout.H, opts: { gain: c.gain, bleed: 0 } }];
+  // The QR block prints without solid-black relief: thinned modules scan badly.
+  const segs = layout.qrSide
+    ? [{ y0: 0, y1: layout.qrY, opts: { gain: c.gain, bleed: 0 } }, { y0: layout.qrY, y1: layout.H, opts: { gain: 0, bleed: 0, relief: 0 } }]
+    : [{ y0: 0, y1: layout.H, opts: { gain: c.gain, bleed: 0 } }];
   const { bits: [bits] } = await dither(gray, layout.H, segs, 1, headHeat());
   lastBits = { bits, h: layout.H, gray, segs };
   drawBits(bits, layout.H);
@@ -800,6 +836,8 @@ function openSettings() {
   const c = cfg();
   cameraPermissionHint();
   $("sFooter").value = c.footer; $("sCount").value = c.count; status("");
+  $("sPartyName").textContent = party ? `Shooting for “${party.name}”${party.qr ? " · QR on strips" : ""}${party.footer ? " · footer: " + party.footer : ""}` : "No party — photos go to the archive only.";
+  refreshEvent();
   chips($("sGain"), GAINS.map((g, i) => [g, `${String.fromCharCode(65 + i)} · ${g}`]), "gain");
   chips($("sDensity"), [[5, "−2"], [4, "−1"], [3, "std"], [2, "+1"], [1, "+2"]], "density");
   chips($("sSpeed"), [[0, "fast"], [1, "mid"], [2, "slow"]], "speed");
@@ -851,6 +889,11 @@ unzoom(); window.visualViewport?.addEventListener("resize", unzoom);
 // (pinch / double-tap zoom is blocked by nozoom.js, loaded first in <head>)
 
 // ---------- boot ----------
+// Party sign "booth on your phone" QR: /#pin=… unlocks once, then the PIN leaves the URL.
+{
+  const hp = new URLSearchParams(location.hash.slice(1)).get("pin");
+  if (hp) { S.set("pin", hp.trim()); history.replaceState(null, "", location.pathname); }
+}
 startArchive(() => cfg().pin);
 if (cfg().pin) api("/api/unlock", { method: "POST" }).then(startCam, () => show("lock"));
 else show("lock");

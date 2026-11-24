@@ -12,6 +12,7 @@ import { triggerPrinterPoll, type MqttEnv } from "../../worker/src/mqtt";
 import { printerHealth } from "./printer-status";
 import { buildStarPRNT, RASTER_WIDTH_PX } from "./starprnt";
 import { handleArchive } from "./archive-api";
+import { handleAlbum, handleEvents } from "./events-api";
 
 interface Env extends MqttEnv {
   ASSETS: Fetcher;
@@ -61,6 +62,13 @@ function b64decode(s: string): Uint8Array {
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
+    // Public album pages: /a/<token> and /a/<token>/<session id> (from a strip's QR).
+    if (/^\/a\/[a-z0-9]+(\/[0-9a-z-]+)?\/?$/.test(url.pathname)) {
+      const page = await env.ASSETS.fetch(new Request(new URL("/album", url), req));
+      const h = new Headers(page.headers);
+      h.set("x-robots-tag", "noindex"); h.set("referrer-policy", "no-referrer");
+      return new Response(page.body, { status: page.status, headers: h });
+    }
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(req);
     // Public, no PIN: client crash reports → Workers logs (wrangler tail).
     if (url.pathname === "/api/log" && req.method === "POST") {
@@ -70,6 +78,9 @@ export default {
     }
     // Public, no PIN: lets idle kiosks notice a new deploy and reload.
     if (url.pathname === "/api/version") return json(200, { id: env.CF_VERSION_METADATA?.id ?? "dev" });
+    // Public, token-gated: guest photo albums (QR on strips / the party sign).
+    const album = await handleAlbum(req, url, env);
+    if (album) return album;
     if (!(await pinOK(req, env))) return json(401, { error: "bad_pin" });
 
     if (url.pathname === "/api/unlock" && req.method === "POST") {
@@ -146,6 +157,10 @@ export default {
       for (const ev of res.evicted) ctx.waitUntil(env.JOBS_R2.delete(ev.r2Key).catch(() => {}));
       return json(201, { id: base, ids: [base], copies, status: "pending", position: res.depth });
     }
+
+    // Events / parties: /api/events…
+    const events = await handleEvents(req, url, env);
+    if (events) return events;
 
     // Photo archive: POST /api/archive, GET /api/photos{,/days,/file}.
     const archived = await handleArchive(req, url, env);
