@@ -1,0 +1,49 @@
+name: PhotoBooth
+options:
+  bundleIdPrefix: com.chasebro
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    DEVELOPMENT_TEAM: TA2ZM8GXJD
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "5.0"
+targets:
+  PhotoBooth:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.chasebro.booth
+        PRODUCT_NAME: PhotoBooth
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+    # Universal links: the sign's QR (join.chasebro.com/booth) opens the app once installed.
+    entitlements:
+      path: App/PhotoBooth.entitlements
+      properties:
+        com.apple.developer.associated-domains: [applinks:join.chasebro.com]
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Photo Booth
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        ITSAppUsesNonExemptEncryption: false
+        CFBundleURLTypes:
+          - CFBundleURLName: com.chasebro.booth.setup
+            CFBundleURLSchemes: [booth]
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+    scheme: {}
