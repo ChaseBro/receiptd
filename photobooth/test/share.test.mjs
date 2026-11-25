@@ -9,7 +9,7 @@ test("web booth link: origin + #pin=", () => {
 });
 
 test("index.html boot reads the PIN back out of the hash", () => {
-  for (const pin of ["1234", "a&b=c d#%+", "ünï"]) {
+  for (const pin of ["1234", "a&b=c d#%+", "ünï", "Gobble Gobble", "turkey-pie 2026"]) {   // word / phrase PINs too
     const hash = new URL(webBoothLink("https://booth.receiptd.sh", pin)).hash;
     assert.equal(new URLSearchParams(hash.slice(1)).get("pin"), pin);   // what index.html does
   }
@@ -29,4 +29,10 @@ test("app link: join URL + #server=…&key=…", () => {
 test("fragValue keeps URLs readable, escapes separators", () => {
   assert.equal(fragValue("https://x.y:8443/p?q@"), "https://x.y:8443/p?q@");
   assert.equal(fragValue("&=+#% "), "%26%3D%2B%23%25%20");
+});
+
+test("word / phrase PINs: kept exactly (case, inner spaces), URL-encoded", () => {
+  assert.equal(webBoothLink("https://booth.receiptd.sh", "Gobble Gobble"), "https://booth.receiptd.sh/#pin=Gobble%20Gobble");
+  assert.equal(appJoinLink("https://booth.receiptd.sh", "Gobble Gobble"),
+    "https://join.receiptd.sh/booth?k=_Txpzn6Mg2mI#server=https://booth.receiptd.sh&key=Gobble%20Gobble");
 });

@@ -13,6 +13,7 @@ import { printerHealth } from "./printer-status";
 import { buildStarPRNT, RASTER_WIDTH_PX } from "./starprnt";
 import { handleArchive } from "./archive-api";
 import { handleAlbum, handleEvents } from "./events-api";
+import { handleSessionShare, handleSessionShareCreate } from "./session-share";
 
 interface Env extends MqttEnv {
   ASSETS: Fetcher;
@@ -42,12 +43,16 @@ function json(status: number, body: unknown): Response {
 }
 
 async function pinOK(req: Request, env: Env): Promise<boolean> {
-  if (!env.BOOTH_PIN) return false;
-  const got = req.headers.get("x-booth-pin") ?? "";
+  // Exact match (case and inner spaces count: a word / phrase PIN works as typed). Only the
+  // ends are trimmed, on both sides: HTTP drops header whitespace anyway, and a secret pasted
+  // with a trailing newline would otherwise lock every booth out.
+  const want = (env.BOOTH_PIN ?? "").trim();
+  if (!want) return false;
+  const got = (req.headers.get("x-booth-pin") ?? "").trim();
   const enc = new TextEncoder();
   const [a, b] = await Promise.all([
     crypto.subtle.digest("SHA-256", enc.encode(got)),
-    crypto.subtle.digest("SHA-256", enc.encode(env.BOOTH_PIN)),
+    crypto.subtle.digest("SHA-256", enc.encode(want)),
   ]);
   return crypto.subtle.timingSafeEqual(a, b);
 }
@@ -69,6 +74,13 @@ export default {
       h.set("x-robots-tag", "noindex"); h.set("referrer-policy", "no-referrer");
       return new Response(page.body, { status: page.status, headers: h });
     }
+    // Public "your photos" page for one session: /s/<token> (on-screen QR, links sent phone to phone).
+    if (/^\/s\/[a-z0-9]+\/?$/.test(url.pathname)) {
+      const page = await env.ASSETS.fetch(new Request(new URL("/mine", url), req));
+      const h = new Headers(page.headers);
+      h.set("x-robots-tag", "noindex"); h.set("referrer-policy", "no-referrer");
+      return new Response(page.body, { status: page.status, headers: h });
+    }
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(req);
     // Public, no PIN: client crash reports → Workers logs (wrangler tail).
     if (url.pathname === "/api/log" && req.method === "POST") {
@@ -81,6 +93,9 @@ export default {
     // Public, token-gated: guest photo albums (QR on strips / the party sign).
     const album = await handleAlbum(req, url, env);
     if (album) return album;
+    // Public, token-gated, expiring: one session's photos (/s/<token>).
+    const mine = await handleSessionShare(req, url, env);
+    if (mine) return mine;
     if (!(await pinOK(req, env))) return json(401, { error: "bad_pin" });
 
     if (url.pathname === "/api/unlock" && req.method === "POST") {
@@ -157,6 +172,10 @@ export default {
       for (const ev of res.evicted) ctx.waitUntil(env.JOBS_R2.delete(ev.r2Key).catch(() => {}));
       return json(201, { id: base, ids: [base], copies, status: "pending", position: res.depth });
     }
+
+    // POST /api/sessions/:id/share → a 24 h "your photos" link for one session.
+    const shared = await handleSessionShareCreate(req, url, env);
+    if (shared) return shared;
 
     // Events / parties: /api/events…
     const events = await handleEvents(req, url, env);

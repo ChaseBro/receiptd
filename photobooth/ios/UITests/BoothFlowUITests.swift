@@ -62,21 +62,31 @@ final class BoothFlowUITests: XCTestCase {
         XCTAssert(app.buttons["Retake"].waitForNonExistence(timeout: 5))
         sleep(1)
         shot("4-printing")
+        // Share this photo from the printing screen: the same "your photos" QR.
+        app.buttons["Share this photo"].tap()
+        XCTAssert(app.descendants(matching: .any)["QR code: Your photos"].waitForExistence(timeout: 10))
+        shot("4b-printing-your-photos")
+        app.buttons["Close"].tap()
         // Local dev: no printer polls, so the job stays queued and the screen keeps
         // waiting. Give the request + the strip.png archive upload time to go out.
         sleep(12)
         shot("5-printing-later")
     }
 
-    /// A saved PIN opens straight to the camera; settings → Share booth offers both links + QR codes.
+    /// A saved PIN opens straight to the camera; "make another booth" (top corner + settings) shows the PIN, both links + QR codes.
     func testSavedPinOpensCameraAndShares() {
         app.launchArguments += ["-booth.pin", "1234"]
         app.launch()
         XCTAssert(app.buttons["Take photo"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.secureTextFields["PIN"].exists, "no lock screen with a PIN")
-        // The camera screen's small 📤 sticker opens the share sheet (QR codes + share buttons).
-        app.buttons["Share booth"].tap()
+        // The small phone-with-plus up top opens the "make another booth" sheet: the PIN, QR codes + share buttons.
+        app.buttons["Make another booth"].tap()
         XCTAssert(app.descendants(matching: .any)["QR code: Booth on the web"].waitForExistence(timeout: 5))
+        let pinText = app.staticTexts["boothPin"]
+        XCTAssert(pinText.exists, "the sheet shows the PIN")
+        XCTAssert(pinText.label.contains("1234"), pinText.label)
+        XCTAssert(app.buttons["Copy PIN"].exists)
+        XCTAssert(app.staticTexts["This lets them use your booth (prints, photos)."].exists)
         XCTAssert(app.descendants(matching: .any)["QR code: Booth app (TestFlight)"].exists)
         XCTAssert(app.buttons["Send link: Booth app (TestFlight)"].exists)
         sleep(1)
@@ -93,12 +103,36 @@ final class BoothFlowUITests: XCTestCase {
         XCTAssert(web.waitForExistence(timeout: 5))
         XCTAssert(app.buttons["Booth app (TestFlight)"].exists)
         shot("7-settings-share")
-        app.buttons["Show as QR codes"].tap()
+        app.buttons["Show PIN and QR codes"].tap()
         let qr = app.descendants(matching: .any)["QR code: Booth on the web"]
         _ = qr.waitForExistence(timeout: 5)
         shot("8-settings-share-qr")
         XCTAssert(qr.exists)
         XCTAssert(app.descendants(matching: .any)["QR code: Booth app (TestFlight)"].exists)
+        XCTAssert(app.staticTexts["boothPin"].label.contains("1234"))
+    }
+
+    /// Share this photo on the review screen (before printing): a "your photos" QR for this session's
+    /// /s/<token> page on the local booth, and the share-files button. Kid surface: no words.
+    func testSharePhotoQROnReview() {
+        app.launchArguments += ["-booth.pin", "1234", "-booth.shots", "1"]
+        app.launch()
+        let shutter = app.buttons["Take photo"]
+        XCTAssert(shutter.waitForExistence(timeout: 10))
+        shutter.tap()
+        XCTAssert(app.buttons["Print"].waitForExistence(timeout: 30))
+        sleep(1)
+        app.buttons["Share this photo"].tap()
+        let qr = app.descendants(matching: .any)["QR code: Your photos"]
+        XCTAssert(qr.waitForExistence(timeout: 10))
+        let url = qr.value as? String ?? ""
+        XCTAssert(url.hasPrefix(server + "/s/"), url)
+        XCTAssert(app.buttons["Send photos"].exists)
+        sleep(1)
+        shot("10-review-your-photos")
+        app.buttons["Close"].tap()
+        XCTAssert(qr.waitForNonExistence(timeout: 5))
+        XCTAssert(app.buttons["Print"].exists, "back on review")
     }
 
     /// The camera stage shows the live print preview (the test pattern in printer dots); off in settings → plain video.
@@ -114,6 +148,31 @@ final class BoothFlowUITests: XCTestCase {
         print("live print preview: \(dots.value ?? "")")
         let a = XCTAttachment(string: "live print preview: \(dots.value ?? "")"); a.lifetime = .keepAlways; add(a)
         shot("9-camera-live-preview")
+    }
+
+    /// The camera stage is the photo slot's shape (the Simulator's test pattern is landscape: 4:3),
+    /// fitted and centred, portrait and landscape; the live dots fill it. Screenshots per device.
+    func testStageShape() {
+        app.launchArguments += ["-booth.pin", "1234", "-booth.livePreview", "YES"]
+        app.launch()
+        XCTAssert(app.buttons["Take photo"].waitForExistence(timeout: 10))
+        let device = UIDevice.current.userInterfaceIdiom == .pad ? "ipad" : "iphone"
+        // iPhone is portrait-only (Info.plist); the iPad turns.
+        let turns: [(String, UIDeviceOrientation)] = device == "ipad" ? [("portrait", .portrait), ("landscape", .landscapeRight)] : [("portrait", .portrait)]
+        for (asked, o) in turns {
+            XCUIDevice.shared.orientation = o
+            sleep(4)
+            // Name the shot after what the window really is (a Simulator may ignore the turn).
+            let w = app.windows.firstMatch.frame, name = w.width > w.height ? "landscape" : "portrait"
+            print("stage-shape asked \(asked): window \(w)")
+            let dots = app.descendants(matching: .any)["livePreview"]
+            XCTAssert(dots.waitForExistence(timeout: 10))
+            let f = dots.frame
+            XCTAssertEqual(f.width / f.height, 4.0 / 3, accuracy: 0.02, "\(name): stage \(f)")
+            XCTAssert(app.buttons["Make another booth"].isHittable, name)
+            shot("11-stage-\(device)-\(name)")
+        }
+        XCUIDevice.shared.orientation = .portrait
     }
 
     /// Live print preview off: the plain test pattern, no dot layer.
@@ -141,6 +200,6 @@ final class BoothFlowUITests: XCTestCase {
         app.launchArguments += ["-booth.pin", "0000", "-booth.ignoreBundledPin", "YES"]
         app.launch()
         XCTAssert(app.secureTextFields["PIN"].waitForExistence(timeout: 10))
-        XCTAssertFalse(app.buttons["Share booth"].exists, "no share button without a PIN")
+        XCTAssertFalse(app.buttons["Make another booth"].exists, "no make-another-booth without a PIN")
     }
 }

@@ -19,6 +19,11 @@ final class BoothCamera: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     let live = LivePreview()
     /// The device couldn't keep the live print preview above 5 fps: plain video until settings close.
     @Published var liveFallback = false
+    /// The on-screen frames are portrait (the preview turned a quarter): the photo slot, and so the
+    /// camera stage, is 4:5 instead of 4:3 (frames.js slotAspect). Flips as the device turns.
+    @Published var portraitFrames = false
+    /// The photo slot's aspect (width / height) for the current frame shape.
+    var slotAspect: CGFloat { portraitFrames ? 4.0 / 5 : 4.0 / 3 }
 
     private let output = AVCaptureVideoDataOutput()
     private let queue = DispatchQueue(label: "booth.camera")
@@ -119,12 +124,13 @@ final class BoothCamera: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         guard let device = input?.device else { return }
         coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: previewLayer)
         if let c = previewLayer?.connection, let a = coordinator?.videoRotationAngleForHorizonLevelPreview, c.isVideoRotationAngleSupported(a) { c.videoRotationAngle = a }
-        if let a = coordinator?.videoRotationAngleForHorizonLevelPreview { lock.lock(); previewAngle = a; lock.unlock() }
+        if let a = coordinator?.videoRotationAngleForHorizonLevelPreview { lock.lock(); previewAngle = a; lock.unlock(); portraitFrames = BoothCamera.isQuarter(a) }
         observation = coordinator?.observe(\.videoRotationAngleForHorizonLevelPreview, options: [.new]) { [weak self] co, _ in
             let a = co.videoRotationAngleForHorizonLevelPreview
             if let self { lock.lock(); previewAngle = a; lock.unlock() }
             DispatchQueue.main.async {
                 if let c = self?.previewLayer?.connection, c.isVideoRotationAngleSupported(a) { c.videoRotationAngle = a }
+                if self?.portraitFrames != BoothCamera.isQuarter(a) { self?.portraitFrames = BoothCamera.isQuarter(a) }
             }
         }
     }
@@ -135,6 +141,9 @@ final class BoothCamera: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         // Turned like the on-screen preview (not mirrored: LiveDots mirrors the selfie view, as the preview layer does).
         live.offer(CIImage(cvPixelBuffer: pb).oriented(BoothCamera.orientation(angle)))
     }
+
+    /// A quarter turn (90° / 270°) of the landscape sensor gives portrait frames.
+    static func isQuarter(_ angle: CGFloat) -> Bool { (Int(angle.rounded()) % 180 + 180) % 180 == 90 }
 
     /// Clockwise degrees → the CG orientation that turns a sensor frame by them.
     static func orientation(_ angle: Int) -> CGImagePropertyOrientation {

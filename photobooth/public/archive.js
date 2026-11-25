@@ -61,6 +61,16 @@ export function pickDrops(records, cap = QUEUE_CAP_BYTES) {
   return drops;
 }
 
+/**
+ * Upload order: the session whose photos are being shared right now (its "your photos" link
+ * is on screen) jumps the queue, even out of a retry backoff; then oldest first.
+ * records: [{ id, createdAt, nextAt }] → the due ones, in upload order.
+ */
+export function orderDue(records, priority = null, now = Date.now()) {
+  return records.filter((r) => r.id === priority || r.nextAt <= now)
+    .sort((a, b) => (b.id === priority) - (a.id === priority) || a.createdAt - b.createdAt);
+}
+
 /** Local meta merge (mirrors the server): later fields win, `printed` is sticky. */
 export function mergeQueuedMeta(old, inc) {
   const out = { ...(old || {}), ...inc };
@@ -111,6 +121,7 @@ const recBytes = (rec) => Object.values(rec.files).reduce((n, f) => n + f.bytes,
 
 let getPin = () => "";
 let paused = false, flushing = false, inflight = null, kickT = null, logged = 0, lastLog = 0;
+let priority = null, again = false;
 const LOG_EVERY_MS = 5 * 60 * 1000;
 
 function report(code, extra = {}) {
@@ -138,7 +149,18 @@ export async function enqueue(id, meta, files = {}) {
     for (const d of drops) await qDel(d);
     if (drops.length) report("queue_full_dropped", { dropped: drops.length });
   } catch (e) { report("enqueue_failed", { err: String(e?.name || e) }); }
-  kick(1500);
+  kick(id === priority ? 0 : 1500);
+}
+
+/**
+ * This session's photos are being shared (its "your photos" QR is up): upload it next, now.
+ * Safe to call before the session is queued (originals are encoded in the background). Sticky
+ * until another session is shared, so its strip.png (queued after the print) jumps the queue too.
+ */
+export function prioritize(id) {
+  priority = id;
+  if (flushing) again = true;   // finish the current request, then pick the shared session
+  kick(0);
 }
 
 /** Wake up for a backed-off record (in addition to the interval). */
@@ -165,18 +187,20 @@ async function sendBatch(rec, names, signal) {
   return res.status;
 }
 
-/** Upload everything due, one request at a time. */
+/** Upload everything due, one request at a time (the shared session first, see orderDue). */
 export async function flush() {
   if (flushing || paused || !getPin() || navigator.onLine === false) return;
-  flushing = true;
+  flushing = true; again = false;
+  const done = new Set();   // tried this round (sent, backed off or dropped)
   try {
-    const due = (await qAll()).filter((r) => r.nextAt <= Date.now()).sort((a, b) => a.createdAt - b.createdAt);
-    for (const snap of due) {
+    for (;;) {
       if (paused) break;
+      const snap = orderDue((await qAll()).filter((r) => !done.has(r.id)), priority)[0];
+      if (!snap) break;
+      done.add(snap.id);
       const batches = planBatches(Object.entries(snap.files).map(([name, f]) => ({ name, bytes: f.bytes })));
-      let ok = true;
       for (const names of batches) {
-        if (paused) { ok = false; break; }
+        if (paused) break;
         inflight = new AbortController();
         let status = 0;
         try { status = await sendBatch(snap, names, inflight.signal); } catch { status = 0; }
@@ -185,7 +209,6 @@ export async function flush() {
           await markSent(snap.id, Object.fromEntries(names.map((n) => [n, snap.files[n].rev])), snap.metaRev);
           continue;
         }
-        ok = false;
         if (paused) break;                         // aborted by pause(): no penalty
         if (status === 401) return;                // PIN changed: wait for re-unlock
         if (status === 0 || status >= 500 || status === 408 || status === 429) {
@@ -200,11 +223,13 @@ export async function flush() {
         }
         break;
       }
-      if (!ok && paused) break;
     }
   } catch (e) {
     report("flush_failed", { err: String(e?.name || e) });
-  } finally { flushing = false; inflight = null; }
+  } finally {
+    flushing = false; inflight = null;
+    if (again && !paused) kick(0);   // prioritize() / enqueue() landed mid-round
+  }
 }
 
 /** Drop files that were uploaded (unless replaced meanwhile); delete the record once nothing's left. */
@@ -239,18 +264,25 @@ export function archiveOriginals(id, frames, rotations, meta, rotate) {
   const rot = rotations.slice();
   setTimeout(async () => {
     try {
-      const files = {}, bytes = {};
-      for (let i = 0; i < frames.length; i++) {
-        const { canvas, deg } = frames[i];
-        const up = rotate(downscale(canvas, ORIG_MAX_PX), (deg + rot[i]) % 360);
-        const blob = await up.convertToBlob({ type: "image/jpeg", quality: JPEG_QUALITY });
-        // Encoders may silently fall back to PNG for unsupported types: only keep real JPEGs.
-        if (blob.type !== "image/jpeg") { report("encode_wrong_type", { type: blob.type }); continue; }
-        files[`orig-${i + 1}.jpg`] = blob; bytes[`orig-${i + 1}.jpg`] = blob.size;
-      }
+      const files = await encodeOriginals(frames, rot, rotate);
+      const bytes = Object.fromEntries(Object.entries(files).map(([n, b]) => [n, b.size]));
       await enqueue(id, { ...meta, rotations: rot, bytes }, files);
     } catch (e) { report("encode_failed", { err: String(e?.name || e) }); }
   }, 600);
+}
+
+/** The originals as archived (upright + ↻, ≤ 2048 px, JPEG): { "orig-N.jpg": Blob }. Also what "share this photo" sends. */
+export async function encodeOriginals(frames, rotations, rotate) {
+  const files = {};
+  for (let i = 0; i < frames.length; i++) {
+    const { canvas, deg } = frames[i];
+    const up = rotate(downscale(canvas, ORIG_MAX_PX), (deg + (rotations[i] ?? 0)) % 360);
+    const blob = await up.convertToBlob({ type: "image/jpeg", quality: JPEG_QUALITY });
+    // Encoders may silently fall back to PNG for unsupported types: only keep real JPEGs.
+    if (blob.type !== "image/jpeg") { report("encode_wrong_type", { type: blob.type }); continue; }
+    files[`orig-${i + 1}.jpg`] = blob;
+  }
+  return files;
 }
 
 /** Long side ≤ `max` (never upscales). */

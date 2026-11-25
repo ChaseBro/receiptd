@@ -88,8 +88,10 @@
   #lock { gap:26px; }
   #lockLogo { width:150px; height:150px; font-size:84px; --tilt:-8deg; background:var(--sun); animation:pop-in .5s var(--ease-pop); }
   #lockForm { display:flex; gap:14px; align-items:center; }
-  #pin { width:200px; height:76px; border-radius:var(--r); border:var(--line) solid var(--ink); box-shadow:var(--shadow);
-    background:var(--white); color:var(--ink); font-family:var(--font-display); font-size:38px; text-align:center; letter-spacing:.25em; outline:none; }
+  /* Any PIN: digits, a word or a phrase (normal text keyboard, no autocorrect / caps). */
+  #pin { width:min(62vw, 320px); height:76px; padding:0 14px; border-radius:var(--r); border:var(--line) solid var(--ink); box-shadow:var(--shadow);
+    background:var(--white); color:var(--ink); font-family:var(--font-display); font-size:32px; text-align:center; letter-spacing:.12em; outline:none;
+    -webkit-user-select:text; user-select:text; }
   #lockGo { width:76px; height:76px; font-size:38px; background:var(--mint); }
   #lock.nope #pin { animation:shake .4s; background:var(--tomato); }
   .permhint { max-width:min(90vw,420px); font-size:14px; line-height:1.4; text-align:center; opacity:.75; }
@@ -97,7 +99,7 @@
   /* ---------- camera ---------- */
   /* Camera: grid that always fits the viewport. Portrait = themes / stage / tray;
      landscape = themes | stage | tray (like the iOS Camera app). */
-  #cam.on { display:grid; place-items:stretch; place-content:stretch; grid-template:"themes" auto "stage" minmax(0,1fr) "tray" auto / minmax(0,1fr); gap:var(--gap);
+  #cam.on { display:grid; place-items:stretch; place-content:stretch; grid-template:"themes booth" auto "stage stage" minmax(0,1fr) "tray tray" auto / minmax(0,1fr) auto; gap:var(--gap);
     padding:calc(env(safe-area-inset-top) + var(--gap)) calc(env(safe-area-inset-right) + var(--gap))
             calc(env(safe-area-inset-bottom) + var(--gap)) calc(env(safe-area-inset-left) + var(--gap)); }
   /* Centred when it fits, scrollable (from the first theme) when it doesn't: auto margins, not justify-content. */
@@ -107,8 +109,15 @@
   #themes button { flex:0 0 auto; width:calc(var(--tap) * .82); height:calc(var(--tap) * .82); font-size:calc(var(--tap) * .42); }
   #themes button:nth-child(odd) { --tilt:-6deg; } #themes button:nth-child(even) { --tilt:5deg; }
   #themes button.sel { background:var(--accent); --tilt:0deg; scale:1.14; animation:wiggle 2.6s infinite; }
-  #stage { grid-area:stage; position:relative; min-height:0; margin-right:10px; margin-bottom:10px;
-    border:var(--line-fat) solid var(--ink); border-radius:clamp(20px, 4vmin, 34px); box-shadow:var(--shadow-lg); overflow:hidden; background:var(--ink); }
+  /* The stage is the photo slot's shape (frames.js slotAspect: 4:3 landscape / 4:5 portrait frames, set
+     as --slot from the video), as big as fits, centred: the live dots and the plain video fill it edge to
+     edge, exactly the crop that prints. Content-box so the aspect is the picture's, not the outline's;
+     22px = the 6+6 outline + 10px for the offset shadow. */
+  #stageBox { grid-area:stage; min-height:0; min-width:0; container-type:size; display:flex; align-items:center; justify-content:center; }
+  #stage { --slot:1.3333; position:relative; box-sizing:content-box; flex:none; aspect-ratio:var(--slot);
+    width:min(100cqw - 22px, (100cqh - 22px) * var(--slot)); margin-right:10px; margin-bottom:10px;
+    border:var(--line-fat) solid var(--ink); border-radius:clamp(20px, 4vmin, 34px); box-shadow:var(--shadow-lg); overflow:hidden; background:var(--ink);
+    transition:width .3s var(--ease-pop); }
   #stage.kick { animation:shake .25s; }
   /* Printer needs a human (paper out / cover open): wordless sticker. */
   #paperBadge { position:absolute; left:var(--gap); bottom:var(--gap); z-index:2; width:calc(var(--tap) * 1.2); height:calc(var(--tap) * 1.2);
@@ -128,7 +137,7 @@
   #tray { grid-area:tray; display:flex; align-items:center; justify-content:space-evenly; gap:var(--gap); z-index:3; padding-bottom:6px; }
   #shutter { width:var(--shutter); height:var(--shutter); font-size:calc(var(--shutter) * .5); background:var(--accent); }
   @media (orientation: landscape) {
-    #cam.on { grid-template:"themes stage tray" minmax(0,1fr) / auto minmax(0,1fr) auto; }
+    #cam.on { grid-template:"themes stage booth" auto "themes stage tray" minmax(0,1fr) / auto minmax(0,1fr) auto; }
     #themes { flex-direction:column; justify-content:flex-start; padding:6px 10px 6px 4px; }
     #themes > :first-child { margin-inline-start:0; margin-block-start:auto; } #themes > :last-child { margin-inline-end:0; margin-block-end:auto; }
     #tray { flex-direction:column; padding:0 8px 0 0; }
@@ -141,6 +150,18 @@
   .strip-ico b { display:block; width:18px; height:10px; background:var(--ink); border-radius:2px; }
   .strip-ico.one b { width:24px; height:24px; }
   #hotspot { position:absolute; top:0; right:0; width:54px; height:20px; z-index:4; }
+  /* Make another booth (grown-ups): small, up in the corner with the settings hotspot, never on the camera.
+     The top margin keeps it below the 20px long-press strip. */
+  #boothBtn { grid-area:booth; align-self:start; justify-self:end; margin-top:16px; width:50px; height:50px; padding:6px;
+    border-radius:14px; border-width:3px; box-shadow:var(--shadow-sm); --tilt:4deg; background:var(--white); z-index:3; }
+  #boothBtn[hidden] { display:none; }
+  .ico { display:block; width:100%; height:100%; overflow:visible; }
+  .ico .paper { fill:var(--white); stroke:var(--ink); stroke-width:4; stroke-linejoin:round; }
+  .ico .inkf { fill:var(--ink); }
+  .ico .halo { fill:none; stroke:var(--white); stroke-width:11; stroke-linecap:round; stroke-linejoin:round; }
+  .ico .arrow { fill:none; stroke:var(--ink); stroke-width:5; stroke-linecap:round; stroke-linejoin:round; }
+  .ico .plus { fill:var(--mint); stroke:var(--ink); stroke-width:3.5; }
+  .ico .plusbar { fill:none; stroke:var(--ink); stroke-width:4; stroke-linecap:round; }
 
   /* countdown / cooldown */
   #ring { position:absolute; inset:0; display:none; align-items:center; justify-content:center; z-index:5; pointer-events:none; overflow:hidden; }
@@ -166,6 +187,20 @@
   .row { display:flex; gap:clamp(24px, 6vmin, 48px); }
   .big { width:calc(var(--tap) * 1.4); height:calc(var(--tap) * 1.4); font-size:calc(var(--tap) * .68); }
   .big.yes { background:var(--mint); --tilt:4deg; } .big.no { background:var(--tomato); --tilt:-4deg; } .big.again { background:var(--sky); }
+  /* Share this photo: the strip with an arrow out (same sticker on review + printing). */
+  .mineBtn { width:calc(var(--tap) * 1.15); height:calc(var(--tap) * 1.15); padding:calc(var(--tap) * .16); background:var(--sky); --tilt:-5deg; align-self:center; }
+  #printing .mineBtn { position:relative; margin-top:22px; }
+  /* "Your photos" (kids, wordless): a big QR to scan with another phone + 📲 send the files themselves. */
+  #mine { position:fixed; inset:0; z-index:26; display:flex; align-items:center; justify-content:center; padding:18px;
+    background:color-mix(in srgb, var(--ink) 60%, transparent); }
+  #mine[hidden] { display:none; }
+  #mine .card2 { display:flex; flex-direction:column; align-items:center; gap:calc(var(--gap) * 1.4); padding:clamp(14px, 3vmin, 26px);
+    border-radius:var(--r); background:var(--accent); animation:pop-in .35s var(--ease-pop); }
+  #mineQR { width:min(78vw, 62vh, 460px); aspect-ratio:1; display:flex; align-items:center; justify-content:center; padding:10px;
+    border-radius:18px; border:var(--line) solid var(--ink); background:var(--white); font-size:min(24vw, 120px); }
+  #mineQR svg { display:block; width:100%; height:auto; }
+  #mineQR .emoji { animation:bob 1.2s ease-in-out infinite; }
+  #mineFiles { background:var(--sky); --tilt:-4deg; }
 
   /* ---------- review ---------- */
   #review, #printing { background:var(--accent); overflow:hidden; }
@@ -244,9 +279,7 @@
   .pill { padding:12px 18px; border-radius:999px; font-weight:800; background:var(--white); }
   a.pill { color:var(--ink); text-decoration:none; border:3px solid var(--ink); }
   .pill.go { background:var(--mint); }
-  /* share booth: one sheet (camera 📤 sticker + settings), each link as a QR + share sheet / clipboard */
-  #shareBtn { position:absolute; left:var(--gap); top:var(--gap); z-index:3; width:46px; height:46px; font-size:22px;
-    border-radius:14px; border-width:3px; box-shadow:var(--shadow-sm); --tilt:-4deg; }
+  /* make another booth: one sheet (the corner control + settings), the PIN in big type, each link as a QR + share sheet / clipboard */
   #share { position:fixed; inset:0; z-index:30; display:flex; align-items:center; justify-content:center; padding:18px;
     background:color-mix(in srgb, var(--ink) 55%, transparent); }
   #share[hidden] { display:none; }
@@ -260,6 +293,13 @@
   .share .qr svg { display:block; width:100%; height:auto; }
   .share .pill { margin-top:10px; border:3px solid var(--ink); }
   .share-top { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .grants { margin-top:8px; font-size:16px; font-weight:800; }
+  .pinbox { display:flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:12px 16px; margin-top:12px; padding:12px 14px;
+    border-radius:18px; border:3px solid var(--ink); background:var(--paper); }
+  .pinbox .lbl { font-size:14px; opacity:.7; }
+  #sharePin { font-family:var(--font-display); font-weight:400; font-size:clamp(30px, 7vmin, 48px); letter-spacing:.06em; word-break:break-all;
+    -webkit-user-select:all; user-select:all; }
+  .pinbox .pill { border:3px solid var(--ink); }
 </style>
 </head>
 <body>
@@ -268,7 +308,7 @@
 <section id="lock" class="screen">
   <div id="lockLogo" class="sticker fat emoji">📸</div>
   <form id="lockForm">
-    <input id="pin" type="password" inputmode="numeric" autocomplete="off" aria-label="PIN">
+    <input id="pin" type="password" inputmode="text" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" enterkeyhint="go" aria-label="PIN">
     <button id="lockGo" class="sticker emoji" type="submit" aria-label="Unlock">🔓</button>
   </form>
   <p class="permhint" id="permHint" hidden>Tip: so the camera never asks again, tap <b>aA</b> in Safari's address bar → <b>Website Settings</b> → <b>Camera: Allow</b>.</p>
@@ -276,13 +316,13 @@
 
 <section id="cam" class="screen">
   <div id="themes"></div>
-  <div id="stage">
+  <button id="boothBtn" class="sticker" aria-label="Make another booth" hidden><svg class="ico" viewBox="0 0 48 48" aria-hidden="true"><rect class="paper" x="9" y="3" width="24" height="41" rx="5"/><rect class="inkf" x="17" y="7" width="8" height="3" rx="1.5"/><circle class="inkf" cx="21" cy="39" r="2"/><circle class="plus" cx="35" cy="33" r="10"/><path class="plusbar" d="M35 27.5 V38.5 M29.5 33 H40.5"/></svg></button>
+  <div id="stageBox"><div id="stage">
     <video id="video" playsinline autoplay muted></video>
     <canvas id="live" aria-hidden="true"></canvas>
     <div id="dots"></div>
     <div id="paperBadge" class="sticker fat emoji" hidden>🧻</div>
-    <button id="shareBtn" class="sticker emoji" aria-label="Share booth">📤</button>
-  </div>
+  </div></div>
   <div id="hotspot" aria-hidden="true"></div>
   <div id="tray">
     <button id="mode" class="sticker sq tool" aria-label="One or three photos"><span class="strip-ico"><b></b><b></b><b></b></span></button>
@@ -311,6 +351,7 @@
     <div class="row">
       <button class="sticker fat big no emoji" id="retake" aria-label="Retake">✖️</button>
       <button class="sticker fat big yes emoji" id="printBtn" aria-label="Print"><span>🖨️</span></button>
+      <button class="sticker mineBtn" id="mineReview" aria-label="Share this photo"><svg class="ico" viewBox="0 0 48 48" aria-hidden="true"><rect class="paper" x="6" y="3" width="21" height="42" rx="3"/><rect class="inkf" x="10.5" y="8" width="12" height="8.5" rx="1.5"/><rect class="inkf" x="10.5" y="19.75" width="12" height="8.5" rx="1.5"/><rect class="inkf" x="10.5" y="31.5" width="12" height="8.5" rx="1.5"/><path class="halo" d="M22 28 L41 9 M30 8 H42 V20"/><path class="arrow" d="M22 28 L41 9 M30 8 H42 V20"/></svg></button>
     </div>
   </div>
 </section>
@@ -322,17 +363,30 @@
   </div>
   <div id="ticks" aria-hidden="true"></div>
   <div id="queue"></div>
+  <button class="sticker mineBtn" id="minePrinting" aria-label="Share this photo"><svg class="ico" viewBox="0 0 48 48" aria-hidden="true"><rect class="paper" x="6" y="3" width="21" height="42" rx="3"/><rect class="inkf" x="10.5" y="8" width="12" height="8.5" rx="1.5"/><rect class="inkf" x="10.5" y="19.75" width="12" height="8.5" rx="1.5"/><rect class="inkf" x="10.5" y="31.5" width="12" height="8.5" rx="1.5"/><path class="halo" d="M22 28 L41 9 M30 8 H42 V20"/><path class="arrow" d="M22 28 L41 9 M30 8 H42 V20"/></svg></button>
   <div id="paperWait" class="sticker fat emoji" hidden>🧻❗</div>
   <div class="err" id="printErr"><div class="sticker fat face emoji">😕</div>
     <div class="row"><button class="sticker big no emoji" id="printBack" aria-label="Back">✖️</button>
       <button class="sticker big again emoji" id="printRetry" aria-label="Try again">🔁</button></div></div>
 </section>
 <div id="done"><div class="sticker emoji" id="doneFace">🎉</div></div>
-<!-- Share booth (adult sheet, opened from the camera's 📤 sticker or settings): words allowed. -->
-<div id="share" hidden role="dialog" aria-label="Share booth">
+<!-- Your photos (kid overlay, wordless): scan the QR with another phone (/s/<token>, 24 h), or 📲 send the files. Tap anywhere else to close. -->
+<div id="mine" hidden role="dialog" aria-label="Your photos">
+  <div class="card2 sticker fat">
+    <div id="mineQR" role="img" aria-label="Your photos QR code"></div>
+    <div class="row">
+      <button class="sticker big emoji" id="mineFiles" aria-label="Send photos">📲</button>
+      <button class="sticker big no emoji" id="mineClose" aria-label="Close">✖️</button>
+    </div>
+  </div>
+</div>
+<!-- Make another booth (adult sheet, from the corner control or settings): words allowed. -->
+<div id="share" hidden role="dialog" aria-label="Make another booth">
   <div class="card">
-    <div class="share-top"><h2>📤 Share booth</h2><button class="pill" id="shareClose">Done</button></div>
-    <div class="hint">Send it to another phone (AirDrop, Messages, …) or let it scan a code. Both links contain the booth PIN: only share them with people you'd hand the booth to.</div>
+    <div class="share-top"><h2>Make another booth</h2><button class="pill" id="shareClose">Done</button></div>
+    <div class="grants">This lets them use your booth (prints, photos).</div>
+    <div class="hint">Turn another phone or tablet into this booth: let it scan a code, send it a link (AirDrop, Messages, …), or type the PIN. The links contain the PIN: only share them with people you'd hand the booth to.</div>
+    <div class="pinbox"><span class="lbl">Booth PIN</span><b id="sharePin"></b><button class="pill" id="sharePinCopy">Copy PIN</button></div>
     <div class="share">
       <div><h3>🌐 Booth on the web</h3>
         <div class="hint">Opens this booth in the phone's browser, already unlocked.</div>
@@ -360,9 +414,9 @@
   <div class="card">Sounds<div class="chips" id="sSound"></div></div>
   <div class="card">Live print preview<div class="chips" id="sLive"></div>
     <div class="hint">The camera shows the photo in printer dots, cropped as it prints. Turns itself off for this visit if the device is too slow.</div></div>
-  <div class="card" id="sShare">📤 Share booth
-    <div class="hint">Send the booth to another phone (AirDrop, Messages, …) or let it scan a code: the web booth, or the iPhone app (TestFlight). Both links contain the booth PIN. Also on the camera screen: the small 📤 at the top left.</div>
-    <div class="chips"><button class="pill go" id="sShareOpen">📤 Share booth</button></div>
+  <div class="card" id="sShare">Make another booth
+    <div class="hint">This lets them use your booth (prints, photos). Shows the PIN, plus links and codes for the web booth and the iPhone app (TestFlight); both links contain the PIN. Also on the camera screen: the small phone-with-plus at the top right.</div>
+    <div class="chips"><button class="pill go" id="sShareOpen">📱 Make another booth</button></div>
   </div>
   <div class="card chips">
     <button class="pill" id="calib">🧪 Calibration</button>
@@ -381,7 +435,8 @@ import { play as playSound, unlockSounds } from "./sound.js";
 import { uprightRotation as orient } from "./orient.js";
 import { clampCopies, defaultCopies, maxFaces, MAX_COPIES } from "./copies.js";
 import { detectFaces, loadFaceDetector, rotateBoxes } from "./faces.js";
-import { archiveOriginals, archiveStrip, newSessionId, pause as pauseArchive, resume as resumeArchive, startArchive } from "./archive.js";
+import { archiveOriginals, archiveStrip, encodeOriginals, newSessionId, pause as pauseArchive, prioritize as prioritizeArchive, resume as resumeArchive, startArchive } from "./archive.js";
+import { encodeBitPNG } from "./archive-codecs.js";
 import { qrSVG } from "./qr.js";
 import { appJoinLink, webBoothLink } from "./share.js";
 
@@ -434,7 +489,11 @@ const footerText = () => (party?.footer || cfg().footer || "");
 const qrURL = () => (party?.qr && party.share && session ? `${location.origin}/a/${party.share}/${session.id}` : "");
 
 // ---------- screens / api ----------
-function show(id) { for (const s of document.querySelectorAll(".screen")) s.classList.toggle("on", s.id === id); $("share").hidden = true; }
+function show(id) {
+  for (const s of document.querySelectorAll(".screen")) s.classList.toggle("on", s.id === id);
+  $("share").hidden = true;
+  if (id === "lock" || id === "settings" || id === "review") closeMine();   // "your photos" may stay up over printing → camera
+}
 async function api(path, opts = {}) {
   const res = await fetch(path, { ...opts, headers: { "content-type": "application/json", "x-booth-pin": cfg().pin } });
   if (res.status === 401) { S.set("pin"); stopCam(); show("lock"); throw new Error("locked"); }
@@ -533,7 +592,7 @@ $("lockForm").onsubmit = async (e) => {
 let stream = null, facing = "user";
 let streamFacing = null;
 async function startCam() {
-  show("cam"); $("camErr").classList.remove("on");
+  show("cam"); $("camErr").classList.remove("on"); $("boothBtn").hidden = !cfg().pin;
   applyTheme(); renderMode(); keepAwake(); refreshPrinter(); refreshEvent();
   // Reuse a live stream: every new getUserMedia can re-trigger Safari's prompt.
   if (stream && streamFacing === facing && stream.getVideoTracks().some((t) => t.readyState === "live")) return;
@@ -664,6 +723,13 @@ function startLive() {
   next();
 }
 $("video").addEventListener("loadeddata", () => { if (!live.started) { live.started = true; startLive(); } });
+// The stage takes the slot's shape (4:3 / 4:5, frames.js slotAspect) from the camera's frame shape,
+// which flips when the device turns: the CSS sizes it to fit (container units), centred.
+function fitStage() {
+  const v = $("video");
+  if (v.videoWidth && v.videoHeight) $("stage").style.setProperty("--slot", v.videoWidth >= v.videoHeight ? "1.3333" : "0.8");
+}
+for (const ev of ["loadedmetadata", "resize"]) $("video").addEventListener(ev, fitStage);
 
 // ---------- ring (countdown fills, cooldown drains) ----------
 const ARC = 2 * Math.PI * 96;
@@ -710,6 +776,7 @@ function syncOriginals() {
 }
 $("shutter").onclick = async () => {
   if (busy || !stream) return;
+  closeMine();
   busy = true; $("shutter").disabled = true; sfx.tap();
   const c = cfg(); frames = []; rotations = [];
   const full = [];
@@ -827,8 +894,8 @@ $("less").onclick = () => bump(-1);
 $("more").onclick = () => bump(1);
 
 let idleT;
-function armIdle() { clearTimeout(idleT); idleT = setTimeout(() => { if ($("review").classList.contains("on")) { syncOriginals(); show("cam"); } }, 45000); }
-$("retake").onclick = () => { sfx.boop(); clearTimeout(idleT); syncOriginals(); show("cam"); };
+function armIdle() { clearTimeout(idleT); idleT = setTimeout(() => { if ($("review").classList.contains("on")) { syncOriginals(); closeMine(); show("cam"); } }, 45000); }
+$("retake").onclick = () => { sfx.boop(); clearTimeout(idleT); syncOriginals(); closeMine(); show("cam"); };
 
 // ---------- print ----------
 const printTimes = [];
@@ -863,6 +930,7 @@ async function printFlow() {
   const n = copies;
   renderTicks(n, 0);
   pauseArchive();   // the print request gets the Wi-Fi to itself
+  printingNow = true; clearTimeout(mineT);
   try {
     // Re-render every copy from the head heat right now (time has passed since
     // the preview, and copy k+1 starts as hot as copy k left the head).
@@ -870,6 +938,7 @@ async function printFlow() {
     const job = await sendBits(r.bits, lastBits.h, n);
     resumeArchive();
     if (session) {   // background: the exact printed bitmap (copy 1) + any ↻ fixes
+      session.printed = { bits: r.bits[0], h: lastBits.h };
       archiveStrip(session.id, r.bits[0], W, lastBits.h, sessionMeta({ copies: n }));
       syncOriginals();
     }
@@ -901,6 +970,7 @@ async function printFlow() {
         ? `<div class="sticker emoji">⏳</div>` + `<div class="sticker emoji">🧾</div>`.repeat(Math.min(4, s.position - 1)) : "";
       await sleep(1000);
     }
+    printingNow = false; if (!$("mine").hidden) armMineClose();   // "your photos" stays ~30 s after the print
     celebrate();
     await sleep(2400);
     show("cam");
@@ -909,7 +979,7 @@ async function printFlow() {
     $("shutter").disabled = false;
   } catch (err) {
     if (err.message !== "locked") { sfx.boo(); $("printErr").classList.add("on"); }
-  } finally { resumeArchive(); }
+  } finally { resumeArchive(); if (printingNow) { printingNow = false; if (!$("mine").hidden) armMineClose(); } }
 }
 $("printBtn").onclick = () => { sfx.tap(); printFlow(); };
 $("printRetry").onclick = () => { sfx.tap(); printFlow(); };
@@ -928,6 +998,75 @@ function celebrate() {
     document.body.appendChild(s); setTimeout(() => s.remove(), 3800);
   }
 }
+
+// ---------- share this photo (kids, wordless) ----------
+// The strip-with-arrow sticker (review + printing) opens "your photos": a big QR to /s/<token>
+// (a 24 h link to this session only, made on demand, cached per session; works with or without a
+// party) and 📲, the files themselves via the share sheet (peer to peer: AirDrop etc.), else a
+// download. Opening it makes this session's archive upload jump the queue, so the page fills fast.
+// It stays until tapped away, or ~30 s (counted from the end of the print, if one is running).
+let mineT = null, mineFor = null, printingNow = false;
+function shareURL(s) {
+  s.shareReq ??= api(`/api/sessions/${encodeURIComponent(s.id)}/share`, { method: "POST" }).then((r) => `${location.origin}/s/${r.token}`);   // own origin (staging, local dev)
+  s.shareReq.catch(() => { s.shareReq = null; });   // offline etc.: try again next time
+  return s.shareReq;
+}
+/** File objects for the share sheet: the strip (printed bitmap if printed, else the preview) + originals. */
+function mineFiles(s) {
+  const strip = s.printed ?? (lastBits && s === session ? { bits: lastBits.bits, h: lastBits.h } : null);
+  const sig = `${rotations.join()}|${strip ? strip.h + ":" + (s.printed ? "p" : "v") : ""}`;
+  if (s.files?.sig === sig) return s.files.p;
+  const base = `photobooth-${s.id}`;
+  const p = (async () => {
+    const out = [];
+    if (strip) out.push(new File([await encodeBitPNG(strip.bits, W, strip.h)], `${base}-strip.png`, { type: "image/png" }));
+    const origs = await encodeOriginals(s.full, rotations, rotate);
+    for (const [n, b] of Object.entries(origs)) out.push(new File([b], `${base}-${n.replace("orig-", "").replace(".jpg", "")}.jpg`, { type: "image/jpeg" }));
+    return out;
+  })();
+  s.files = { sig, p };
+  p.catch(() => { if (s.files?.p === p) s.files = null; });
+  return p;
+}
+function armMineClose() { clearTimeout(mineT); if (!printingNow) mineT = setTimeout(closeMine, 30000); }
+function closeMine() { clearTimeout(mineT); mineFor = null; $("mine").hidden = true; $("mineQR").innerHTML = ""; delete $("mineQR").dataset.url; }
+async function openMine() {
+  const s = session;
+  if (!s) return;
+  sfx.tap(); armIdle();
+  mineFor = s;
+  prioritizeArchive(s.id);
+  syncOriginals();            // queued already unless ↻ changed them
+  mineFiles(s).catch(() => {});   // encode now, so 📲 opens the share sheet straight away
+  $("mineQR").innerHTML = `<span class="emoji">⏳</span>`;
+  $("mine").hidden = false;
+  armMineClose();
+  try {
+    const url = await shareURL(s);
+    if (mineFor === s) { $("mineQR").innerHTML = qrSVG(url); $("mineQR").dataset.url = url; }
+  } catch { if (mineFor === s) $("mineQR").innerHTML = `<span class="emoji">🙈</span>`; }   // offline: 📲 still works
+}
+$("mineReview").onclick = openMine;
+$("minePrinting").onclick = openMine;
+$("mineClose").onclick = () => { sfx.boop(); closeMine(); };
+$("mine").onclick = (e) => { if (e.target === $("mine")) { sfx.boop(); closeMine(); } };
+$("mineFiles").onclick = async () => {
+  const s = mineFor;
+  if (!s) return;
+  sfx.tap(); armMineClose(); if ($("review").classList.contains("on")) armIdle();
+  let files;
+  try { files = await mineFiles(s); } catch { sfx.boo(); return; }
+  if (!files.length) { sfx.boo(); return; }
+  if (navigator.canShare?.({ files })) {
+    try { await navigator.share({ files }); } catch (e) { if (e.name !== "AbortError") sfx.boo(); }
+    return;
+  }
+  for (const f of files) {   // no file sharing (desktop browsers): plain downloads
+    const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    await sleep(300);
+  }
+};
 
 // ---------- settings (long-press top-right corner) ----------
 let pressT;
@@ -960,9 +1099,14 @@ function openShare() {
   if (!cfg().pin) return;
   const { web, app } = shareLinks();
   $("qrWeb").innerHTML = qrSVG(web); $("qrApp").innerHTML = qrSVG(app);
+  $("sharePin").textContent = cfg().pin;
   shareMsg(""); $("share").hidden = false;
 }
-function closeShare() { $("share").hidden = true; $("qrWeb").innerHTML = $("qrApp").innerHTML = ""; }
+function closeShare() { $("share").hidden = true; $("qrWeb").innerHTML = $("qrApp").innerHTML = ""; $("sharePin").textContent = ""; }
+$("sharePinCopy").onclick = async () => {
+  try { await navigator.clipboard.writeText(cfg().pin); shareMsg("PIN copied."); }
+  catch { getSelection()?.selectAllChildren($("sharePin")); shareMsg("Select the PIN above to copy it."); }
+};
 async function shareLink(url, title, text) {
   shareMsg("");
   if (navigator.share) {
@@ -975,7 +1119,7 @@ async function shareLink(url, title, text) {
 $("shareWeb").onclick = () => shareLink(shareLinks().web, "Photo booth", "Open the photo booth (already unlocked)");
 $("shareApp").onclick = () => shareLink(shareLinks().app, "Photo Booth app",
   "Get the Photo Booth app (TestFlight). After it's installed, tap this link again to set it up.");
-$("shareBtn").onclick = () => { sfx.tap(); openShare(); };
+$("boothBtn").onclick = () => { sfx.tap(); openShare(); };
 $("sShareOpen").onclick = openShare;
 $("shareClose").onclick = closeShare;
 $("share").onclick = (e) => { if (e.target === $("share")) closeShare(); };

@@ -13,6 +13,14 @@ final class ShareTests: XCTestCase {
                        "https://booth.receiptd.sh/#pin=a%26b%3Dc%20d%23%25%2B")
     }
 
+    func testWordPinLinks() {
+        // A word / phrase PIN: case and inner spaces kept exactly, URL-encoded in both links.
+        XCTAssertEqual(BoothLinks.web(server: server, pin: "Gobble Gobble").absoluteString, "https://booth.receiptd.sh/#pin=Gobble%20Gobble")
+        XCTAssertEqual(BoothLinks.app(server: server, pin: "Gobble Gobble").absoluteString,
+                       "https://join.receiptd.sh/booth?k=_Txpzn6Mg2mI#server=https://booth.receiptd.sh&key=Gobble%20Gobble")
+        XCTAssertEqual(Pairing(url: URL(string: "booth://setup#server=https://booth.receiptd.sh&key=%20Gobble%20Gobble%20")!)?.key, "Gobble Gobble", "ends trimmed")
+    }
+
     func testAppLink() {
         let u = BoothLinks.app(server: server, pin: "1234")
         XCTAssertEqual(u.absoluteString, "https://join.receiptd.sh/booth?k=_Txpzn6Mg2mI#server=https://booth.receiptd.sh&key=1234")
@@ -32,7 +40,7 @@ final class ShareTests: XCTestCase {
     }
 
     func testRoundTrip() throws {
-        for pin in ["1234", "a&b=c d#%+", "ünï"] {
+        for pin in ["1234", "a&b=c d#%+", "ünï", "Gobble Gobble", "turkey-pie 2026"] {   // word / phrase PINs too
             let p = try XCTUnwrap(Pairing(url: BoothLinks.app(server: server, pin: pin)), pin)
             XCTAssertEqual(p.server, server)
             XCTAssertEqual(p.key, pin)

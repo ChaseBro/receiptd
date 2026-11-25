@@ -9,13 +9,14 @@ const frames = readFileSync(new URL("../public/frames.js", import.meta.url), "ut
 const gallery = readFileSync(new URL("../public/gallery.html", import.meta.url), "utf8");
 const party = readFileSync(new URL("../public/party.html", import.meta.url), "utf8");
 const album = readFileSync(new URL("../public/album.html", import.meta.url), "utf8");
+const mine = readFileSync(new URL("../public/mine.html", import.meta.url), "utf8");
 const styleOf = (doc) => doc.match(/<style>([\s\S]*?)<\/style>/)[1];
 // Token / shadow / font / motion rules apply to every page; the no-words rules only to kid screens.
-const SHEETS = { "index.html": styleOf(html), "gallery.html": styleOf(gallery), "party.html": styleOf(party), "album.html": styleOf(album) };
+const SHEETS = { "index.html": styleOf(html), "gallery.html": styleOf(gallery), "party.html": styleOf(party), "album.html": styleOf(album), "mine.html": styleOf(mine) };
 
 // Long-running, deliberate animations (loops or the paper feed).
 const AMBIENT = new Set(["wiggle", "bob", "spin", "blink", "feed", "fall"]);
-const KID_SCREENS = ["cam", "review", "printing", "done"];
+const KID_SCREENS = ["cam", "review", "printing", "done", "mine"];   // "mine": the "your photos" overlay
 
 /** CSS declarations with line numbers; :root and @font-face (token homes) blanked out. */
 function declarations() {

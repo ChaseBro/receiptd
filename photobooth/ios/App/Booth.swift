@@ -100,11 +100,19 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
     @Published var shutterLocked = false
     @Published var lockShake = 0
     @Published var status: String?
+    /// "Your photos" overlay (share this photo): which session, and its /s/<token> link once made.
+    @Published var mine: MineShare?
+
+    struct MineShare: Equatable { var id: String; var url: String?; var failed = false }
 
     enum RingMode { case idle, countdown, cooldown }
     struct PrintingState { var copies = 1, done = 0, position = 0, error = false, slip: CGImage? = nil, height = 0, go = 0 }
 
     private var printTimes: [Date] = []
+    private var shareURLs: [String: String] = [:]          // session id → its /s/<token> link (one per session)
+    private var mineCloseTask: Task<Void, Never>?
+    private var printingNow = false
+    private var printedStrip: (id: String, bits: [UInt8], h: Int)?   // copy 1 as printed, for the share sheet
     private var lastTouch = Date()
     private var idleTask: Task<Void, Never>?
     private var timers: [Task<Void, Never>] = []
@@ -187,7 +195,7 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
         if !next.isEmpty, next != pin { Task { await unlock(next, quiet: true) } } else { showLock() }
     }
 
-    private func showLock() { camera.stop(); screen = .lock }
+    private func showLock() { camera.stop(); closeMine(); screen = .lock }
 
     /// Settings: with no bundled PIN, "Lock booth" (forget the PIN, back to the lock screen).
     /// With one, "Forget saved PIN": back to the bundled PIN, checked in the background.
@@ -270,7 +278,7 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
 
     func shutter() async {
         guard !busy, !shutterLocked, camera.running else { return }
-        touched(); busy = true; Sfx.shared.play("tap")
+        touched(); busy = true; Sfx.shared.play("tap"); closeMine()
         defer { busy = false; dotsDone = 0 }
         var frames: [CGImage] = [], full: [CGImage] = []
         dotsDone = 0
@@ -353,15 +361,70 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
         await buildPreview()
     }
 
-    func retake() { Sfx.shared.play("boop"); idleTask?.cancel(); syncOriginals(); screen = .camera }
+    func retake() { Sfx.shared.play("boop"); idleTask?.cancel(); syncOriginals(); closeMine(); screen = .camera }
 
     private func armIdle() {
         idleTask?.cancel()
         idleTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(45))
             guard let self, !Task.isCancelled, self.screen == .review else { return }
-            self.syncOriginals(); self.screen = .camera
+            self.syncOriginals(); self.closeMine(); self.screen = .camera
         }
+    }
+
+    // MARK: share this photo
+
+    /// The strip-with-arrow sticker (review + printing): "your photos" — a big QR to /s/<token> (a 24 h
+    /// link to this session only, made once per session; works with or without a party) and 📲, the
+    /// files themselves through the share sheet (peer to peer). This session's archive upload jumps
+    /// the queue. Stays until tapped away, or ~30 s (from the end of the print, if one is running).
+    func openMine() async {
+        guard let s = shot else { return }
+        Sfx.shared.play("tap"); touched()
+        if screen == .review { armIdle() }
+        mine = MineShare(id: s.id, url: shareURLs[s.id])
+        armMineClose()
+        await archive.prioritize(s.id)
+        syncOriginals()
+        guard mine?.url == nil else { return }
+        let pin = api.pin
+        do {
+            let r = try await api.sessionShare(s.id)
+            let url = api.sessionShareURL(token: r.token)   // this booth's own server (staging, local dev)
+            shareURLs[s.id] = url
+            if mine?.id == s.id { mine?.url = url }
+        } catch {
+            handle(error, pin: pin)
+            if mine?.id == s.id { mine?.failed = true }    // offline: 📲 still works
+        }
+    }
+
+    func closeMine() { mineCloseTask?.cancel(); mine = nil }
+
+    func armMineClose() {
+        mineCloseTask?.cancel()
+        guard !printingNow else { return }
+        mineCloseTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(30))
+            guard !Task.isCancelled else { return }
+            self?.mine = nil
+        }
+    }
+
+    /// 📲: the strip (as printed, else the preview) + the originals, for the share sheet.
+    func mineImages() async -> [UIImage] {
+        guard let s = shot, s.id == mine?.id else { return [] }
+        armMineClose(); touched()
+        if screen == .review { armIdle() }
+        let strip: ([UInt8], Int)? = printedStrip?.id == s.id ? (printedStrip!.bits, printedStrip!.h) : preview.map { ($0.bits, $0.layout.H) }
+        return await Task.detached(priority: .userInitiated) { () -> [UIImage] in
+            var out: [UIImage] = []
+            if let (bits, h) = strip, let img = UIImage(data: encodeBitPNG(bits, PRINT_WIDTH, h)) { out.append(img) }
+            for (i, f) in s.full.enumerated() {
+                if let jpg = encodeArchiveJPEG(rotate(f, s.rotations[i])), let img = UIImage(data: jpg) { out.append(img) }
+            }
+            return out
+        }.value
     }
 
     // MARK: archive
@@ -402,6 +465,8 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
         let n = copies
         printing = PrintingState(copies: n, done: 0, position: 0, error: false, slip: pv.image, height: pv.layout.H, go: printing.go + 1)
         screen = .printing
+        printingNow = true; mineCloseTask?.cancel()
+        defer { printingNow = false; if mine != nil { armMineClose() } }   // "your photos" stays ~30 s after the print
         await archive.pause()   // the print request gets the Wi-Fi to itself
         let pin = api.pin
         do {
@@ -410,6 +475,7 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
             let r = await Task.detached(priority: .userInitiated) { ditherStrip(gray, w: PRINT_WIDTH, h: H, segments: segs, copies: n, sinkStart: sink) }.value
             let job = try await api.print(bits: r.bits, height: H, density: settings.density, speed: settings.speed)
             await archive.resume()
+            printedStrip = (s.id, r.bits[0], H)
             let png = encodeBitPNG(r.bits[0], PRINT_WIDTH, H)
             var m = meta(s, printed: true, copies: n); m.bytes = ["strip.png": png.count]
             await archive.enqueue(m, files: ["strip.png": png])
@@ -418,6 +484,7 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
             settings.ticket += 1
             for _ in 0..<n { printTimes.append(Date()) }
             await waitForJob(job.id, copies: n, height: H)
+            printingNow = false; if mine != nil { armMineClose() }
             celebrate = ["🎉", "🥳", "🤩", "😻", "🦄"].randomElement()
             Sfx.shared.play("yay")
             try? await Task.sleep(for: .seconds(2.4))
@@ -479,7 +546,7 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
 
     // MARK: settings
 
-    func openSettings() { status = nil; screen = .settings; Task { await refreshEvent() } }
+    func openSettings() { status = nil; closeMine(); screen = .settings; Task { await refreshEvent() } }
     func closeSettings() { Sfx.shared.enabled = settings.sound; camera.liveFallback = false; startCamera() }
 
     func printCalibration() async {

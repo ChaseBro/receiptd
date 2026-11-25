@@ -19,6 +19,7 @@ struct BoothView: View {
             case .settings: SettingsScreen()
             }
             if let face = booth.celebrate { DoneOverlay(face: face) }
+            if let m = booth.mine { MineOverlay(share: m) }
         }
         .environmentObject(booth)
         .statusBarHidden()
@@ -40,10 +41,14 @@ struct LockScreen: View {
         VStack(spacing: 28) {
             Sticker(fill: .sun, corner: 999, line: LINE_FAT, tilt: -6) { Emoji("📸", size: 90).padding(28) }
             HStack(spacing: 16) {
+                // Any PIN: digits, a word or a phrase. Normal keyboard, no autocorrect / auto-caps
+                // (the server compares exactly, case included); the ends are trimmed.
                 SecureField("", text: $pin)
-                    .keyboardType(.numberPad).focused($focused)
-                    .font(Fonts.display(40)).multilineTextAlignment(.center)
-                    .frame(width: 220, height: 72)
+                    .keyboardType(.default).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    .submitLabel(.go).focused($focused)
+                    .font(Fonts.display(32)).multilineTextAlignment(.center)
+                    .padding(.horizontal, 12)
+                    .frame(width: 300, height: 72)
                     .background(RoundedRectangle(cornerRadius: 20).fill(.white))
                     .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.ink, lineWidth: LINE))
                     .accessibilityLabel("PIN")
@@ -56,7 +61,7 @@ struct LockScreen: View {
         }
         .onAppear { focused = true }
     }
-    func go() { let p = pin.trimmingCharacters(in: .whitespaces); pin = ""; Task { await booth.unlock(p) } }
+    func go() { let p = pin.trimmingCharacters(in: .whitespacesAndNewlines); pin = ""; Task { await booth.unlock(p) } }
 }
 
 struct Shake: GeometryEffect {
@@ -77,12 +82,22 @@ struct CameraScreen: View {
             let landscape = geo.size.width > geo.size.height
             let layout = landscape ? AnyLayout(HStackLayout(spacing: 20)) : AnyLayout(VStackLayout(spacing: 18))
             layout {
-                themePicker(landscape: landscape)
-                ZStack {
-                    stage(accent: a)
-                    RingView().allowsHitTesting(false)
+                if landscape { themePicker(landscape: true) } else {
+                    // Make another booth sits at the end of the top bar, left of the long-press hotspot (90 pt).
+                    HStack(spacing: 10) { themePicker(landscape: false); MakeBoothButton().padding(.trailing, 74) }
                 }
-                tray(accent: b, landscape: landscape)
+                // The stage is the photo slot's shape (4:3 / 4:5, frames.js slotAspect), as big as fits,
+                // centred: the live dots and the plain camera fill it edge to edge, exactly the crop that prints.
+                SlotShaped(camera: booth.camera) {
+                    ZStack {
+                        stage(accent: a)
+                        RingView().allowsHitTesting(false)
+                    }
+                }
+                if landscape {
+                    tray(accent: b, landscape: true).frame(maxHeight: .infinity)
+                        .overlay(alignment: .topLeading) { MakeBoothButton() }   // top of the tray column, clear of the hotspot
+                } else { tray(accent: b, landscape: false) }
             }
             .padding(20)
             .frame(width: geo.size.width, height: geo.size.height)
@@ -115,9 +130,6 @@ struct CameraScreen: View {
                 .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(Color.ink, lineWidth: LINE_FAT))
                 .background(RoundedRectangle(cornerRadius: 28).fill(Color.ink).offset(x: 8, y: 8))
-            if booth.ringMode == .idle, !booth.busy {   // 📤 Share booth, top-left of the stage (grown-ups)
-                ShareButton().frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(14)
-            }
             if booth.shots > 1 {
                 HStack(spacing: 10) {
                     ForEach(0..<booth.shots, id: \.self) { i in
@@ -254,6 +266,7 @@ struct ReviewScreen: View {
                 Button { Task { await booth.printStrip() } } label: { Emoji("🖨️", size: 64).frame(width: 150, height: 150) }
                     .buttonStyle(StickerStyle(fill: .mint, corner: 999, line: LINE_FAT, shadow: 8)).accessibilityLabel("Print")
                     .disabled(booth.preview == nil)
+                ShareThisPhotoButton(size: 96)
             }
         }
     }
@@ -313,6 +326,7 @@ struct PrintingScreen: View {
                 HStack(spacing: 8) { Emoji("⏳", size: 30); ForEach(0..<min(4, st.position - 1), id: \.self) { _ in Emoji("🧾", size: 26) } }
             }
             if let s = booth.printer?.sticker { Sticker(fill: .tomato, corner: 999) { Emoji(s + "❗", size: 44).padding(14) } }
+            if !st.error { ShareThisPhotoButton(size: 88) }
             if st.error {
                 HStack(spacing: 30) {
                     Button { booth.printBack() } label: { Emoji("✖️", size: 44).frame(width: 100, height: 100) }.buttonStyle(StickerStyle(fill: .tomato, corner: 999)).accessibilityLabel("Back")
@@ -428,9 +442,9 @@ struct SettingsScreen: View {
             ShareLink(item: links.app, subject: Text("Photo Booth app"), message: Text("Get the Photo Booth app (TestFlight). After it's installed, tap this link again to set it up.")) {
                 Label("Booth app (TestFlight)", systemImage: "apps.iphone")
             }
-            NavigationLink { ShareBoothView(web: links.web, app: links.app) } label: { Label("Show as QR codes", systemImage: "qrcode") }
-        } header: { Text("Share booth") } footer: {
-            Text("Booth on the web opens this booth in Safari, already unlocked. Booth app signs the phone up for the TestFlight app; once it's installed, the same link opens the app set up for this booth. Both links contain the booth PIN, so only send them to people you'd hand the iPad to.")
+            NavigationLink { ShareBoothView(web: links.web, app: links.app, pin: booth.api.pin) } label: { Label("Show PIN and QR codes", systemImage: "qrcode") }
+        } header: { Text("Make another booth") } footer: {
+            Text("This lets them use your booth (prints, photos). Booth on the web opens this booth in Safari, already unlocked. Booth app signs the phone up for the TestFlight app; once it's installed, the same link opens the app set up for this booth. Both links contain the booth PIN, so only send them to people you'd hand the iPad to. Also on the camera screen: the small phone-with-plus at the top.")
         }
     }
 
@@ -447,13 +461,30 @@ struct SettingsScreen: View {
     }
 }
 
-/// Share booth: each link as a big QR code (black on white, for a phone next to the iPad to scan)
-/// and a share sheet button (AirDrop, Messages, …). Settings → Share booth → QR codes, and the
-/// camera screen's 📤 sticker (in a sheet). Adult surface: words allowed.
+/// Make another booth: the PIN in big type (to type it in) with a copy button, and each link as a big
+/// QR code (black on white, for a phone next to the iPad to scan) and a share sheet button (AirDrop,
+/// Messages, …). Settings → Make another booth, and the camera screen's phone-with-plus sticker (in
+/// a sheet). It grants access, so it says so. Adult surface: words allowed.
 struct ShareBoothView: View {
-    let web: URL, app: URL
+    let web: URL, app: URL, pin: String
+    @State private var copied = false
     var body: some View {
         ScrollView {
+            VStack(spacing: 14) {
+                Text("This lets them use your booth (prints, photos).").font(.title3.bold()).foregroundStyle(.black).multilineTextAlignment(.center)
+                VStack(spacing: 8) {
+                    Text("Booth PIN").font(.callout).foregroundStyle(.black.opacity(0.6))
+                    Text(pin).font(Fonts.display(52)).foregroundStyle(.black).multilineTextAlignment(.center).textSelection(.enabled)
+                        .accessibilityLabel("Booth PIN \(pin)").accessibilityIdentifier("boothPin")
+                    Button { UIPasteboard.general.string = pin; copied = true } label: {
+                        Label(copied ? "Copied" : "Copy PIN", systemImage: copied ? "checkmark" : "doc.on.doc")
+                    }.buttonStyle(.bordered).tint(Color.ink).accessibilityLabel("Copy PIN")
+                }
+                .padding(18).frame(maxWidth: 520)
+                .background(RoundedRectangle(cornerRadius: 20).fill(Color.paper))
+                .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.ink, lineWidth: 3))
+            }
+            .padding(.horizontal, 24).padding(.top, 20)
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .top, spacing: 40) { codes }
                 VStack(spacing: 40) { codes }
@@ -464,7 +495,7 @@ struct ShareBoothView: View {
         }
         .background(Color.white)
         .environment(\.colorScheme, .light)
-        .navigationTitle("Share booth")
+        .navigationTitle("Make another booth")
         .navigationBarTitleDisplayMode(.inline)
     }
     @ViewBuilder var codes: some View {
@@ -485,18 +516,19 @@ struct ShareBoothView: View {
     }
 }
 
-/// The camera screen's 📤 sticker: a small grown-up button (kids' targets are the big ones).
-struct ShareButton: View {
+/// The camera screen's "make another booth" control: a small, wordless grown-up sticker (a phone
+/// with a +) up in the top corner area, outside the camera window (kids' targets are the big ones).
+struct MakeBoothButton: View {
     @EnvironmentObject var booth: Booth
     @State private var open = false
     var body: some View {
         if let links = booth.shareLinks {
-            Button { Sfx.shared.play("tap"); open = true } label: { Emoji("📤", size: 22).frame(width: 46, height: 46) }
-                .buttonStyle(StickerStyle(fill: .white, corner: 14, line: 3, shadow: 3, tilt: -4))
-                .accessibilityLabel("Share booth")
+            Button { Sfx.shared.play("tap"); open = true } label: { PhonePlusIcon().frame(width: 34, height: 34).frame(width: 50, height: 50) }
+                .buttonStyle(StickerStyle(fill: .white, corner: 14, line: 3, shadow: 3, tilt: 4))
+                .accessibilityLabel("Make another booth")
                 .sheet(isPresented: $open) {
                     NavigationStack {
-                        ShareBoothView(web: links.web, app: links.app)
+                        ShareBoothView(web: links.web, app: links.app, pin: booth.api.pin)
                             .toolbar { Button("Done") { open = false }.bold() }
                     }
                     .presentationSizing(.page)
@@ -521,5 +553,150 @@ struct QRCodeView: View {
             } }
             ctx.fill(p, with: .color(.black))
         }
+    }
+}
+
+// MARK: share this photo (kids: wordless)
+
+/// The stage at the photo slot's aspect (4:3 / 4:5 from the camera's frame shape), fitted and centred,
+/// with room for the sticker's offset shadow. Re-lays out (springs) when the device turns.
+struct SlotShaped<Content: View>: View {
+    @ObservedObject var camera: BoothCamera
+    @ViewBuilder var content: Content
+    var body: some View {
+        content
+            .aspectRatio(camera.slotAspect, contentMode: .fit)
+            .padding(.trailing, 8).padding(.bottom, 8)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: camera.portraitFrames)
+    }
+}
+
+/// "Share this photo": the strip with an arrow out of it (reads as *this photo*, not the booth).
+struct ShareThisPhotoButton: View {
+    @EnvironmentObject var booth: Booth
+    var size: CGFloat = 96
+    var body: some View {
+        Button { Task { await booth.openMine() } } label: { StripArrowIcon().frame(width: size * 0.56, height: size * 0.56).frame(width: size, height: size) }
+            .buttonStyle(StickerStyle(fill: .sky, corner: 999, tilt: -5))
+            .accessibilityLabel("Share this photo")
+            .disabled(booth.shot == nil)
+    }
+}
+
+/// "Your photos": a big QR to /s/<token> for another phone to scan, 📲 to send the files themselves
+/// (share sheet: AirDrop, Messages, Save), ✖️ / tap outside to close. No words.
+struct MineOverlay: View {
+    @EnvironmentObject var booth: Booth
+    let share: Booth.MineShare
+    @State private var sending = false
+    var body: some View {
+        ZStack {
+            Color.ink.opacity(0.6).ignoresSafeArea()
+                .onTapGesture { Sfx.shared.play("boop"); booth.closeMine() }
+                .accessibilityHidden(true)
+            GeometryReader { g in
+                let side = min(g.size.width * 0.78, g.size.height * 0.6, 460)
+                VStack(spacing: 22) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 18).fill(.white)
+                        if let url = share.url {
+                            QRCodeView(text: url).padding(10)
+                                .accessibilityElement().accessibilityAddTraits(.isImage).accessibilityLabel("QR code: Your photos")
+                                .accessibilityValue(url)
+                        } else { Emoji(share.failed ? "🙈" : "⏳", size: side * 0.3) }
+                    }
+                    .frame(width: side, height: side)
+                    .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.ink, lineWidth: LINE))
+                    HStack(spacing: 30) {
+                        Button { send() } label: { Emoji(sending ? "⏳" : "📲", size: 46).frame(width: 100, height: 100) }
+                            .buttonStyle(StickerStyle(fill: .sky, corner: 999, tilt: -4)).accessibilityLabel("Send photos")
+                        Button { Sfx.shared.play("boop"); booth.closeMine() } label: { Emoji("✖️", size: 44).frame(width: 100, height: 100) }
+                            .buttonStyle(StickerStyle(fill: .white, corner: 999, tilt: 4)).accessibilityLabel("Close")
+                    }
+                }
+                .padding(24)
+                .background(RoundedRectangle(cornerRadius: 28).fill(THEME_ACCENTS[booth.theme]?.0 ?? .sun))
+                .overlay(RoundedRectangle(cornerRadius: 28).stroke(Color.ink, lineWidth: LINE_FAT))
+                .background(RoundedRectangle(cornerRadius: 28).fill(Color.ink).offset(x: 10, y: 10))
+                .frame(width: g.size.width, height: g.size.height)
+            }
+        }
+        .transition(.scale(scale: 0.6).combined(with: .opacity))
+        .accessibilityElement(children: .contain).accessibilityIdentifier("yourPhotos")
+    }
+
+    func send() {
+        guard !sending else { return }
+        Sfx.shared.play("tap"); sending = true
+        Task {
+            let items = await booth.mineImages()
+            sending = false
+            if items.isEmpty { Sfx.shared.play("boo") } else { presentShareSheet(items) }
+        }
+    }
+}
+
+/// UIActivityViewController from the top view controller (a popover on iPad, anchored low and centred).
+@MainActor func presentShareSheet(_ items: [Any]) {
+    guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first(where: { $0.activationState == .foregroundActive }),
+          var top = scene.keyWindow?.rootViewController else { return }
+    while let p = top.presentedViewController { top = p }
+    let vc = UIActivityViewController(activityItems: items, applicationActivities: nil)
+    if let pop = vc.popoverPresentationController {
+        pop.sourceView = top.view
+        pop.sourceRect = CGRect(x: top.view.bounds.midX, y: top.view.bounds.maxY - 120, width: 1, height: 1)
+        pop.permittedArrowDirections = [.down]
+    }
+    top.present(vc, animated: true)
+}
+
+/// Icon: a photo strip (three frames) with an arrow leaving it, in the sticker style.
+struct StripArrowIcon: View {
+    var body: some View {
+        GeometryReader { g in
+            let k = min(g.size.width, g.size.height) / 48
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: 3 * k).fill(.white).frame(width: 21 * k, height: 42 * k)
+                    .overlay(RoundedRectangle(cornerRadius: 3 * k).stroke(Color.ink, lineWidth: 4 * k)).offset(x: 6 * k, y: 3 * k)
+                ForEach(0..<3, id: \.self) { i in
+                    RoundedRectangle(cornerRadius: 1.5 * k).fill(Color.ink).frame(width: 12 * k, height: 8.5 * k)
+                        .offset(x: 10.5 * k, y: (8 + Double(i) * 11.75) * k)
+                }
+                let arrow = Path { p in
+                    p.move(to: CGPoint(x: 22 * k, y: 28 * k)); p.addLine(to: CGPoint(x: 41 * k, y: 9 * k))
+                    p.move(to: CGPoint(x: 30 * k, y: 8 * k)); p.addLine(to: CGPoint(x: 42 * k, y: 8 * k)); p.addLine(to: CGPoint(x: 42 * k, y: 20 * k))
+                }
+                arrow.stroke(.white, style: StrokeStyle(lineWidth: 11 * k, lineCap: .round, lineJoin: .round))
+                arrow.stroke(Color.ink, style: StrokeStyle(lineWidth: 5 * k, lineCap: .round, lineJoin: .round))
+            }
+            .frame(width: 48 * k, height: 48 * k)
+        }
+        .aspectRatio(1, contentMode: .fit)
+        .accessibilityHidden(true)
+    }
+}
+
+/// Icon: a phone with a + badge ("make another booth").
+struct PhonePlusIcon: View {
+    var body: some View {
+        GeometryReader { g in
+            let k = min(g.size.width, g.size.height) / 48
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: 5 * k).fill(.white).frame(width: 24 * k, height: 41 * k)
+                    .overlay(RoundedRectangle(cornerRadius: 5 * k).stroke(Color.ink, lineWidth: 4 * k)).offset(x: 9 * k, y: 3 * k)
+                Capsule().fill(Color.ink).frame(width: 8 * k, height: 3 * k).offset(x: 17 * k, y: 7 * k)
+                Circle().fill(Color.ink).frame(width: 4 * k, height: 4 * k).offset(x: 19 * k, y: 37 * k)
+                Circle().fill(Color.mint).frame(width: 20 * k, height: 20 * k)
+                    .overlay(Circle().stroke(Color.ink, lineWidth: 3.5 * k)).offset(x: 25 * k, y: 23 * k)
+                Path { p in
+                    p.move(to: CGPoint(x: 35 * k, y: 27.5 * k)); p.addLine(to: CGPoint(x: 35 * k, y: 38.5 * k))
+                    p.move(to: CGPoint(x: 29.5 * k, y: 33 * k)); p.addLine(to: CGPoint(x: 40.5 * k, y: 33 * k))
+                }.stroke(Color.ink, style: StrokeStyle(lineWidth: 4 * k, lineCap: .round))
+            }
+            .frame(width: 48 * k, height: 48 * k)
+        }
+        .aspectRatio(1, contentMode: .fit)
+        .accessibilityHidden(true)
     }
 }

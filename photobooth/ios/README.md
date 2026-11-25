@@ -91,12 +91,21 @@ bundled one rejected, so it isn't retried until a new build carries a different
 PIN; an adult types the new one. With a bundled PIN, settings offers
 "Forget saved PIN" instead of "Lock booth".
 
-### Share booth
+### Share this photo / Make another booth
 
-The small 📤 sticker at the top left of the camera stage (and settings → Share
-booth) hands the booth to another phone: two links, each as a big QR code and a
-share-sheet button. Both carry the PIN (`BoothLinks` in `BoothCore/Share.swift`,
-mirrored by `public/share.js`):
+**Share this photo** (kids, wordless): the strip-with-arrow sticker on the review
+and printing screens opens "your photos": a big QR to `/s/<token>` (a 24 h link
+to that one session, `POST /api/sessions/:id/share`, see ../README.md), 📲 (the
+strip + originals as images in a UIActivityViewController: AirDrop, Messages,
+Save), ✖️. It stays until tapped away or ~30 s after the print. The session's
+archive upload jumps the queue (`ArchiveQueue.prioritize`).
+
+**Make another booth** (hosts): the small phone-with-plus sticker at the end of
+the top bar (left of the 90 pt long-press corner; top of the tray column in
+landscape), and settings → Make another booth. The sheet says "This lets them use
+your booth (prints, photos)", shows the PIN in big type with Copy PIN, and two
+links, each as a big QR code and a share-sheet button. Both carry the PIN
+(`BoothLinks` in `BoothCore/Share.swift`, mirrored by `public/share.js`):
 
 - **Booth on the web**: `https://booth.receiptd.sh/#pin=<PIN>`.
 - **Booth app (TestFlight)**: `https://join.receiptd.sh/booth?k=…#server=<server>&key=<PIN>`
@@ -104,6 +113,13 @@ mirrored by `public/share.js`):
   TestFlight sign-up. After install: a universal link (AASA path `/booth`), so
   `Pairing` saves server + PIN and the app lands on the camera. `booth://setup#…`
   does the same.
+
+The PIN may be a word or phrase: the lock screen uses the normal keyboard
+(no autocorrect / auto-caps) and trims the ends; matching is exact.
+
+The camera stage is the photo slot's shape (4:3 / 4:5 from the frame shape,
+`BoothCamera.portraitFrames`), fitted and centred, so the live dots and the plain
+preview fill it edge to edge.
 
 End-to-end against a local booth (nothing reaches the real printer):
 
@@ -119,8 +135,10 @@ shoots 3 photos. It reviews, bumps copies and prints. Then check
 `/api/photos?day=…`: the session should have `orig-1..3.jpg` and `strip.png`,
 with `printed: true`, `copies: 2` and `event: <party>`. The QR on the strip
 decodes to `/a/<share>/<session id>`. The other tests: a saved PIN opens straight
-to the camera and both share sheets show their QR codes; a `booth://setup` link
-lands on the camera; a rejected PIN shows the lock screen (no share button).
+to the camera and the make-another-booth sheet (corner + settings) shows the PIN
+and both QR codes; share this photo on review shows the `/s/<token>` QR; the stage
+has the slot's aspect; a `booth://setup` link lands on the camera; a rejected PIN
+shows the lock screen (no make-another-booth button).
 If signing the BoothCore resource bundle fails locally, add `CODE_SIGNING_ALLOWED=NO`.
 
 ## Ship (TestFlight)

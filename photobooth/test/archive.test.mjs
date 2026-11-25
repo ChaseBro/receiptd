@@ -9,7 +9,7 @@ import {
   sanitizeMeta, sniffOK, validPrefix,
 } from "../src/archive.ts";
 import { crc32, encodeBitPNG, zipStore, zlibStored } from "../public/archive-codecs.js";
-import { backoffMs, fitSize, mergeQueuedMeta, newSessionId, pickDrops, planBatches } from "../public/archive.js";
+import { orderDue, backoffMs, fitSize, mergeQueuedMeta, newSessionId, pickDrops, planBatches } from "../public/archive.js";
 
 const T = Date.UTC(2026, 10, 15, 3, 30);   // 2026-11-14 22:30 in New York
 const ID = newSessionId(T, new Uint8Array([0xde, 0xad, 0xbe, 0xef]));
@@ -207,4 +207,18 @@ test("client queue helpers: batches, drops, backoff, meta merge, downscale", () 
   assert.deepEqual(fitSize(1920, 1440), [1920, 1440], "never upscales");
   assert.deepEqual(fitSize(4032, 3024), [2048, 1536]);
   assert.deepEqual(fitSize(3024, 4032), [1536, 2048]);
+});
+
+test("orderDue: the shared session jumps the queue (even out of a backoff), then oldest first", () => {
+  const now = 1000;
+  const recs = [
+    { id: "b", createdAt: 2, nextAt: 0 },
+    { id: "a", createdAt: 1, nextAt: 0 },
+    { id: "late", createdAt: 0, nextAt: 5000 },   // backing off
+    { id: "mine", createdAt: 9, nextAt: 9999 },   // backing off, but being shared
+  ];
+  assert.deepEqual(orderDue(recs, null, now).map((r) => r.id), ["a", "b"]);
+  assert.deepEqual(orderDue(recs, "mine", now).map((r) => r.id), ["mine", "a", "b"]);
+  assert.deepEqual(orderDue(recs, "b", now).map((r) => r.id), ["b", "a"]);
+  assert.deepEqual(orderDue(recs, "gone", now).map((r) => r.id), ["a", "b"]);
 });

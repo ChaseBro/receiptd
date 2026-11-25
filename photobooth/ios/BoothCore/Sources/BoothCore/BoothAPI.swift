@@ -40,6 +40,12 @@ public struct JobStatus: Decodable, Sendable {
     public var printer: PrinterHealth?
 }
 
+/// POST /api/sessions/:id/share: a short-lived public "your photos" link to one session.
+public struct SessionShare: Decodable, Equatable, Sendable {
+    public var token: String
+    public var expiresAt: String?
+}
+
 public struct PrintJob: Decodable, Sendable { public var id: String; public var copies: Int?; public var position: Int? }
 
 public enum BoothAPIError: Error, Equatable {
@@ -110,6 +116,20 @@ public final class BoothAPI: @unchecked Sendable {
     private struct Active: Decodable { var event: BoothEvent? }
     /// The party booths are shooting for right now (set from /party.html), or nil.
     public func activeEvent() async throws -> BoothEvent? { try await send(request("api/events/active"), as: Active.self).event }
+
+    /// A "your photos" link for one session (24 h by default; `ttl` seconds, 1…7 days). Works
+    /// with or without a party; the session needn't be uploaded yet (the page waits for it).
+    public func sessionShare(_ id: String, ttl: Int? = nil) async throws -> SessionShare {
+        let safe = id.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(CharacterSet(charactersIn: "-"))) ?? id
+        return try await send(request("api/sessions/\(safe)/share", method: "POST", json: ttl.map { ["ttl": $0] } ?? [String: Int]()), as: SessionShare.self)
+    }
+
+    /// `/s/<token>` on this booth's own server (what the on-screen QR encodes).
+    public func sessionShareURL(token: String) -> String {
+        var c = URLComponents(url: server, resolvingAgainstBaseURL: false)!
+        c.path = "/s/\(token)"; c.query = nil; c.fragment = nil
+        return c.string!
+    }
 
     /// The strip QR: that guest's photos in the event album.
     public func albumURL(share: String, session: String) -> String {

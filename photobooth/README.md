@@ -28,6 +28,11 @@ most faces in any frame. The face boxes are also passed to `compose()` as
 object, since the printer worker deletes it on ack) per copy; the printing
 screen ticks off a 🧾 per copy, and every copy counts toward the cooldown.
 
+The camera stage is the photo slot's shape (4:3 for landscape frames, 4:5 for
+portrait ones, `frames.js` slotAspect), as big as fits and centred, so the live
+dithered preview and the plain video fill it with no bars: exactly the crop that
+prints. It reshapes when the camera's frames turn.
+
 Photos are turned upright from the phone's tilt sensor at capture time; tap ↻
 on a photo in the review screen to fix one by hand. Strips are laid out at
 576px (80mm @ 203dpi) with a theme frame (`public/frames.js`), a date/time
@@ -61,15 +66,44 @@ propagation); then it deletes the KV keys. Deploy `worker/` then both booth
 envs within that window. `worker/scripts/dq-smoke.mjs` exercises all of this
 against `receiptd-cprnt-staging` (isolated DO namespace, workers.dev only).
 
-Guests unlock with a shared PIN (`BOOTH_PIN`), cached in `localStorage`.
+Guests unlock with a shared PIN (`BOOTH_PIN`), cached in `localStorage`. It can be
+digits, a word or a phrase: lock screens use a normal text keyboard (no autocorrect,
+no auto-caps) and trim the ends. The match is exact, case included (the server trims
+the ends of both sides too, so a secret pasted with a trailing newline still works).
 Settings (long-press top-right) set footer, countdown, anti-ghost gain,
 density, speed, and sounds per device, and can re-lock the booth.
 
-**Share booth** passes the PIN peer to peer instead of typing it: the small 📤
-sticker at the top left of the camera (only when unlocked) or settings →
-📤 Share booth opens a sheet with two links, each as a QR code and a "Send link"
-button (share sheet → AirDrop / Messages; clipboard where `navigator.share` is
-missing). Both contain the PIN. Built in `public/share.js` (mirrored by
+Two different "share" actions:
+
+**Share this photo** (guests, kids; wordless): the sticker with a strip and an
+arrow, next to 🖨️ on the review screen and on the printing screen, opens "your
+photos": a big QR code for another phone to scan, 📲 to send the files themselves
+(strip PNG + originals via `navigator.share({ files })`, else downloads — peer to
+peer, works offline) and ✖️. It stays until tapped away, or ~30 s after the print
+finishes. The QR is a per-session link, `/s/<token>` (`public/mine.html`): that
+session's strip + originals with save / share buttons, "on its way…" (polling)
+until the background upload lands, and a 404 / "Link expired" after 24 h. It
+works with or without a party (a party's strip QR still links the album). Opening
+it makes that session's archive upload jump the queue (`archive.js`
+`prioritize` / `orderDue`).
+
+- `POST /api/sessions/:id/share` (PIN; optional `{ ttl }` seconds, 1 s–7 days,
+  default 24 h) → `{ token, url, expiresAt }`; stores `share-s/<token>` →
+  `{ day, id, exp }` in PHOTOS (under `ARCHIVE_PREFIX`). Clients build the link
+  from their own origin.
+- `GET /api/s/<token>` → `{ session: { id, day, files, meta }, expiresAt }`
+  (public meta only: capturedAt, theme, shots, printed); `GET
+  /api/s/<token>/file?key=…` serves only that session's images. Expired → 404
+  (the record is deleted; the photos stay in the archive). `src/session-share.ts`.
+
+**Make another booth** (hosts; it grants access) passes the PIN peer to peer:
+the small phone-with-plus sticker at the top right (outside the camera, clear of
+the theme picker and the long-press strip; only when unlocked) or settings →
+Make another booth opens a sheet that says "This lets them use your booth
+(prints, photos)", shows the PIN in big type with Copy PIN, and two links, each
+as a QR code and a "Send link" button (share sheet → AirDrop / Messages;
+clipboard where `navigator.share` is missing). Both links contain the PIN
+(URL-encoded). Built in `public/share.js` (mirrored by
 `ios/BoothCore/.../Share.swift`):
 - **Web booth**: `<origin>/#pin=<PIN>`. The boot code saves the PIN and strips
   the hash.
@@ -110,14 +144,15 @@ the album index).
 
 Storage (PHOTOS bucket, same prefix as the archive): `events/<slug>/event.json`,
 `events/<slug>/s/<day>/<id>` (album index), `share/<token>` → slug,
-`active-event`. API: `src/events-api.ts`.
+`active-event`, `share-s/<token>` → one session's 24 h link (see Share this photo). API: `src/events-api.ts`.
 
 ### Testing
 
 ```sh
 npm test                 # unit + API (in-memory R2) + design lint
 npm run dev:e2e          # local booth + cprnt DO (PIN from .dev.vars: BOOTH_PIN=1234)
-npm run test:e2e         # Playwright: party → booth (fake camera) → 5 strips, QR decoded → print → album
+npm run test:e2e         # Playwright: party → booth (fake camera) → 5 strips, QR decoded → print → album;
+                         #   share.e2e: stage shape, make-another-booth PIN, share photo → /s/<token> → expiry
 ```
 
 ## Photo archive

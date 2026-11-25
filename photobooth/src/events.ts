@@ -6,6 +6,8 @@
 //   ${prefix}events/<slug>/s/<day>/<id>      album index: one empty object per session
 //   ${prefix}share/<token>                   share token → slug (public album lookup)
 //   ${prefix}active-event                    slug the booths are shooting for right now
+//   ${prefix}share-s/<token>                 one session's "your photos" link → { day, id, exp }
+//                                            (src/session-share.ts; works with or without a party)
 //
 // A session joins an event's album when its archive upload carries
 // `meta.event` (the booth sets it from the active event), or when an adult
@@ -48,6 +50,7 @@ export const indexKey = (prefix: string, slug: string, day: string, id: string) 
 };
 export const shareKey = (prefix: string, token: string) => `${prefix}share/${token}`;
 export const activeKey = (prefix: string) => `${prefix}active-event`;
+export const sessionShareKey = (prefix: string, token: string) => `${prefix}share-s/${token}`;
 
 /** Index object key → { day, id } (or null). */
 export function parseIndexKey(prefix: string, slug: string, key: string): { day: string; id: string } | null {

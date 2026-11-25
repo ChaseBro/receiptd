@@ -54,6 +54,20 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(api.albumURL(share: "abcdefghjkmn", session: "mfx3k2a1-1a2b3c4d"), "https://booth.receiptd.sh/a/abcdefghjkmn/mfx3k2a1-1a2b3c4d")
     }
 
+    func testSessionShareURL() {
+        let api = BoothAPI(server: URL(string: "http://localhost:8788/x?y#z")!, pin: "1")
+        XCTAssertEqual(api.sessionShareURL(token: "abcdefghjkmn"), "http://localhost:8788/s/abcdefghjkmn")
+    }
+
+    /// The shared session jumps the archive queue (even out of a backoff); then oldest first (archive.js orderDue).
+    func testOrderDue() {
+        let recs: [(id: String, createdAt: Double, nextAt: Double)] = [("b", 2, 0), ("a", 1, 0), ("late", 0, 5000), ("mine", 9, 9999)]
+        XCTAssertEqual(orderDue(recs, priority: nil, now: 1000), ["a", "b"])
+        XCTAssertEqual(orderDue(recs, priority: "mine", now: 1000), ["mine", "a", "b"])
+        XCTAssertEqual(orderDue(recs, priority: "b", now: 1000), ["b", "a"])
+        XCTAssertEqual(orderDue(recs, priority: "gone", now: 1000), ["a", "b"])
+    }
+
     func testCalibrationSegmentsCoverStrip() {
         let (_, H, bandH) = calibrationGray(CALIBRATION_GAINS)
         let segs = calibrationSegments(H: H, bandH: bandH)

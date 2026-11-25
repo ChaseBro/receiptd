@@ -173,6 +173,17 @@ public func encodeArchiveJPEG(_ img: CGImage) -> Data? {
 
 // MARK: queue
 
+/// Upload order (archive.js orderDue): the session whose photos are being shared right now jumps
+/// the queue, even out of a retry backoff; then oldest first. → ids of the due records, in order.
+public func orderDue(_ records: [(id: String, createdAt: Double, nextAt: Double)], priority: String?, now: Double) -> [String] {
+    records.filter { $0.id == priority || $0.nextAt <= now }
+        .sorted { a, b in
+            let pa = a.id == priority, pb = b.id == priority
+            return pa != pb ? pa : a.createdAt < b.createdAt
+        }
+        .map(\.id)
+}
+
 /// Durable upload queue. One directory per session: record.json + the files.
 public actor ArchiveQueue {
     struct FileEntry: Codable { var rev: Int; var bytes: Int }
@@ -193,6 +204,9 @@ public actor ArchiveQueue {
     private var inflight: Task<Int, Never>?
     private var logged = 0, lastLog = 0.0
     private var timer: Task<Void, Never>?
+    /// The session being shared ("your photos" on screen): uploaded first. Sticky until another is shared.
+    private var priority: String?
+    private var again = false
 
     public init(root: URL? = nil) {
         let base = root ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("archive", isDirectory: true)
@@ -247,7 +261,14 @@ public actor ArchiveQueue {
         let drops = pickDrops(all().map { ($0.id, $0.createdAt, $0.bytes) })
         for d in drops { delete(d) }
         if !drops.isEmpty { report("queue_full_dropped", ["dropped": drops.count]) }
-        kick(after: 1.5)
+        kick(after: id == priority ? 0 : 1.5)
+    }
+
+    /// This session's photos are being shared: upload it next, now (safe before it's queued).
+    public func prioritize(_ id: String) {
+        priority = id
+        if flushing { again = true }   // finish the current request, then pick the shared session
+        kick()
     }
 
     /// Sessions waiting to upload (for the adult settings screen).
@@ -295,15 +316,20 @@ public actor ArchiveQueue {
         return status
     }
 
-    /// Upload everything due, one request at a time.
+    /// Upload everything due, one request at a time (the shared session first, see `orderDue`).
     public func flush() async {
         guard !flushing, !paused, let api, !api.pin.isEmpty else { return }
-        flushing = true
-        defer { flushing = false }
-        let now = Date().timeIntervalSince1970
-        let due = all().filter { $0.nextAt <= now }.sorted { $0.createdAt < $1.createdAt }
-        for snap in due {
-            if paused { break }
+        flushing = true; again = false
+        defer {
+            flushing = false
+            if again && !paused { kick() }   // prioritize() landed mid-round
+        }
+        var done = Set<String>()   // tried this round (sent, backed off or dropped)
+        while !paused {
+            let recs = all().filter { !done.contains($0.id) }
+            guard let next = orderDue(recs.map { ($0.id, $0.createdAt, $0.nextAt) }, priority: priority, now: Date().timeIntervalSince1970).first,
+                  let snap = recs.first(where: { $0.id == next }) else { break }
+            done.insert(snap.id)
             let batches = planBatches(snap.files.map { ($0.key, $0.value.bytes) }.sorted { $0.0 < $1.0 })
             for names in batches {
                 if paused { return }
