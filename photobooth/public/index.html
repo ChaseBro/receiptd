@@ -118,6 +118,10 @@
   #video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
   /* Like the iPhone Camera: the selfie *preview* is mirrored; captures, prints and saved photos are not. */
   #video.mirror { transform:scaleX(-1); }
+  /* Live print preview: the photo slot's crop in printer dots (preview.worker.js), shown whole, crisp. */
+  #live { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; image-rendering:pixelated; background:var(--ink); display:none; }
+  #live.on { display:block; }
+  #live.mirror { transform:scaleX(-1); }
   #dots { position:absolute; top:var(--gap); left:0; right:0; display:flex; gap:10px; justify-content:center; z-index:2; }
   #dots i { width:calc(var(--tap) * .33); height:calc(var(--tap) * .33); border-radius:8px; border:var(--line) solid var(--ink); background:var(--white); box-shadow:var(--shadow-sm); }
   #dots i.done { background:var(--accent); animation:pop-in .35s var(--ease-pop); }
@@ -274,6 +278,7 @@
   <div id="themes"></div>
   <div id="stage">
     <video id="video" playsinline autoplay muted></video>
+    <canvas id="live" aria-hidden="true"></canvas>
     <div id="dots"></div>
     <div id="paperBadge" class="sticker fat emoji" hidden>🧻</div>
     <button id="shareBtn" class="sticker emoji" aria-label="Share booth">📤</button>
@@ -353,6 +358,8 @@
   <div class="card">Print density<div class="chips" id="sDensity"></div></div>
   <div class="card">Print speed<div class="chips" id="sSpeed"></div><div class="hint">Slower = cooler head = less ghosting.</div></div>
   <div class="card">Sounds<div class="chips" id="sSound"></div></div>
+  <div class="card">Live print preview<div class="chips" id="sLive"></div>
+    <div class="hint">The camera shows the photo in printer dots, cropped as it prints. Turns itself off for this visit if the device is too slow.</div></div>
   <div class="card" id="sShare">📤 Share booth
     <div class="hint">Send the booth to another phone (AirDrop, Messages, …) or let it scan a code: the web booth, or the iPhone app (TestFlight). Both links contain the booth PIN. Also on the camera screen: the small 📤 at the top left.</div>
     <div class="chips"><button class="pill go" id="sShareOpen">📤 Share booth</button></div>
@@ -368,7 +375,7 @@
 </section>
 
 <script type="module">
-import { THEMES, compose, calibrationGray } from "./frames.js";
+import { THEMES, compose, calibrationGray, layout as stripLayout, coverCrop } from "./frames.js";
 import { PRINT_WIDTH as W, luminance, packBits, toBase64 } from "./raster.js";
 import { play as playSound, unlockSounds } from "./sound.js";
 import { uprightRotation as orient } from "./orient.js";
@@ -402,7 +409,7 @@ const cfg = () => ({
   pin: S.get("pin", ""), theme: S.get("theme", "stars"), shots: S.get("shots", 3),
   footer: S.get("footer", ""), count: Math.min(10, Math.max(1, S.get("count", 3))),
   gain: S.get("gain", 0.15), density: S.get("density", 3), speed: S.get("speed", 2), sound: S.get("sound", true),
-  ticket: S.get("ticket", 0),
+  ticket: S.get("ticket", 0), live: S.get("live", true),
 });
 
 // ---------- active event (party / album), set from party.html ----------
@@ -537,6 +544,7 @@ async function startCam() {
     streamFacing = facing;
     $("video").srcObject = stream;
     $("video").classList.toggle("mirror", facing === "user");
+    $("live").classList.toggle("mirror", facing === "user");
     setTimeout(loadFaceDetector, 1500);   // lazy: after first paint + camera start
   } catch { sfx.boo(); $("camErr").classList.add("on"); }
 }
@@ -595,6 +603,67 @@ function rotate(src, deg) {
   ctx.drawImage(src, -src.width / 2, -src.height / 2);
   return c;
 }
+
+// ---------- live print preview ----------
+// Each camera frame is cover-cropped to the photo slot (frames.js layout: 4:3
+// landscape / 4:5 portrait, at the width it prints for the current theme),
+// scaled on the GPU into a small canvas, and handed to preview.worker.js, which
+// tone-maps + thermal-dithers it like the print and paints the on-screen
+// canvas. One frame in flight at a time: frames that arrive while the worker is
+// busy are dropped. Below 5 fps for 3 s straight it gives up for this visit
+// and the plain video shows again.
+const live = { worker: null, busy: false, failed: false, painted: false, n: 0, t0: 0, slow: 0, fps: 0, scratch: null };
+function liveWanted() {
+  return cfg().live && !live.failed && !!stream && $("cam").classList.contains("on") && document.visibilityState === "visible";
+}
+function startLive() {
+  const v = $("video");
+  if (!live.worker) {
+    try {
+      const off = $("live").transferControlToOffscreen();
+      live.worker = new Worker("./preview.worker.js", { type: "module" });
+      live.worker.postMessage({ canvas: off }, [off]);
+      live.worker.onmessage = (e) => {
+        live.busy = false; live.painted = true; live.n++;
+        live.ms = live.ms ? 0.9 * live.ms + 0.1 * e.data.ms : e.data.ms; $("live").dataset.ms = live.ms.toFixed(1);   // worker cost per frame
+      };
+      live.worker.onerror = () => { live.failed = true; $("live").classList.remove("on"); };
+    } catch { live.failed = true; return; }   // no OffscreenCanvas: plain video
+  }
+  const next = () => (v.requestVideoFrameCallback ? v.requestVideoFrameCallback(tick) : requestAnimationFrame(tick));
+  const tick = () => {
+    next();
+    const want = liveWanted();
+    $("live").classList.toggle("on", want && live.painted);
+    if (!want) { live.t0 = 0; return; }
+    const now = performance.now();
+    if (!live.t0) { live.t0 = now; live.n = 0; live.slow = 0; }
+    else if (now - live.t0 >= 1000) {
+      live.fps = (live.n * 1000) / (now - live.t0);
+      $("live").dataset.fps = live.fps.toFixed(1);
+      live.slow = live.fps < 5 ? live.slow + 1 : 0;
+      live.t0 = now; live.n = 0;
+      if (live.slow >= 3) {
+        live.failed = true; $("live").classList.remove("on");
+        fetch("/api/log", { method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ msg: `live preview off: ${live.fps.toFixed(1)} fps`, ua: navigator.userAgent }) }).catch(() => {});
+        return;
+      }
+    }
+    const vw = v.videoWidth, vh = v.videoHeight;
+    if (live.busy || !vw || !vh) return;
+    const slot = stripLayout(cfg().theme, [{ width: vw, height: vh }]).photos[0];
+    const w = Math.round(slot.w), h = Math.round(slot.h), crop = coverCrop(vw, vh, w, h);
+    if (!live.scratch || live.scratch.width !== w || live.scratch.height !== h) live.scratch = new OffscreenCanvas(w, h);
+    const ctx = live.scratch.getContext("2d");
+    ctx.drawImage(v, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, w, h);
+    const frame = live.scratch.transferToImageBitmap();
+    live.busy = true;
+    live.worker.postMessage({ frame, w, h, gain: cfg().gain }, [frame]);
+  };
+  next();
+}
+$("video").addEventListener("loadeddata", () => { if (!live.started) { live.started = true; startLive(); } });
 
 // ---------- ring (countdown fills, cooldown drains) ----------
 const ARC = 2 * Math.PI * 96;
@@ -881,6 +950,7 @@ function openSettings() {
   chips($("sDensity"), [[5, "−2"], [4, "−1"], [3, "std"], [2, "+1"], [1, "+2"]], "density");
   chips($("sSpeed"), [[0, "fast"], [1, "mid"], [2, "slow"]], "speed");
   chips($("sSound"), [[true, "on"], [false, "off"]], "sound");
+  chips($("sLive"), [[true, "on"], [false, "off"]], "live");
   show("settings");
 }
 // Share booth: the PIN goes peer to peer (share sheet → AirDrop / Messages, else the clipboard, or a QR).

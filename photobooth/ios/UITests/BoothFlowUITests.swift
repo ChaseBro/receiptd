@@ -101,6 +101,32 @@ final class BoothFlowUITests: XCTestCase {
         XCTAssert(app.descendants(matching: .any)["QR code: Booth app (TestFlight)"].exists)
     }
 
+    /// The camera stage shows the live print preview (the test pattern in printer dots); off in settings → plain video.
+    func testLivePrintPreview() {
+        app.launchArguments += ["-booth.pin", "1234", "-booth.livePreview", "YES"]
+        app.launch()
+        XCTAssert(app.buttons["Take photo"].waitForExistence(timeout: 10))
+        let dots = app.descendants(matching: .any)["livePreview"]
+        XCTAssert(dots.waitForExistence(timeout: 10))
+        let fps = NSPredicate(format: "value CONTAINS ' fps' AND NOT (value BEGINSWITH '0.0')")
+        wait(for: [expectation(for: fps, evaluatedWith: dots)], timeout: 15)
+        sleep(3)
+        print("live print preview: \(dots.value ?? "")")
+        let a = XCTAttachment(string: "live print preview: \(dots.value ?? "")"); a.lifetime = .keepAlways; add(a)
+        shot("9-camera-live-preview")
+    }
+
+    /// Live print preview off: the plain test pattern, no dot layer.
+    func testLivePrintPreviewOff() {
+        app.launchArguments += ["-booth.pin", "1234", "-booth.livePreview", "NO"]
+        app.launch()
+        XCTAssert(app.buttons["Take photo"].waitForExistence(timeout: 10))
+        sleep(2)
+        shot("9-camera-live-preview-off")
+        let dots = app.descendants(matching: .any)["livePreview"]
+        XCTAssertFalse(dots.exists && dots.isHittable, "hidden when off: \(dots.debugDescription)")
+    }
+
     /// A setup link (the share link's fragment, as booth://) saves the PIN and lands on the camera.
     func testSetupLinkOpensCamera() {
         launchLocked()

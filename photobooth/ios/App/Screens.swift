@@ -111,6 +111,7 @@ struct CameraScreen: View {
     func stage(accent: Color) -> some View {
         ZStack(alignment: .top) {
             Color.black.overlay(CameraPreview(camera: booth.camera))   // size from layout, not the view's intrinsic size
+                .overlay(LiveDots(camera: booth.camera))                  // live print preview (when on)
                 .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(Color.ink, lineWidth: LINE_FAT))
                 .background(RoundedRectangle(cornerRadius: 28).fill(Color.ink).offset(x: 8, y: 8))
@@ -389,6 +390,9 @@ struct SettingsScreen: View {
                 Section("Print density") { chips([("−2", 5), ("−1", 4), ("std", 3), ("+1", 2), ("+2", 1)], s.density) { s.density = $0 } }
                 Section { chips([("fast", 0), ("mid", 1), ("slow", 2)], s.speed) { s.speed = $0 } } header: { Text("Print speed") } footer: { Text("Slower = cooler head = less ghosting.") }
                 Section("Sounds") { chips([("on", true), ("off", false)], s.sound) { s.sound = $0 } }
+                Section { chips([("on", true), ("off", false)], s.livePreview) { s.livePreview = $0 } } header: { Text("Live print preview") } footer: {
+                    Text("The camera shows the photo in printer dots, cropped as it prints. If this device can't keep up it shows the plain camera until settings are closed again.")
+                }
                 Section("Server") {
                     TextField("https://booth.receiptd.sh", text: $server).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
                     Button("Use this server") { if let u = URL(string: server), u.scheme == "https" { booth.pair(server: u, pin: nil) } }

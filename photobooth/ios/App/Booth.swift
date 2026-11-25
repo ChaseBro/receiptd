@@ -43,6 +43,8 @@ struct Settings {
     var density: Int { get { d.object(forKey: "booth.density") as? Int ?? 3 } nonmutating set { d.set(newValue, forKey: "booth.density") } }
     var speed: Int { get { d.object(forKey: "booth.speed") as? Int ?? 2 } nonmutating set { d.set(newValue, forKey: "booth.speed") } }
     var sound: Bool { get { d.object(forKey: "booth.sound") == nil ? true : d.bool(forKey: "booth.sound") } nonmutating set { d.set(newValue, forKey: "booth.sound") } }
+    /// Live print preview on the camera stage (dithered like the print). Default on.
+    var livePreview: Bool { get { d.object(forKey: "booth.livePreview") == nil ? true : d.bool(forKey: "booth.livePreview") } nonmutating set { d.set(newValue, forKey: "booth.livePreview") } }
     var ticket: Int { get { d.integer(forKey: "booth.ticket") } nonmutating set { d.set(newValue, forKey: "booth.ticket") } }
     var head: (sink: Double, t: Double)? {
         get { guard let a = d.array(forKey: "booth.head") as? [Double], a.count == 2 else { return nil }; return (a[0], a[1]) }
@@ -478,7 +480,7 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
     // MARK: settings
 
     func openSettings() { status = nil; screen = .settings; Task { await refreshEvent() } }
-    func closeSettings() { Sfx.shared.enabled = settings.sound; startCamera() }
+    func closeSettings() { Sfx.shared.enabled = settings.sound; camera.liveFallback = false; startCamera() }
 
     func printCalibration() async {
         status = "Printing calibration strip…"
@@ -491,14 +493,14 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
     }
 }
 
-/// The preview bitmap, tinted like receipt paper (ink 26, paper cream).
-func thermalImage(_ bits: [UInt8], _ h: Int) -> CGImage {
-    var px = [UInt8](repeating: 0, count: PRINT_WIDTH * h * 4)
+/// The preview bitmap, tinted like receipt paper (ink 26, paper cream). `w`: bitmap width (strip: PRINT_WIDTH).
+func thermalImage(_ bits: [UInt8], _ h: Int, w: Int = PRINT_WIDTH) -> CGImage {
+    var px = [UInt8](repeating: 0, count: w * h * 4)
     for i in 0..<bits.count {
         let v: UInt8 = bits[i] != 0 ? 26 : 255
         px[i * 4] = v; px[i * 4 + 1] = v &- 6; px[i * 4 + 2] = bits[i] != 0 ? 35 : 255; px[i * 4 + 3] = 255
     }
-    let ctx = CGContext(data: &px, width: PRINT_WIDTH, height: h, bitsPerComponent: 8, bytesPerRow: PRINT_WIDTH * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+    let ctx = CGContext(data: &px, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
                         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
     return ctx.makeImage()!
 }

@@ -15,6 +15,10 @@ final class BoothCamera: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     @Published var facing: AVCaptureDevice.Position = .front
     @Published var failed = false
     @Published private(set) var running = false
+    /// Live print preview (LivePreview.swift): every frame, dithered like the print.
+    let live = LivePreview()
+    /// The device couldn't keep the live print preview above 5 fps: plain video until settings close.
+    @Published var liveFallback = false
 
     private let output = AVCaptureVideoDataOutput()
     private let queue = DispatchQueue(label: "booth.camera")
@@ -24,6 +28,13 @@ final class BoothCamera: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     private var input: AVCaptureDeviceInput?
     private let ci = CIContext(options: [.useSoftwareRenderer: false])
     weak var previewLayer: AVCaptureVideoPreviewLayer? { didSet { configureCoordinator() } }
+    /// The preview layer's rotation (under `lock`): the live print preview turns frames the same way.
+    private var previewAngle: CGFloat = 90
+
+    override init() {
+        super.init()
+        live.onSlow = { [weak self] in self?.liveFallback = true }
+    }
 
     #if targetEnvironment(simulator)
     // No camera in the Simulator: a moving test pattern stands in, so the whole
@@ -33,7 +44,11 @@ final class BoothCamera: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     func start() {
         running = true; failed = false
         fakeTimer?.invalidate()
-        fakeTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 15, repeats: true) { [weak self] _ in self?.fake = BoothCamera.pattern(Date().timeIntervalSince1970) }
+        fakeTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 15, repeats: true) { [weak self] _ in
+            let f = BoothCamera.pattern(Date().timeIntervalSince1970)
+            self?.fake = f
+            self?.live.offer(CIImage(cgImage: f))
+        }
     }
     func stop() { fakeTimer?.invalidate(); running = false }
     func flip() { facing = facing == .front ? .back : .front }
@@ -104,16 +119,26 @@ final class BoothCamera: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         guard let device = input?.device else { return }
         coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: previewLayer)
         if let c = previewLayer?.connection, let a = coordinator?.videoRotationAngleForHorizonLevelPreview, c.isVideoRotationAngleSupported(a) { c.videoRotationAngle = a }
+        if let a = coordinator?.videoRotationAngleForHorizonLevelPreview { lock.lock(); previewAngle = a; lock.unlock() }
         observation = coordinator?.observe(\.videoRotationAngleForHorizonLevelPreview, options: [.new]) { [weak self] co, _ in
+            let a = co.videoRotationAngleForHorizonLevelPreview
+            if let self { lock.lock(); previewAngle = a; lock.unlock() }
             DispatchQueue.main.async {
-                if let c = self?.previewLayer?.connection, c.isVideoRotationAngleSupported(co.videoRotationAngleForHorizonLevelPreview) { c.videoRotationAngle = co.videoRotationAngleForHorizonLevelPreview }
+                if let c = self?.previewLayer?.connection, c.isVideoRotationAngleSupported(a) { c.videoRotationAngle = a }
             }
         }
     }
 
     func captureOutput(_ output: AVCaptureOutput, didOutput sb: CMSampleBuffer, from connection: AVCaptureConnection) {
         guard let pb = CMSampleBufferGetImageBuffer(sb) else { return }
-        lock.lock(); latest = pb; lock.unlock()
+        lock.lock(); latest = pb; let angle = Int(previewAngle); lock.unlock()
+        // Turned like the on-screen preview (not mirrored: LiveDots mirrors the selfie view, as the preview layer does).
+        live.offer(CIImage(cvPixelBuffer: pb).oriented(BoothCamera.orientation(angle)))
+    }
+
+    /// Clockwise degrees → the CG orientation that turns a sensor frame by them.
+    static func orientation(_ angle: Int) -> CGImagePropertyOrientation {
+        [0: .up, 90: .right, 180: .down, 270: .left][((angle % 360) + 360) % 360] ?? .up
     }
 
     #if !targetEnvironment(simulator)
@@ -125,8 +150,7 @@ final class BoothCamera: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
         // Clockwise degrees that make the sensor image level with the horizon.
         let angle = Int(coordinator?.videoRotationAngleForHorizonLevelCapture ?? 90)
         var img = CIImage(cvPixelBuffer: pb)
-        let orient: CGImagePropertyOrientation = [0: .up, 90: .right, 180: .down, 270: .left][((angle % 360) + 360) % 360] ?? .up
-        img = img.oriented(orient)
+        img = img.oriented(BoothCamera.orientation(angle))
         guard let full = ci.createCGImage(img, from: img.extent, format: .BGRA8, colorSpace: CGColorSpace(name: CGColorSpace.sRGB)) else { return nil }
         let scale = min(1, 1440 / max(img.extent.width, img.extent.height))
         if scale >= 1 { return (full, full) }
