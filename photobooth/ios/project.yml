@@ -36,7 +36,7 @@ targets:
     info:
       path: App/Info.plist
       properties:
-        CFBundleDisplayName: Photo Booth
+        CFBundleDisplayName: Receipt Photo Booth   # "Photo Booth" is taken on the App Store (ITMS 90129)
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         ITSAppUsesNonExemptEncryption: false
