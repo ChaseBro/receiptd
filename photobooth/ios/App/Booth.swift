@@ -10,9 +10,29 @@ enum Screen: Equatable { case lock, camera, review, printing, settings }
 /// Per-device settings (index.html `cfg()`), in UserDefaults.
 struct Settings {
     private let d = UserDefaults.standard
+    /// The PIN an adult saved: typed at the lock screen or from a setup link. Wins over the bundled one.
     var pin: String { get { d.string(forKey: "booth.pin") ?? "" } nonmutating set { d.set(newValue, forKey: "booth.pin") } }
+    /// The PIN compiled in from the gitignored Booth.local.xcconfig (Info.plist `BoothPIN`); "" without it.
+    /// `-booth.ignoreBundledPin YES` (the UI test) pretends there is none.
+    var bundledPin: String {
+        if d.bool(forKey: "booth.ignoreBundledPin") { return "" }
+        return (Bundle.main.object(forInfoDictionaryKey: "BoothPIN") as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
+    }
+    /// The bundled PIN the server last answered 401 to (rotated since the build). Not retried until
+    /// it changes (a new build) or an adult clears it in settings.
+    var rejectedBundledPin: String { get { d.string(forKey: "booth.bundledPinRejected") ?? "" } nonmutating set { d.set(newValue, forKey: "booth.bundledPinRejected") } }
+    /// What goes in `x-booth-pin`: the saved PIN, else the bundled one (unless rejected), else "" (lock screen).
+    var effectivePin: String {
+        if !pin.isEmpty { return pin }
+        let b = bundledPin
+        return b != rejectedBundledPin ? b : ""
+    }
+    /// Info.plist `BoothServer` (Booth.local.xcconfig `BOOTH_SERVER`), else production.
+    static let defaultServer: URL = (Bundle.main.object(forInfoDictionaryKey: "BoothServer") as? String)
+        .flatMap { URL(string: $0.trimmingCharacters(in: .whitespaces)) }
+        .flatMap { $0.scheme != nil && $0.host() != nil ? $0 : nil } ?? BoothAPI.production
     var server: URL {
-        get { d.string(forKey: "booth.server").flatMap { URL(string: $0) }.flatMap { $0.scheme == nil ? nil : $0 } ?? BoothAPI.production }
+        get { d.string(forKey: "booth.server").flatMap { URL(string: $0) }.flatMap { $0.scheme == nil ? nil : $0 } ?? Settings.defaultServer }
         nonmutating set { d.set(newValue.absoluteString, forKey: "booth.server") }
     }
     var theme: String { get { d.string(forKey: "booth.theme") ?? "stars" } nonmutating set { d.set(newValue, forKey: "booth.theme") } }
@@ -89,13 +109,16 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
     private let path = NWPathMonitor()
 
     init() {
-        api = BoothAPI(server: Settings().server, pin: Settings().pin)
+        let pin = Settings().effectivePin
+        api = BoothAPI(server: Settings().server, pin: pin)
         theme = Settings().theme; shots = Settings().shots; party = Settings().event
         Sfx.shared.enabled = settings.sound
         Task { await archive.start(api) }
         path.pathUpdateHandler = { [weak self] p in if p.status == .satisfied { Task { await self?.archive.kick(after: 2) } } }
         path.start(queue: .main)
-        if !settings.pin.isEmpty { Task { await unlock(settings.pin, quiet: true) } }
+        // With a PIN (saved or bundled), open straight to the camera and check the PIN
+        // in the background; a 401 sends us to the lock screen.
+        if !pin.isEmpty { startCamera(); Task { await unlock(pin, quiet: true) } }
         timers.append(Task { [weak self] in   // printer health while the camera is up
             while !Task.isCancelled { try? await Task.sleep(for: .seconds(15)); if self?.screen == .camera { await self?.refreshPrinter() } }
         })
@@ -108,33 +131,74 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
 
     // MARK: lock / pairing
 
+    /// A setup / share link (or settings → Server). A link with a PIN saves it and opens straight
+    /// to the camera, like a launch with a saved PIN; the PIN is checked in the background and a
+    /// 401 falls back to the lock screen.
     func pair(server: URL, pin: String?) {
         settings.server = server; api.server = server
         Task { await archive.setAPI(api) }
-        if let pin, !pin.isEmpty { Task { await unlock(pin) } }
+        guard let pin, !pin.isEmpty else { return }
+        if pin == settings.bundledPin { settings.pin = ""; settings.rejectedBundledPin = "" } else { settings.pin = pin }
+        api.pin = pin
+        if screen == .lock { startCamera() }
+        Task { await unlock(pin, quiet: true) }
     }
 
+    /// The links Settings → Share booth hands out (they carry this booth's PIN).
+    var shareLinks: (web: URL, app: URL)? {
+        let pin = api.pin
+        guard !pin.isEmpty else { return nil }
+        return (BoothLinks.web(server: settings.server, pin: pin), BoothLinks.app(server: settings.server, pin: pin))
+    }
+
+    /// Try a PIN. Typed / setup-link PINs are saved first (so they work offline); the bundled
+    /// one never is (typing it clears a saved PIN, so the bundled one is used again). `quiet`: the launch / background check, already on the camera.
     func unlock(_ pin: String, quiet: Bool = false) async {
-        settings.pin = pin; api.pin = pin
+        let bundled = !pin.isEmpty && pin == settings.bundledPin
+        settings.pin = bundled ? "" : pin
+        api.pin = pin
         await archive.setAPI(api)
         do {
             try await api.unlock()
+            if bundled { settings.rejectedBundledPin = "" }   // the server took it back
             if !quiet { Sfx.shared.play("yay") }
-            startCamera()
+            if screen == .lock { startCamera() }
             await archive.kick(after: 3)
         } catch BoothAPIError.locked {
-            settings.pin = ""; api.pin = ""
             if !quiet { Sfx.shared.play("boo"); lockShake += 1 }
-            screen = .lock
+            rejected(pin)
         } catch {
             // Offline at the party: trust the cached PIN; prints will retry.
-            if quiet { startCamera() } else { Sfx.shared.play("boo"); lockShake += 1 }
+            if quiet { if screen == .lock { startCamera() } } else { Sfx.shared.play("boo"); lockShake += 1 }
         }
     }
 
-    func lockNow() { settings.pin = ""; api.pin = ""; camera.stop(); screen = .lock }
+    /// The server said 401 to `pin`: forget it (a saved PIN is cleared, a bundled one is marked
+    /// rejected so it isn't retried in a loop), then fall back to what's left, or the lock screen.
+    private func rejected(_ pin: String) {
+        guard pin == api.pin else { return }   // a later 401 for a PIN already dropped or replaced
+        if pin == settings.pin { settings.pin = "" }
+        if !pin.isEmpty, pin == settings.bundledPin { settings.rejectedBundledPin = pin }
+        let next = settings.effectivePin
+        api.pin = next
+        Task { await archive.setAPI(api) }
+        if !next.isEmpty, next != pin { Task { await unlock(next, quiet: true) } } else { showLock() }
+    }
 
-    private func handle(_ e: Error) { if case BoothAPIError.locked = e { lockNow() } }
+    private func showLock() { camera.stop(); screen = .lock }
+
+    /// Settings: with no bundled PIN, "Lock booth" (forget the PIN, back to the lock screen).
+    /// With one, "Forget saved PIN": back to the bundled PIN, checked in the background.
+    func forgetSavedPin() {
+        settings.pin = ""; settings.rejectedBundledPin = ""
+        let next = settings.effectivePin
+        api.pin = next
+        Task { await archive.setAPI(api) }
+        if next.isEmpty { showLock() } else { Task { await unlock(next, quiet: true) } }
+    }
+
+    /// `pin`: what the failed request carried (`api.pin` may have moved on since).
+    private func handle(_ e: Error, pin: String) { if case BoothAPIError.locked = e { rejected(pin) } }
 
     // MARK: camera screen
 
@@ -160,13 +224,14 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
     func toggleShots() { shots = shots == 3 ? 1 : 3; settings.shots = shots; Sfx.shared.play("boop") }
 
     func refreshEvent() async {
+        let pin = api.pin
         do {
             let ev = try await api.activeEvent()
             let prev = party?.slug
             party = ev; settings.event = ev
             if ev?.slug != prev, let t = ev?.theme { setTheme(t) }
             applyTheme()
-        } catch { handle(error) }
+        } catch { handle(error, pin: pin) }
     }
 
     private var lastHealthNudge = Date.distantPast
@@ -336,6 +401,7 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
         printing = PrintingState(copies: n, done: 0, position: 0, error: false, slip: pv.image, height: pv.layout.H, go: printing.go + 1)
         screen = .printing
         await archive.pause()   // the print request gets the Wi-Fi to itself
+        let pin = api.pin
         do {
             // Re-render every copy from the head heat right now.
             let segs = stripSegments(pv.layout, gain: settings.gain), sink = headHeatNow, gray = pv.gray, H = pv.layout.H
@@ -361,7 +427,7 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
             shutterLocked = false
         } catch {
             await archive.resume()
-            handle(error)
+            handle(error, pin: pin)
             if screen == .printing { Sfx.shared.play("boo"); printing.error = true }
         }
     }
@@ -418,9 +484,10 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
         status = "Printing calibration strip…"
         let (gray, H, bandH) = await Task.detached { calibrationGray(CALIBRATION_GAINS) }.value
         let bits = await Task.detached { ditherStrip(gray, w: PRINT_WIDTH, h: H, segments: calibrationSegments(H: H, bandH: bandH)).bits }.value
+        let pin = api.pin
         do { _ = try await api.print(bits: bits, height: H, density: settings.density, speed: settings.speed)
             status = "Sent. Pick the band (A–E) with the most even greys below the black block."
-        } catch { handle(error); status = "Failed: \(error)" }
+        } catch { handle(error, pin: pin); status = "Failed: \(error)" }
     }
 }
 

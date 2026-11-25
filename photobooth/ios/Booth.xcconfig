@@ -1,0 +1,9 @@
+// Committed base settings for the PhotoBooth app target (wired in project.yml).
+// The booth's shared PIN comes from the gitignored Booth.local.xcconfig next to
+// this file (copy Booth.local.xcconfig.example). Without it the build still
+// works: BOOTH_PIN stays empty and the app shows the PIN lock screen.
+
+BOOTH_PIN =
+BOOTH_SERVER =
+
+#include? "Booth.local.xcconfig"

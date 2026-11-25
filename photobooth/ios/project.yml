@@ -20,6 +20,10 @@ targets:
       - path: App
     dependencies:
       - package: BoothCore
+    # BOOTH_PIN / BOOTH_SERVER: Booth.xcconfig optionally includes the gitignored Booth.local.xcconfig.
+    configFiles:
+      Debug: Booth.xcconfig
+      Release: Booth.xcconfig
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.chasebro.booth
@@ -40,6 +44,8 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         ITSAppUsesNonExemptEncryption: false
+        BoothPIN: $(BOOTH_PIN)         # from Booth.local.xcconfig; empty → the app shows the lock screen
+        BoothServer: $(BOOTH_SERVER)   # optional default server; empty → https://booth.receiptd.sh
         CFBundleURLTypes:
           - CFBundleURLName: com.chasebro.booth.setup
             CFBundleURLSchemes: [booth]

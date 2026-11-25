@@ -240,6 +240,22 @@
   .pill { padding:12px 18px; border-radius:999px; font-weight:800; background:var(--white); }
   a.pill { color:var(--ink); text-decoration:none; border:3px solid var(--ink); }
   .pill.go { background:var(--mint); }
+  /* share booth: one sheet (camera 📤 sticker + settings), each link as a QR + share sheet / clipboard */
+  #shareBtn { position:absolute; left:var(--gap); top:var(--gap); z-index:3; width:46px; height:46px; font-size:22px;
+    border-radius:14px; border-width:3px; box-shadow:var(--shadow-sm); --tilt:-4deg; }
+  #share { position:fixed; inset:0; z-index:30; display:flex; align-items:center; justify-content:center; padding:18px;
+    background:color-mix(in srgb, var(--ink) 55%, transparent); }
+  #share[hidden] { display:none; }
+  #share .card { width:min(94vw,760px); max-height:calc(100dvh - 36px); overflow:auto; touch-action:pan-y; animation:pop-in .35s var(--ease-pop); }
+  #share h2 { font-family:var(--font-display); font-size:30px; font-weight:400; margin:0; }
+  .share { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:18px; margin-top:12px; }
+  .share > div { display:flex; flex-direction:column; align-items:center; text-align:center; }
+  .share h3 { margin:0; font-size:18px; }
+  .share .hint { margin-bottom:10px; }
+  .share .qr { width:100%; max-width:320px; margin-top:auto; padding:6px; border-radius:14px; border:3px solid var(--ink); background:var(--white); }
+  .share .qr svg { display:block; width:100%; height:auto; }
+  .share .pill { margin-top:10px; border:3px solid var(--ink); }
+  .share-top { display:flex; align-items:center; justify-content:space-between; gap:12px; }
 </style>
 </head>
 <body>
@@ -260,6 +276,7 @@
     <video id="video" playsinline autoplay muted></video>
     <div id="dots"></div>
     <div id="paperBadge" class="sticker fat emoji" hidden>🧻</div>
+    <button id="shareBtn" class="sticker emoji" aria-label="Share booth">📤</button>
   </div>
   <div id="hotspot" aria-hidden="true"></div>
   <div id="tray">
@@ -306,6 +323,22 @@
       <button class="sticker big again emoji" id="printRetry" aria-label="Try again">🔁</button></div></div>
 </section>
 <div id="done"><div class="sticker emoji" id="doneFace">🎉</div></div>
+<!-- Share booth (adult sheet, opened from the camera's 📤 sticker or settings): words allowed. -->
+<div id="share" hidden role="dialog" aria-label="Share booth">
+  <div class="card">
+    <div class="share-top"><h2>📤 Share booth</h2><button class="pill" id="shareClose">Done</button></div>
+    <div class="hint">Send it to another phone (AirDrop, Messages, …) or let it scan a code. Both links contain the booth PIN: only share them with people you'd hand the booth to.</div>
+    <div class="share">
+      <div><h3>🌐 Booth on the web</h3>
+        <div class="hint">Opens this booth in the phone's browser, already unlocked.</div>
+        <div class="qr" id="qrWeb"></div><button class="pill" id="shareWeb">📤 Send link</button></div>
+      <div><h3>📱 Booth app (TestFlight)</h3>
+        <div class="hint">Signs an iPhone or iPad up for the app. Once it's installed, the same link opens the app set up for this booth.</div>
+        <div class="qr" id="qrApp"></div><button class="pill" id="shareApp">📤 Send link</button></div>
+    </div>
+    <div class="hint" id="shareStatus" hidden></div>
+  </div>
+</div>
 
 <section id="settings" class="screen">
   <h2>Booth settings</h2>
@@ -320,6 +353,10 @@
   <div class="card">Print density<div class="chips" id="sDensity"></div></div>
   <div class="card">Print speed<div class="chips" id="sSpeed"></div><div class="hint">Slower = cooler head = less ghosting.</div></div>
   <div class="card">Sounds<div class="chips" id="sSound"></div></div>
+  <div class="card" id="sShare">📤 Share booth
+    <div class="hint">Send the booth to another phone (AirDrop, Messages, …) or let it scan a code: the web booth, or the iPhone app (TestFlight). Both links contain the booth PIN. Also on the camera screen: the small 📤 at the top left.</div>
+    <div class="chips"><button class="pill go" id="sShareOpen">📤 Share booth</button></div>
+  </div>
   <div class="card chips">
     <button class="pill" id="calib">🧪 Calibration</button>
     <button class="pill" id="fs">⛶ Fullscreen</button>
@@ -338,6 +375,8 @@ import { uprightRotation as orient } from "./orient.js";
 import { clampCopies, defaultCopies, maxFaces, MAX_COPIES } from "./copies.js";
 import { detectFaces, loadFaceDetector, rotateBoxes } from "./faces.js";
 import { archiveOriginals, archiveStrip, newSessionId, pause as pauseArchive, resume as resumeArchive, startArchive } from "./archive.js";
+import { qrSVG } from "./qr.js";
+import { appJoinLink, webBoothLink } from "./share.js";
 
 const $ = (id) => document.getElementById(id);
 const GAINS = [0, 0.1, 0.15, 0.25, 0.4];               // calibration bands A..E
@@ -388,7 +427,7 @@ const footerText = () => (party?.footer || cfg().footer || "");
 const qrURL = () => (party?.qr && party.share && session ? `${location.origin}/a/${party.share}/${session.id}` : "");
 
 // ---------- screens / api ----------
-function show(id) { for (const s of document.querySelectorAll(".screen")) s.classList.toggle("on", s.id === id); }
+function show(id) { for (const s of document.querySelectorAll(".screen")) s.classList.toggle("on", s.id === id); $("share").hidden = true; }
 async function api(path, opts = {}) {
   const res = await fetch(path, { ...opts, headers: { "content-type": "application/json", "x-booth-pin": cfg().pin } });
   if (res.status === 401) { S.set("pin"); stopCam(); show("lock"); throw new Error("locked"); }
@@ -844,6 +883,32 @@ function openSettings() {
   chips($("sSound"), [[true, "on"], [false, "off"]], "sound");
   show("settings");
 }
+// Share booth: the PIN goes peer to peer (share sheet → AirDrop / Messages, else the clipboard, or a QR).
+const shareLinks = () => ({ web: webBoothLink(location.origin, cfg().pin), app: appJoinLink(location.origin, cfg().pin) });
+function shareMsg(msg) { $("shareStatus").hidden = !msg; $("shareStatus").textContent = msg; }
+function openShare() {
+  if (!cfg().pin) return;
+  const { web, app } = shareLinks();
+  $("qrWeb").innerHTML = qrSVG(web); $("qrApp").innerHTML = qrSVG(app);
+  shareMsg(""); $("share").hidden = false;
+}
+function closeShare() { $("share").hidden = true; $("qrWeb").innerHTML = $("qrApp").innerHTML = ""; }
+async function shareLink(url, title, text) {
+  shareMsg("");
+  if (navigator.share) {
+    try { await navigator.share({ title, text, url }); return; }
+    catch (e) { if (e.name === "AbortError") return; }
+  }
+  try { await navigator.clipboard.writeText(url); shareMsg("Link copied (it contains the booth PIN)."); }
+  catch { shareMsg("Copy this link: " + url); }
+}
+$("shareWeb").onclick = () => shareLink(shareLinks().web, "Photo booth", "Open the photo booth (already unlocked)");
+$("shareApp").onclick = () => shareLink(shareLinks().app, "Photo Booth app",
+  "Get the Photo Booth app (TestFlight). After it's installed, tap this link again to set it up.");
+$("shareBtn").onclick = () => { sfx.tap(); openShare(); };
+$("sShareOpen").onclick = openShare;
+$("shareClose").onclick = closeShare;
+$("share").onclick = (e) => { if (e.target === $("share")) closeShare(); };
 $("sDone").onclick = () => { S.set("footer", $("sFooter").value.trim()); S.set("count", +$("sCount").value || 3); startCam(); };
 $("lockNow").onclick = () => { S.set("pin"); stopCam(); show("lock"); };
 $("fs").onclick = () => document.documentElement.requestFullscreen?.().catch(() => {});

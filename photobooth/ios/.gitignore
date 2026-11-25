@@ -2,3 +2,6 @@
 **/xcuserdata/
 DerivedData/
 build/
+
+# The booth PIN compiled into the app (see Booth.local.xcconfig.example)
+Booth.local.xcconfig

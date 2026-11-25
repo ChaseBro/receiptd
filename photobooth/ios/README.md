@@ -76,6 +76,35 @@ The booth server is https://booth.receiptd.sh by default. Change it under
 settings → Server, or scan a setup link (`booth://setup#server=…&key=<PIN>`).
 In the Simulator, a moving test pattern stands in for the camera.
 
+### The PIN
+
+With a PIN the app opens straight to the camera; the lock screen shows only
+when there is none, or when the server answers 401. The PIN used is, in order:
+
+1. the **saved PIN**: typed at the lock screen, or from a setup / share link;
+2. the **bundled PIN**: `BOOTH_PIN` from the gitignored `Booth.local.xcconfig`
+   (copy `Booth.local.xcconfig.example`), compiled into Info.plist `BoothPIN`.
+   Without that file the build still works and the PIN is empty.
+
+A 401 clears a saved PIN (falling back to the bundled one) or marks the
+bundled one rejected, so it isn't retried until a new build carries a different
+PIN; an adult types the new one. With a bundled PIN, settings offers
+"Forget saved PIN" instead of "Lock booth".
+
+### Share booth
+
+The small 📤 sticker at the top left of the camera stage (and settings → Share
+booth) hands the booth to another phone: two links, each as a big QR code and a
+share-sheet button. Both carry the PIN (`BoothLinks` in `BoothCore/Share.swift`,
+mirrored by `public/share.js`):
+
+- **Booth on the web**: `https://booth.receiptd.sh/#pin=<PIN>`.
+- **Booth app (TestFlight)**: `https://join.receiptd.sh/booth?k=…#server=<server>&key=<PIN>`
+  (`BoothLinks.join` = microapps `booth.join_url`). Before install: the
+  TestFlight sign-up. After install: a universal link (AASA path `/booth`), so
+  `Pairing` saves server + PIN and the app lands on the camera. `booth://setup#…`
+  does the same.
+
 End-to-end against a local booth (nothing reaches the real printer):
 
 ```sh
@@ -85,11 +114,14 @@ cd ios && xcodebuild test -project PhotoBooth.xcodeproj -scheme PhotoBoothUITest
   -destination 'platform=iOS Simulator,name=iPad Air 11-inch (M4)'
 ```
 
-The test unlocks the booth. It checks that the party narrows the frames, then
+`testUnlockShootReviewPrint` ignores any bundled PIN and unlocks the booth. It checks that the party narrows the frames, then
 shoots 3 photos. It reviews, bumps copies and prints. Then check
 `/api/photos?day=…`: the session should have `orig-1..3.jpg` and `strip.png`,
 with `printed: true`, `copies: 2` and `event: <party>`. The QR on the strip
-decodes to `/a/<share>/<session id>`.
+decodes to `/a/<share>/<session id>`. The other tests: a saved PIN opens straight
+to the camera and both share sheets show their QR codes; a `booth://setup` link
+lands on the camera; a rejected PIN shows the lock screen (no share button).
+If signing the BoothCore resource bundle fails locally, add `CODE_SIGNING_ALLOWED=NO`.
 
 ## Ship (TestFlight)
 

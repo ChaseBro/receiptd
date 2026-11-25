@@ -149,6 +149,7 @@
 <script type="module">
 import { THEMES } from "./frames.js";
 import { qrSVG, drawQR, qrSide } from "./qr.js";
+import { webBoothLink } from "./share.js";
 import { PRINT_WIDTH as W, luminance, packBits, toBase64 } from "./raster.js";
 
 const $ = (id) => document.getElementById(id);
@@ -290,7 +291,7 @@ function renderSign() {
     <div class="cta">📸 Photo booth! Strike a pose,<br>then scan for your photos</div>
     <div class="qr">${qrSVG(albumURL(e))}</div>
     <div class="small">Point your phone camera here to see, save and share every photo from the party. Each printed strip has its own code too.</div>
-    ${withBooth ? `<div class="booth"><div class="qr">${qrSVG(`${location.origin}/#pin=${encodeURIComponent(pin())}`)}</div>
+    ${withBooth ? `<div class="booth"><div class="qr">${qrSVG(webBoothLink(location.origin, pin()))}</div>
       <div><div class="cta" style="font-size:26px">📱 Be the booth</div><div class="small">Scan to use your own phone as a camera — strips print on the party printer.</div></div></div>` : ""}`;
 }
 $("signBooth").onchange = renderSign;
@@ -312,7 +313,7 @@ async function thermalSign(e, withBooth) {
   await document.fonts.load("40px Lilita");
   const DISPLAY = `"Lilita", "Arial Rounded MT Bold", sans-serif`, EMOJI = `"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
   const url = albumURL(e), mod = 11, side = qrSide(url, mod);
-  const boothURL = `${location.origin}/#pin=${encodeURIComponent(pin())}`, bMod = 6, bSide = withBooth ? qrSide(boothURL, bMod) : 0;
+  const boothURL = webBoothLink(location.origin, pin()), bMod = 6, bSide = withBooth ? qrSide(boothURL, bMod) : 0;
   const H = 120 + 190 + 30 + side + 150 + (withBooth ? bSide + 90 : 0) + 60;
   const c = new OffscreenCanvas(W, H), ctx = c.getContext("2d");
   ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H);

@@ -65,6 +65,19 @@ Guests unlock with a shared PIN (`BOOTH_PIN`), cached in `localStorage`.
 Settings (long-press top-right) set footer, countdown, anti-ghost gain,
 density, speed, and sounds per device, and can re-lock the booth.
 
+**Share booth** passes the PIN peer to peer instead of typing it: the small 📤
+sticker at the top left of the camera (only when unlocked) or settings →
+📤 Share booth opens a sheet with two links, each as a QR code and a "Send link"
+button (share sheet → AirDrop / Messages; clipboard where `navigator.share` is
+missing). Both contain the PIN. Built in `public/share.js` (mirrored by
+`ios/BoothCore/.../Share.swift`):
+- **Web booth**: `<origin>/#pin=<PIN>`. The boot code saves the PIN and strips
+  the hash.
+- **iOS app**: the TestFlight join link (`JOIN_URL`, = microapps
+  `booth.join_url`) + `#server=<origin>&key=<PIN>`. Before install it shows the
+  sign-up form (the join Worker never sees the fragment); after install the same
+  link is a universal link and the app saves server + PIN and opens the camera.
+
 ### Native app
 
 `ios/` is a SwiftUI booth for iPhone and iPad. It uses the same API and prints

@@ -23,8 +23,9 @@ struct BoothView: View {
         .environmentObject(booth)
         .statusBarHidden()
         .persistentSystemOverlays(.hidden)
-        .onOpenURL { url in if let p = Pairing(url: url) { p.save(); booth.pair(server: p.server, pin: p.key) } }
-        .simultaneousGesture(TapGesture().onEnded { booth.touched() })
+        .onOpenURL { url in if let p = Pairing(url: url) { booth.pair(server: p.server, pin: p.key) } }
+        // Not on settings: a root tap gesture swallows Form row taps (buttons, links, ShareLink).
+        .simultaneousGesture(TapGesture().onEnded { booth.touched() }, including: booth.screen == .settings ? .subviews : .all)
         .onChange(of: phase) { _, p in booth.phaseChanged(p) }
     }
 }
@@ -113,6 +114,9 @@ struct CameraScreen: View {
                 .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(Color.ink, lineWidth: LINE_FAT))
                 .background(RoundedRectangle(cornerRadius: 28).fill(Color.ink).offset(x: 8, y: 8))
+            if booth.ringMode == .idle, !booth.busy {   // 📤 Share booth, top-left of the stage (grown-ups)
+                ShareButton().frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(14)
+            }
             if booth.shots > 1 {
                 HStack(spacing: 10) {
                     ForEach(0..<booth.shots, id: \.self) { i in
@@ -389,9 +393,16 @@ struct SettingsScreen: View {
                     TextField("https://booth.receiptd.sh", text: $server).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
                     Button("Use this server") { if let u = URL(string: server), u.scheme == "https" { booth.pair(server: u, pin: nil) } }
                 }
+                if let links = booth.shareLinks { shareSection(links) }
                 if let st = booth.status { Section { Text(st) } }
                 Section {
-                    Button("🔒 Lock booth", role: .destructive) { booth.lockNow() }
+                    if s.bundledPin.isEmpty {
+                        Button("🔒 Lock booth", role: .destructive) { booth.forgetSavedPin() }
+                    } else if !s.pin.isEmpty {
+                        Button("Forget saved PIN", role: .destructive) { booth.forgetSavedPin(); tick += 1 }
+                    }
+                } footer: {
+                    if !s.bundledPin.isEmpty { Text(s.pin.isEmpty ? "Using the PIN built into this app." : "A saved PIN is in use; forgetting it goes back to the PIN built into this app.") }
                 }
             }
             .id(tick)
@@ -404,6 +415,21 @@ struct SettingsScreen: View {
         }
     }
 
+    /// Peer-to-peer setup: links that carry the booth PIN, as share sheets and as QR codes.
+    func shareSection(_ links: (web: URL, app: URL)) -> some View {
+        Section {
+            ShareLink(item: links.web, subject: Text("Photo booth"), message: Text("Open the photo booth (already unlocked)")) {
+                Label("Booth on the web", systemImage: "safari")
+            }
+            ShareLink(item: links.app, subject: Text("Photo Booth app"), message: Text("Get the Photo Booth app (TestFlight). After it's installed, tap this link again to set it up.")) {
+                Label("Booth app (TestFlight)", systemImage: "apps.iphone")
+            }
+            NavigationLink { ShareBoothView(web: links.web, app: links.app) } label: { Label("Show as QR codes", systemImage: "qrcode") }
+        } header: { Text("Share booth") } footer: {
+            Text("Booth on the web opens this booth in Safari, already unlocked. Booth app signs the phone up for the TestFlight app; once it's installed, the same link opens the app set up for this booth. Both links contain the booth PIN, so only send them to people you'd hand the iPad to.")
+        }
+    }
+
     func chips<T: Equatable>(_ opts: [(String, T)], _ cur: T, set: @escaping (T) -> Void) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack {
@@ -413,6 +439,83 @@ struct SettingsScreen: View {
                         .foregroundStyle(o.1 == cur ? Color.white : Color.ink)
                 }
             }
+        }
+    }
+}
+
+/// Share booth: each link as a big QR code (black on white, for a phone next to the iPad to scan)
+/// and a share sheet button (AirDrop, Messages, …). Settings → Share booth → QR codes, and the
+/// camera screen's 📤 sticker (in a sheet). Adult surface: words allowed.
+struct ShareBoothView: View {
+    let web: URL, app: URL
+    var body: some View {
+        ScrollView {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 40) { codes }
+                VStack(spacing: 40) { codes }
+            }
+            .padding(24).frame(maxWidth: .infinity)
+            Text("Both links contain the booth PIN: only share them with people you'd hand the booth to.")
+                .font(.footnote).foregroundStyle(.black.opacity(0.6)).multilineTextAlignment(.center).padding(.horizontal, 24).padding(.bottom, 24)
+        }
+        .background(Color.white)
+        .environment(\.colorScheme, .light)
+        .navigationTitle("Share booth")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+    @ViewBuilder var codes: some View {
+        code(web, icon: "🌐", title: "Booth on the web", hint: "Opens this booth in the phone's browser, already unlocked.",
+             message: "Open the photo booth (already unlocked)")
+        code(app, icon: "📱", title: "Booth app (TestFlight)", hint: "Signs an iPhone or iPad up for the app. Once it's installed, the same link opens the app set up for this booth.",
+             message: "Get the Photo Booth app (TestFlight). After it's installed, tap this link again to set it up.")
+    }
+    func code(_ url: URL, icon: String, title: String, hint: String, message: String) -> some View {
+        VStack(spacing: 12) {
+            QRCodeView(text: url.absoluteString).aspectRatio(1, contentMode: .fit).frame(maxWidth: 340)
+                .accessibilityElement().accessibilityAddTraits(.isImage).accessibilityLabel("QR code: \(title)")
+            Text("\(icon) \(title)").font(.title2.bold()).foregroundStyle(.black)
+            Text(hint).font(.callout).foregroundStyle(.black.opacity(0.7)).multilineTextAlignment(.center).frame(maxWidth: 340)
+            ShareLink(item: url, subject: Text(title), message: Text(message)) { Label("Send link", systemImage: "square.and.arrow.up") }
+                .buttonStyle(.borderedProminent).tint(Color.ink).accessibilityLabel("Send link: \(title)")
+        }
+    }
+}
+
+/// The camera screen's 📤 sticker: a small grown-up button (kids' targets are the big ones).
+struct ShareButton: View {
+    @EnvironmentObject var booth: Booth
+    @State private var open = false
+    var body: some View {
+        if let links = booth.shareLinks {
+            Button { Sfx.shared.play("tap"); open = true } label: { Emoji("📤", size: 22).frame(width: 46, height: 46) }
+                .buttonStyle(StickerStyle(fill: .white, corner: 14, line: 3, shadow: 3, tilt: -4))
+                .accessibilityLabel("Share booth")
+                .sheet(isPresented: $open) {
+                    NavigationStack {
+                        ShareBoothView(web: links.web, app: links.app)
+                            .toolbar { Button("Done") { open = false }.bold() }
+                    }
+                    .presentationSizing(.page)
+                }
+        }
+    }
+}
+
+/// A QR code from BoothCore's encoder (the web app's exact modules), with a 4-module quiet zone.
+struct QRCodeView: View {
+    let text: String
+    var body: some View {
+        let m = QR.matrix(text)
+        SwiftUI.Canvas { ctx, size in
+            let quiet = 4, side = m.n + 2 * quiet
+            let k = floor(min(size.width, size.height) / CGFloat(side))   // whole points per module: crisp edges
+            let o = CGPoint(x: (size.width - k * CGFloat(side)) / 2, y: (size.height - k * CGFloat(side)) / 2)
+            ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.white))
+            var p = Path()
+            for r in 0..<m.n { for c in 0..<m.n where m.dark(r, c) {
+                p.addRect(CGRect(x: o.x + CGFloat(c + quiet) * k, y: o.y + CGFloat(r + quiet) * k, width: k, height: k))
+            } }
+            ctx.fill(p, with: .color(.black))
         }
     }
 }

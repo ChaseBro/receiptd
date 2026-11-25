@@ -1,0 +1,9 @@
+// Copy to Booth.local.xcconfig (gitignored, never commit it) and fill in the
+// booth Worker's BOOTH_PIN. It is compiled into the app's Info.plist (BoothPIN),
+// so the booth opens straight to the camera with no lock screen.
+
+BOOTH_PIN = 1234
+
+// Optional: the default server (settings → Server and setup links still win).
+// xcconfig reads `//` as a comment, so split it with $().
+// BOOTH_SERVER = https:/$()/booth.receiptd.sh
