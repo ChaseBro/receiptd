@@ -18,6 +18,18 @@ public func maxFaces(_ counts: [Int]?) -> Int? {
 /// Default copies: one per face, clamped; 1 if no faces or no detector.
 public func defaultCopies(_ counts: [Int]?) -> Int { maxFaces(counts).map { $0 > 0 ? clampCopies($0) : 1 } ?? 1 }
 
+/// Settings defaults (public/copies.js): copies to start with, most copies a kid can pick.
+public let START_COPIES = 1
+public let KID_MAX_COPIES = 3
+
+/// The kid's limit: settings → "most copies a kid can pick", 1…MAX_COPIES.
+public func kidMax(_ max: Int = KID_MAX_COPIES) -> Int { clampCopies(max) }
+
+/// Copies on the review screen: one per face, never below "copies to start with", never above the kid max.
+public func startCopies(_ counts: [Int]?, start: Int = START_COPIES, max: Int = KID_MAX_COPIES) -> Int {
+    Swift.min(kidMax(max), Swift.max(clampCopies(start), defaultCopies(counts)))
+}
+
 /// Anti-mashing cooldown after printing (from photo-receipts): 1 s, growing to
 /// 15 s when prints pile up within a minute.
 public func cooldownSeconds(recentPrints: Int) -> Double {

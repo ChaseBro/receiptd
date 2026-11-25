@@ -32,3 +32,19 @@ export function defaultCopies(counts) {
   const n = maxFaces(counts);
   return n ? clampCopies(n) : MIN_COPIES;
 }
+
+/** Settings defaults: copies to start with, and the most copies a kid can pick (hard cap MAX_COPIES). */
+export const START_COPIES = 1;
+export const KID_MAX_COPIES = 3;
+
+/** The kid's limit: settings → "most copies a kid can pick", 1..MAX_COPIES. */
+export function kidMax(max = KID_MAX_COPIES) { return clampCopies(max); }
+
+/**
+ * Copies on the review screen: one per face (defaultCopies), never below the "copies to start
+ * with" setting, never above the kid's limit.
+ */
+export function startCopies(counts, start = START_COPIES, max = KID_MAX_COPIES) {
+  const top = kidMax(max);
+  return Math.min(top, Math.max(clampCopies(start), defaultCopies(counts)));
+}

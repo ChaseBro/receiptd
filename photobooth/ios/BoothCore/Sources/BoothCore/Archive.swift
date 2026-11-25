@@ -273,6 +273,14 @@ public actor ArchiveQueue {
 
     /// Sessions waiting to upload (for the adult settings screen).
     public func pending() -> (sessions: Int, bytes: Int) { let a = all(); return (a.count, a.reduce(0) { $0 + $1.bytes }) }
+    /// Any session backing off after a failed upload (settings: "retrying").
+    public func retrying() -> Bool { all().contains { $0.tries > 0 } }
+
+    /// Settings → Upload now: clear every backoff and upload right away.
+    public func uploadNow() async {
+        for var r in all() where r.tries > 0 || r.nextAt > 0 { r.tries = 0; r.nextAt = 0; save(r) }
+        await flush()
+    }
 
     /// Stop uploading (aborts an in-flight request) — e.g. while a print is being sent.
     public func pause() { paused = true; inflight?.cancel() }

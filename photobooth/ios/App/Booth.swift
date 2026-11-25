@@ -45,6 +45,18 @@ struct Settings {
     var sound: Bool { get { d.object(forKey: "booth.sound") == nil ? true : d.bool(forKey: "booth.sound") } nonmutating set { d.set(newValue, forKey: "booth.sound") } }
     /// Live print preview on the camera stage (dithered like the print). Default on.
     var livePreview: Bool { get { d.object(forKey: "booth.livePreview") == nil ? true : d.bool(forKey: "booth.livePreview") } nonmutating set { d.set(newValue, forKey: "booth.livePreview") } }
+    /// Icon style: "drawn" (App/Icons.swift, default) or "classic" (the emoji used before).
+    var iconStyle: String { get { d.string(forKey: "booth.icons") == "classic" ? "classic" : "drawn" } nonmutating set { d.set(newValue, forKey: "booth.icons") } }
+    /// White screen flash on capture. Default on.
+    var flash: Bool { get { d.object(forKey: "booth.flash") == nil ? true : d.bool(forKey: "booth.flash") } nonmutating set { d.set(newValue, forKey: "booth.flash") } }
+    /// The camera the booth starts with. Default front.
+    var startFront: Bool { get { d.object(forKey: "booth.startFront") == nil ? true : d.bool(forKey: "booth.startFront") } nonmutating set { d.set(newValue, forKey: "booth.startFront") } }
+    /// Mirror the selfie preview (captures and prints are never mirrored). Default on.
+    var mirror: Bool { get { d.object(forKey: "booth.mirror") == nil ? true : d.bool(forKey: "booth.mirror") } nonmutating set { d.set(newValue, forKey: "booth.mirror") } }
+    /// Copies to start with: a floor under one-per-face (BoothCore startCopies).
+    var copiesStart: Int { get { clampCopies(d.object(forKey: "booth.copiesStart") as? Int ?? START_COPIES) } nonmutating set { d.set(newValue, forKey: "booth.copiesStart") } }
+    /// Most copies a kid can pick (hard cap MAX_COPIES).
+    var copiesMax: Int { get { kidMax(d.object(forKey: "booth.copiesMax") as? Int ?? KID_MAX_COPIES) } nonmutating set { d.set(newValue, forKey: "booth.copiesMax") } }
     var ticket: Int { get { d.integer(forKey: "booth.ticket") } nonmutating set { d.set(newValue, forKey: "booth.ticket") } }
     var head: (sink: Double, t: Double)? {
         get { guard let a = d.array(forKey: "booth.head") as? [Double], a.count == 2 else { return nil }; return (a[0], a[1]) }
@@ -104,6 +116,11 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
     @Published var mine: MineShare?
 
     struct MineShare: Equatable { var id: String; var url: String?; var failed = false }
+    /// Icon style (settings): drawn or classic emoji.
+    @Published var iconStyle: IconStyle = .drawn
+    /// The one adult label on screen (gear / make another booth / printer badge), or nil.
+    @Published var hint: AdultHint?
+    struct AdultHint: Equatable { var anchor: String; var text: String; var id = UUID(); var shown = Date() }
 
     enum RingMode { case idle, countdown, cooldown }
     struct PrintingState { var copies = 1, done = 0, position = 0, error = false, slip: CGImage? = nil, height = 0, go = 0 }
@@ -122,6 +139,8 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
         let pin = Settings().effectivePin
         api = BoothAPI(server: Settings().server, pin: pin)
         theme = Settings().theme; shots = Settings().shots; party = Settings().event
+        iconStyle = IconStyle(rawValue: Settings().iconStyle) ?? .drawn
+        camera.facing = Settings().startFront ? .front : .back
         Sfx.shared.enabled = settings.sound
         Task { await archive.start(api) }
         path.pathUpdateHandler = { [weak self] p in if p.status == .satisfied { Task { await self?.archive.kick(after: 2) } } }
@@ -137,7 +156,29 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
         })
     }
 
-    func touched() { lastTouch = Date() }
+    func touched() {
+        lastTouch = Date()
+        // Any other touch dismisses the adult label (a label's own control re-shows it).
+        if let h = hint, Date().timeIntervalSince(h.shown) > 0.35 { hint = nil }
+    }
+
+    // MARK: adult labels
+    // One quiet pill, only in answer to an adult's tap/hold on the gear, make-another-booth or the
+    // printer badge: never on load, never because a state changed. One at a time; ~2.5 s.
+    static let hintSeconds = 2.5
+    private var hintTask: Task<Void, Never>?
+    func showHint(_ anchor: String, _ text: String, seconds: Double? = Booth.hintSeconds) {
+        let h = AdultHint(anchor: anchor, text: text)
+        hint = h
+        hintTask?.cancel()
+        guard let seconds else { return }
+        hintTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled, self?.hint?.id == h.id else { return }
+            self?.hint = nil
+        }
+    }
+    func hideHint(_ anchor: String? = nil) { if anchor == nil || hint?.anchor == anchor { hintTask?.cancel(); hint = nil } }
 
     // MARK: lock / pairing
 
@@ -287,13 +328,13 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
             guard let g = camera.grab() else { Sfx.shared.play("boo"); return }
             frames.append(g.frame); full.append(g.full)
             Sfx.shared.play("snap"); buzz(.heavy)
-            flash = true; try? await Task.sleep(for: .milliseconds(70)); flash = false
+            if settings.flash { flash = true; try? await Task.sleep(for: .milliseconds(70)); flash = false }
             dotsDone = i + 1
             if i < shots - 1 { try? await Task.sleep(for: .milliseconds(700)) }
         }
         var s = Shoot(id: newSessionId(), capturedAt: Date(), event: party?.slug, frames: frames, full: full,
                       rotations: Array(repeating: 0, count: frames.count), faces: nil, seed: Int(Int32.random(in: 0...Int32.max)))
-        copies = 1; faceCount = nil; copiesTouched = false
+        copies = startCopies(nil, start: settings.copiesStart, max: settings.copiesMax); faceCount = nil; copiesTouched = false
         // Faces: usually instant; wait briefly so copies + tone are ready at review.
         let faceTask = Task.detached { await detectFaces(frames) }
         let early = await withTaskGroup(of: [[Box]]?.self) { g -> [[Box]]? in
@@ -317,13 +358,13 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
     private func setFaceDefaults(_ f: [[Box]]) {
         let counts = f.map(\.count)
         faceCount = maxFaces(counts)
-        if !copiesTouched { copies = defaultCopies(counts) }
+        if !copiesTouched { copies = startCopies(counts, start: settings.copiesStart, max: settings.copiesMax) }
     }
 
     func bumpCopies(_ d: Int) {
         armIdle(); touched()
         let n = copies + d
-        guard (MIN_COPIES...MAX_COPIES).contains(n) else { Sfx.shared.play("boo"); return }
+        guard (MIN_COPIES...settings.copiesMax).contains(n) else { Sfx.shared.play("boo"); return }
         copiesTouched = true; Sfx.shared.play(d > 0 ? "tap" : "boop"); copies = n
     }
 
@@ -546,8 +587,28 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
 
     // MARK: settings
 
-    func openSettings() { status = nil; closeMine(); screen = .settings; Task { await refreshEvent() } }
+    func openSettings() {
+        status = nil; hint = nil; closeMine(); screen = .settings
+        Task { await refreshEvent(); if let h = try? await api.printer() { printer = h } }
+    }
     func closeSettings() { Sfx.shared.enabled = settings.sound; camera.liveFallback = false; startCamera() }
+    func setIconStyle(_ s: IconStyle) { iconStyle = s; settings.iconStyle = s.rawValue }
+
+    /// Settings → Nudge printer: the MQTT "poll now", then re-read its status.
+    func nudgePrinter() async {
+        status = "Asking the printer to check in…"
+        await api.nudge()
+        try? await Task.sleep(for: .seconds(3))
+        if let h = try? await api.printer() { printer = h }
+        status = printer?.state == .offline ? "No answer yet. Check the printer's power and Wi-Fi." : "The printer checked in."
+    }
+    /// Settings → Upload now: clear backoffs, upload everything waiting.
+    func uploadNow() async {
+        status = "Uploading…"
+        await archive.uploadNow()
+        let n = await archive.pending().sessions
+        status = n == 0 ? "Everything is uploaded." : "\(n) still waiting (will keep retrying)."
+    }
 
     func printCalibration() async {
         status = "Printing calibration strip…"

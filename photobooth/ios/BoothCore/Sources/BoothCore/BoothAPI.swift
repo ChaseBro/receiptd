@@ -29,8 +29,69 @@ public struct PrinterHealth: Codable, Equatable, Sendable {
     public var error: Bool
     public var online: Bool?
     public var lastSeenSec: Int?
-    /// Kid-facing problem sticker: 🧻 out of paper, 🖨️ anything else, nil when fine.
-    public var sticker: String? { paperOut ? "🧻" : (coverOpen || error) ? "🖨️" : nil }
+
+    public init(code: Int? = nil, text: String? = nil, paperOut: Bool = false, paperLow: Bool? = nil, coverOpen: Bool = false,
+                error: Bool = false, online: Bool? = nil, lastSeenSec: Int? = nil) {
+        self.code = code; self.text = text; self.paperOut = paperOut; self.paperLow = paperLow; self.coverOpen = coverOpen
+        self.error = error; self.online = online; self.lastSeenSec = lastSeenSec
+    }
+
+    /// What the printer needs (public/printer-state.js printerState). Offline first: with no poll
+    /// in 3 minutes the paper / cover info is stale.
+    public var state: PrinterState {
+        if online != true { return .offline }
+        if paperOut { return .paperOut }
+        if coverOpen { return .coverOpen }
+        if error { return .error }
+        if paperLow == true { return .paperLow }
+        return .ready
+    }
+
+    /// The one-line adult label for a tap on the printer badge (printer-state.js printerHint).
+    public func hint(now: Date = Date(), calendar: Calendar = .current) -> String {
+        switch state {
+        case .offline:
+            let seen = lastSeenSec.map { "last seen \(PrinterHealth.clock(now.addingTimeInterval(-Double($0)), calendar))" } ?? "not seen yet"
+            return "Printer offline · \(seen) · Check its power & Wi-Fi"
+        case .paperOut: return "Out of paper"
+        case .coverOpen: return "Cover open"
+        case .error: return "Printer error — turn it off and on"
+        case .paperLow: return "Paper low"
+        case .ready: return "Printer ready"
+        }
+    }
+
+    /// "2:14 pm".
+    public static func clock(_ d: Date, _ cal: Calendar = .current) -> String {
+        let h = cal.component(.hour, from: d), m = cal.component(.minute, from: d)
+        return "\(h % 12 == 0 ? 12 : h % 12):\(String(format: "%02d", m)) \(h < 12 ? "am" : "pm")"
+    }
+}
+
+/// One printer state, in priority order. The camera badge shows only those that need a grown-up.
+public enum PrinterState: String, CaseIterable, Sendable {
+    case offline, paperOut, coverOpen, error, paperLow, ready
+    public var needsAdult: Bool { self == .offline || self == .paperOut || self == .coverOpen || self == .error }
+    /// The drawn icon (App/Icons.swift, public/icons.js).
+    public var icon: String {
+        switch self {
+        case .offline: "pOffline"; case .paperOut: "pPaperOut"; case .coverOpen: "pCover"
+        case .error: "pError"; case .paperLow: "pPaperLow"; case .ready: "pReady"
+        }
+    }
+    /// Classic (emoji) icon style: distinct per problem too.
+    public var emoji: String {
+        switch self {
+        case .offline: "🔌"; case .paperOut: "🧻"; case .coverOpen: "🖨️"; case .error: "💥"; case .paperLow: "🧻"; case .ready: "😺"
+        }
+    }
+    /// VoiceOver label for the badge.
+    public var label: String {
+        switch self {
+        case .offline: "Printer offline"; case .paperOut: "Printer out of paper"; case .coverOpen: "Printer cover open"
+        case .error: "Printer error"; case .paperLow: "Printer paper low"; case .ready: "Printer ready"
+        }
+    }
 }
 
 public struct JobStatus: Decodable, Sendable {

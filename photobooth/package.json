@@ -9,7 +9,7 @@
     "deploy": "npm test && wrangler deploy",
     "photos:pull": "node scripts/pull-photos.mjs",
     "dev:e2e": "wrangler dev -c wrangler.toml -c ../worker/wrangler.toml --port 8788 --local --persist-to .wrangler/e2e",
-    "test:e2e": "node e2e/booth.e2e.mjs && node e2e/booth-flows.e2e.mjs && node e2e/album.e2e.mjs && node e2e/share.e2e.mjs"
+    "test:e2e": "node e2e/booth.e2e.mjs && node e2e/booth-flows.e2e.mjs && node e2e/album.e2e.mjs && node e2e/share.e2e.mjs && node e2e/redesign.e2e.mjs"
   },
   "devDependencies": {
     "playwright": "^1.61.1"

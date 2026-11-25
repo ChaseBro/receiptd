@@ -46,17 +46,18 @@ for (const [name, dev] of [["ipad-portrait", devices["iPad Pro 11"]], ["ipad-lan
     const st = document.getElementById("stage"), v = document.getElementById("video"), cs = getComputedStyle(st);
     const r = st.getBoundingClientRect(), bw = parseFloat(cs.borderLeftWidth);
     const inner = { w: r.width - 2 * bw, h: r.height - 2 * bw };
-    const b = document.getElementById("boothBtn").getBoundingClientRect(), hs = document.getElementById("hotspot").getBoundingClientRect();
+    const b = document.getElementById("boothBtn").getBoundingClientRect(), hs = document.getElementById("gearBtn").getBoundingClientRect();
     const th = document.getElementById("themes").getBoundingClientRect();
     const hit = (a, c) => a.left < c.right && c.left < a.right && a.top < c.bottom && c.top < a.bottom;
     return { inner, frame: v.videoWidth / v.videoHeight, live: document.getElementById("live").classList.contains("on"),
       inView: r.right <= innerWidth && r.bottom <= innerHeight && r.left >= 0 && r.top >= 0,
-      boothHitsHotspot: hit(b, hs), boothHitsThemes: hit(b, th), boothHitsStage: hit(b, r), boothSize: b.width };
+      boothHitsGear: hit(b, hs), boothHitsThemes: hit(b, th), boothInStage: b.left >= r.left && b.right <= r.right && b.top >= r.top && b.bottom <= r.bottom, boothSize: b.width };
   });
   const want = m.frame >= 1 ? 4 / 3 : 4 / 5, got = m.inner.w / m.inner.h;
   assert.ok(Math.abs(got - want) < 0.01, `${name}: stage ${m.inner.w.toFixed(1)}×${m.inner.h.toFixed(1)} = ${got.toFixed(3)}, slot ${want.toFixed(3)}`);
   assert.ok(m.inView, `${name}: stage fits on screen`);
-  assert.ok(!m.boothHitsHotspot && !m.boothHitsThemes && !m.boothHitsStage, `${name}: make-another-booth clear of hotspot/themes/camera ${JSON.stringify(m)}`);
+  // The approved sketch: make-another-booth in the camera window's top-left corner, the gear top-right.
+  assert.ok(!m.boothHitsGear && !m.boothHitsThemes && m.boothInStage, `${name}: make-another-booth in the camera's corner, clear of gear/themes ${JSON.stringify(m)}`);
   log(`${name}: stage ${m.inner.w.toFixed(0)}×${m.inner.h.toFixed(0)} (slot ${want.toFixed(3)}), live dots ${m.live ? "on" : "off"}`);
   await shot(page, `stage-${name}`);
   if (name === "ipad-portrait") {   // the plain camera (live preview off) has the same shape
@@ -70,7 +71,12 @@ for (const [name, dev] of [["ipad-portrait", devices["iPad Pro 11"]], ["ipad-lan
 // ---------- 2. make another booth: sheet shows the PIN ----------
 {
   const { ctx, page } = await booth(devices["iPad Pro 11"]);
+  // Press and hold (a tap only shows "Hold to share the booth").
   await page.click("#boothBtn");
+  assert.equal(await page.textContent("#adultHint"), "Hold to share the booth");
+  assert.ok(await page.locator("#share[hidden]").count(), "a tap doesn't open the sheet");
+  const bb = await page.locator("#boothBtn").boundingBox();
+  await page.mouse.move(bb.x + bb.width / 2, bb.y + bb.height / 2); await page.mouse.down(); await page.waitForTimeout(1500); await page.mouse.up();
   await page.locator("#share:not([hidden])").waitFor();
   assert.equal(await page.textContent("#share h2"), "Make another booth");
   assert.match(await page.textContent("#share .grants"), /This lets them use your booth \(prints, photos\)/);

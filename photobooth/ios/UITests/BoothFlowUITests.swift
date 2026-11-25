@@ -24,8 +24,8 @@ final class BoothFlowUITests: XCTestCase {
         app.launch()
     }
 
-    func shot(_ name: String) {
-        let s = XCUIScreen.main.screenshot()
+    func shot(_ name: String) { save(XCUIScreen.main.screenshot(), name) }
+    func save(_ s: XCUIScreenshot, _ name: String) {
         let a = XCTAttachment(screenshot: s); a.name = name; a.lifetime = .keepAlways; add(a)
         if let dir = ProcessInfo.processInfo.environment["BOOTH_SHOTS"] {
             try? s.pngRepresentation.write(to: URL(fileURLWithPath: dir).appendingPathComponent("\(name).png"))
@@ -79,8 +79,12 @@ final class BoothFlowUITests: XCTestCase {
         app.launch()
         XCTAssert(app.buttons["Take photo"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.secureTextFields["PIN"].exists, "no lock screen with a PIN")
-        // The small phone-with-plus up top opens the "make another booth" sheet: the PIN, QR codes + share buttons.
-        app.buttons["Make another booth"].tap()
+        // The small phone-with-plus (camera, top-left) opens the "make another booth" sheet when held: the PIN, QR codes + share buttons.
+        let booth = app.buttons["Make another booth"]
+        booth.tap()
+        XCTAssertEqual(app.staticTexts["adultHint"].label, "Hold to share the booth", "a tap only shows the hint")
+        XCTAssertFalse(app.staticTexts["boothPin"].exists)
+        booth.press(forDuration: 1.6)
         XCTAssert(app.descendants(matching: .any)["QR code: Booth on the web"].waitForExistence(timeout: 5))
         let pinText = app.staticTexts["boothPin"]
         XCTAssert(pinText.exists, "the sheet shows the PIN")
@@ -94,8 +98,8 @@ final class BoothFlowUITests: XCTestCase {
         app.buttons["Done"].tap()
         XCTAssert(app.buttons["Take photo"].waitForExistence(timeout: 5))
         shot("6-camera-share-button")
-        // Adult settings: long-press the top-right corner for 1.5 s.
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.02)).press(forDuration: 2)
+        // Adult settings: press and hold the gear (camera, top-right).
+        app.buttons["Settings"].press(forDuration: 1.6)
         XCTAssert(app.navigationBars["Booth settings"].waitForExistence(timeout: 5))
         let web = app.buttons["Booth on the web"]
         for _ in 0..<6 where !web.isHittable { app.swipeUp() }   // the Form is lazy: scroll to the section
@@ -103,13 +107,83 @@ final class BoothFlowUITests: XCTestCase {
         XCTAssert(web.waitForExistence(timeout: 5))
         XCTAssert(app.buttons["Booth app (TestFlight)"].exists)
         shot("7-settings-share")
-        app.buttons["Show PIN and QR codes"].tap()
+        app.buttons["Make another booth: PIN and QR codes"].tap()
         let qr = app.descendants(matching: .any)["QR code: Booth on the web"]
         _ = qr.waitForExistence(timeout: 5)
         shot("8-settings-share-qr")
         XCTAssert(qr.exists)
         XCTAssert(app.descendants(matching: .any)["QR code: Booth app (TestFlight)"].exists)
         XCTAssert(app.staticTexts["boothPin"].label.contains("1234"))
+    }
+
+    /// The settings gear: a tap shows "Hold to open settings" (and settings stay shut); held through
+    /// the ring, settings open. Screenshots: camera at rest, the hint, the hold in progress, settings.
+    func testGearTapHintsHoldOpens() {
+        app.launchArguments += ["-booth.pin", "1234", "-booth.icons", "drawn"]
+        app.launch()
+        XCTAssert(app.buttons["Take photo"].waitForExistence(timeout: 10))
+        let gear = app.buttons["Settings"]
+        XCTAssert(gear.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["adultHint"].exists, "no words at rest")
+        let side = gear.frame.width
+        XCTAssert(side >= 40 && side <= 72, "gear \(side) pt")
+        sleep(2)
+        shot("r1-camera-rest-drawn")
+        gear.tap()
+        let hint = app.staticTexts["adultHint"]
+        XCTAssert(hint.waitForExistence(timeout: 2))
+        XCTAssertEqual(hint.label, "Hold to open settings")
+        shot("r2-gear-tap-hint")
+        XCTAssertFalse(app.navigationBars["Booth settings"].exists, "a tap doesn't open settings")
+        XCTAssert(hint.waitForNonExistence(timeout: 4), "the hint fades by itself")
+        // Mid-hold screenshot from another thread while the press runs (the ring + "Keep holding…").
+        let midHold = expectation(description: "mid-hold shot")
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.75) {
+            let s = XCUIScreen.main.screenshot()
+            DispatchQueue.main.async { self.save(s, "r3-gear-holding"); midHold.fulfill() }
+        }
+        gear.press(forDuration: 1.7)
+        wait(for: [midHold], timeout: 5)
+        XCTAssert(app.navigationBars["Booth settings"].waitForExistence(timeout: 5), "held: settings open")
+        sleep(1)
+        shot("r4-settings-top")
+        XCTAssert(app.descendants(matching: .any)["statusTiles"].exists)
+        for _ in 0..<8 { app.swipeUp() }
+        sleep(1)
+        shot("r5-settings-bottom")
+    }
+
+    /// The local booth has no printer polling it, so it is offline: the drawn badge shows; a tap
+    /// gives the adult label, any other touch dismisses it.
+    func testPrinterOfflineBadgeAndLabel() {
+        app.launchArguments += ["-booth.pin", "1234", "-booth.icons", "drawn"]
+        app.launch()
+        XCTAssert(app.buttons["Take photo"].waitForExistence(timeout: 10))
+        let badge = app.buttons["printerBadge"]
+        XCTAssert(badge.waitForExistence(timeout: 10))
+        XCTAssertEqual(badge.value as? String, "offline")
+        XCTAssertEqual(badge.label, "Printer offline")
+        XCTAssertFalse(app.staticTexts["adultHint"].exists, "no label until tapped")
+        sleep(1)
+        shot("r6-printer-offline-badge")
+        badge.tap()
+        let hint = app.staticTexts["adultHint"]
+        XCTAssert(hint.waitForExistence(timeout: 2))
+        XCTAssert(hint.label.hasPrefix("Printer offline · "), hint.label)
+        XCTAssert(hint.label.hasSuffix("Check its power & Wi-Fi"), hint.label)
+        shot("r7-printer-offline-label")
+        app.buttons["Switch camera"].tap()   // any other touch
+        XCTAssert(hint.waitForNonExistence(timeout: 2), "another touch dismisses the label")
+    }
+
+    /// Icon style Classic: today's emoji. (Drawn is the default.) Screenshots for both.
+    func testClassicIcons() {
+        app.launchArguments += ["-booth.pin", "1234", "-booth.icons", "classic"]
+        app.launch()
+        XCTAssert(app.buttons["Take photo"].waitForExistence(timeout: 10))
+        XCTAssert(app.buttons["Settings"].exists)
+        sleep(2)
+        shot("r8-camera-rest-classic")
     }
 
     /// Share this photo on the review screen (before printing): a "your photos" QR for this session's

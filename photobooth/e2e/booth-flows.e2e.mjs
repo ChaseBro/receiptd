@@ -168,27 +168,30 @@ console.log("B. capture flows");
   await c3.ctx.close();
 }
 
-// ---------- C. settings long-press, deep link ----------
+// ---------- C. settings gear (press and hold), deep link ----------
 console.log("C. settings + deep link");
 {
   const { ctx, page } = await newCtx(chromiumB, devices["iPad Mini"], { seed: { shots: 1 } });
   await page.goto(BASE + "/"); await camReady(page);
-  const hs = await page.locator("#hotspot").boundingBox();
+  const hs = await page.locator("#gearBtn").boundingBox();
   await page.mouse.move(hs.x + hs.width / 2, hs.y + hs.height / 2);
-  await page.mouse.down(); await page.waitForTimeout(800);
-  check(!(await page.locator("#settings.on").count()), "settings not open after 0.8s");
-  await page.waitForTimeout(900); await page.mouse.up();
-  check(await page.locator("#settings.on").count() === 1, "1.7s long-press on #hotspot opens settings");
+  await page.mouse.down(); await page.waitForTimeout(700);
+  check(!(await page.locator("#settings.on").count()), "settings not open after 0.7s");
+  check(await page.textContent("#adultHint") === "Keep holding…", "holding shows 'Keep holding…'");
+  await page.waitForTimeout(800); await page.mouse.up();
+  check(await page.locator("#settings.on").count() === 1, "1.5s hold on the gear opens settings");
   check(await page.locator("#sParty").isVisible(), "Party card visible in settings");
   check(/No party/.test(await page.textContent("#sPartyName")), "Party card says no party");
   await shot(page, "settings-noparty");
   // short press does not open
   await page.click("#sDone"); await camReady(page);
-  await page.mouse.move(hs.x + 5, hs.y + 5); await page.mouse.down(); await page.waitForTimeout(400); await page.mouse.up(); await page.waitForTimeout(1500);
+  await page.mouse.move(hs.x + hs.width / 2, hs.y + hs.height / 2); await page.mouse.down(); await page.waitForTimeout(150); await page.mouse.up();
+  check(await page.textContent("#adultHint") === "Hold to open settings", "a tap shows the hold hint");
+  await page.waitForTimeout(1500);
   check(await page.locator("#settings.on").count() === 0, "short press doesn't open settings");
-  // hotspot overlaps theme button? hit-test
-  const hit = await page.evaluate(() => { const h = document.getElementById("hotspot").getBoundingClientRect(); const e = document.elementFromPoint(h.left + h.width / 2, h.top + h.height / 2); return e?.id || e?.tagName; });
-  check(hit === "hotspot", `hotspot is topmost at its centre (got ${hit})`);
+  // gear overlaps anything? hit-test
+  const hit = await page.evaluate(() => { const h = document.getElementById("gearBtn").getBoundingClientRect(); const e = document.elementFromPoint(h.left + h.width / 2, h.top + h.height / 2); return e?.closest("button")?.id || e?.tagName; });
+  check(hit === "gearBtn", `gear is topmost at its centre (got ${hit})`);
   await ctx.close();
 
   // deep link: fresh browser, no pin
@@ -251,7 +254,7 @@ try {
   // QR session id stable across retake? new session each shot
   await page.click("#retake"); await camReady(page);
   // settings shows party
-  const hs = await page.locator("#hotspot").boundingBox();
+  const hs = await page.locator("#gearBtn").boundingBox();
   await page.mouse.move(hs.x + hs.width / 2, hs.y + hs.height / 2); await page.mouse.down(); await page.waitForTimeout(1700); await page.mouse.up();
   await page.locator("#settings.on").waitFor();
   const txt = await page.textContent("#sPartyName");

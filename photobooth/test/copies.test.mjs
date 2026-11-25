@@ -55,3 +55,16 @@ test("rotateBoxes follows a clockwise frame rotation", async () => {
   let r = b; for (let i = 0; i < 4; i++) r = rotateBoxes(r, i % 2 ? 50 : 100, i % 2 ? 100 : 50, 90);
   assert.deepEqual(r, b);
 });
+
+test("startCopies: faces, raised to the start setting, capped at the kid max", async () => {
+  const { startCopies, kidMax, KID_MAX_COPIES, START_COPIES } = await import("../public/copies.js");
+  assert.equal(START_COPIES, 1); assert.equal(KID_MAX_COPIES, 3);
+  assert.equal(startCopies(null), 1);
+  assert.equal(startCopies([2, 1]), 2);
+  assert.equal(startCopies([5]), 3, "kid max 3 by default");
+  assert.equal(startCopies([5], 1, 6), 5);
+  assert.equal(startCopies([1], 2, 3), 2, "start setting is a floor");
+  assert.equal(startCopies([0], 4, 3), 3, "floor never beats the kid max");
+  assert.equal(startCopies([9], 1, 99), 6, "hard cap 6");
+  assert.equal(kidMax(0), 1); assert.equal(kidMax(12), 6);
+});

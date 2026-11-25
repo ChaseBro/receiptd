@@ -1,5 +1,7 @@
-// Kid screens: emoji, shapes and numerals only (words are accessibility
-// labels). Adult settings are behind a 1.5 s long-press on the top-right corner.
+// Kid screens: drawn icons (or Classic emoji), shapes and numerals only (words are accessibility
+// labels). Adult settings: press and hold the small gear at the camera's top-right for 1.2 s.
+// Adult labels (AdultHint) appear only in answer to a tap/hold on the gear, make-another-booth
+// or the printer badge, one at a time, and fade after ~2.5 s.
 
 import SwiftUI
 import BoothCore
@@ -82,10 +84,7 @@ struct CameraScreen: View {
             let landscape = geo.size.width > geo.size.height
             let layout = landscape ? AnyLayout(HStackLayout(spacing: 20)) : AnyLayout(VStackLayout(spacing: 18))
             layout {
-                if landscape { themePicker(landscape: true) } else {
-                    // Make another booth sits at the end of the top bar, left of the long-press hotspot (90 pt).
-                    HStack(spacing: 10) { themePicker(landscape: false); MakeBoothButton().padding(.trailing, 74) }
-                }
+                themePicker(landscape: landscape)
                 // The stage is the photo slot's shape (4:3 / 4:5, frames.js slotAspect), as big as fits,
                 // centred: the live dots and the plain camera fill it edge to edge, exactly the crop that prints.
                 SlotShaped(camera: booth.camera) {
@@ -94,15 +93,11 @@ struct CameraScreen: View {
                         RingView().allowsHitTesting(false)
                     }
                 }
-                if landscape {
-                    tray(accent: b, landscape: true).frame(maxHeight: .infinity)
-                        .overlay(alignment: .topLeading) { MakeBoothButton() }   // top of the tray column, clear of the hotspot
-                } else { tray(accent: b, landscape: false) }
+                if landscape { tray(accent: b, landscape: true).frame(maxHeight: .infinity) } else { tray(accent: b, landscape: false) }
             }
             .padding(20)
             .frame(width: geo.size.width, height: geo.size.height)
         }
-        .overlay(alignment: .topTrailing) { Hotspot() }
         .overlay { if booth.flash { Color.white.ignoresSafeArea() } }
         .onAppear { booth.applyTheme() }
     }
@@ -139,14 +134,26 @@ struct CameraScreen: View {
             }
             if booth.camera.failed {
                 VStack(spacing: 18) {
-                    Sticker(fill: .white, corner: 999) { Emoji("🙈", size: 70).padding(20) }
-                    Button { booth.startCamera() } label: { Emoji("🔁", size: 44).frame(width: 90, height: 90) }.buttonStyle(StickerStyle(fill: .sun)).accessibilityLabel("Try again")
+                    Sticker(fill: .white, corner: 999) { IconView(name: "nocam").frame(width: 90, height: 90).padding(16) }
+                    Button { booth.startCamera() } label: { IconView(name: "again").frame(width: 66, height: 66).frame(width: 90, height: 90) }
+                        .buttonStyle(StickerStyle(fill: .sun, corner: 999)).accessibilityLabel("Try again")
                 }.frame(maxHeight: .infinity)
             }
-            if let s = booth.printer?.sticker {
-                Sticker(fill: .tomato, corner: 999, line: LINE_FAT, tilt: 8) { Emoji(s, size: 48).padding(14) }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing).padding(16)
-                    .accessibilityLabel(s == "🧻" ? "Printer out of paper" : "Printer problem")
+            // Grown-up corner stickers on the camera window (the approved sketch): make another booth
+            // top-left, the settings gear top-right, both press-and-hold; the printer badge bottom-left,
+            // only when the printer needs a grown-up.
+            let gear: CGFloat = UIDevice.current.userInterfaceIdiom == .pad ? 60 : 44
+            HStack(alignment: .top) {
+                if booth.shareLinks != nil { MakeBoothButton(size: gear) }
+                Spacer()
+                HoldButton(id: "gear", a11y: "Settings", hint: "Hold to open settings", size: gear, tilt: 6, pillSide: .leading) { booth.openSettings() } label: {
+                    IconView(name: "gear")
+                }
+            }
+            .padding(.horizontal, 20).padding(.top, 20)
+            if let h = booth.printer, h.state.needsAdult {
+                PrinterBadge(health: h, id: "printer", size: gear < 50 ? 76 : 96)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading).padding(18)
             }
         }
     }
@@ -154,27 +161,152 @@ struct CameraScreen: View {
     func tray(accent: Color, landscape: Bool) -> some View {
         let l = landscape ? AnyLayout(VStackLayout(spacing: 26)) : AnyLayout(HStackLayout(spacing: 26))
         return l {
-            Button { booth.toggleShots() } label: { StripIcon(shots: booth.shots).frame(width: 80, height: 80) }
-                .buttonStyle(StickerStyle(fill: .white, corner: 20)).accessibilityLabel(booth.shots == 1 ? "One photo" : "Three photos")
-            Button { Task { await booth.shutter() } } label: { Emoji("📸", size: 74).frame(width: 150, height: 150) }
+            Button { booth.toggleShots() } label: { IconView(name: booth.shots == 1 ? "one" : "three").frame(width: 60, height: 60).frame(width: 80, height: 80) }
+                .buttonStyle(StickerStyle(fill: .white, corner: 20, tilt: -6)).accessibilityLabel(booth.shots == 1 ? "One photo" : "Three photos")
+            Button { Task { await booth.shutter() } } label: { IconView(name: "shutter").frame(width: 112, height: 112).frame(width: 150, height: 150) }
                 .buttonStyle(StickerStyle(fill: accent, corner: 999, line: LINE_FAT, shadow: 8))
                 .disabled(booth.busy || booth.shutterLocked)
                 .scaleEffect(bounce ? 1.06 : 0.96)
                 .onAppear { withAnimation(.easeInOut(duration: 0.9).repeatForever()) { bounce = true } }
                 .accessibilityLabel("Take photo")
-            Button { Sfx.shared.play("boop"); booth.camera.flip() } label: { Emoji("🔄", size: 40).frame(width: 80, height: 80) }
-                .buttonStyle(StickerStyle(fill: .white, corner: 20)).accessibilityLabel("Switch camera")
+            Button { Sfx.shared.play("boop"); booth.camera.flip() } label: { IconView(name: "flip").frame(width: 60, height: 60).frame(width: 80, height: 80) }
+                .buttonStyle(StickerStyle(fill: .white, corner: 20, tilt: 6)).accessibilityLabel("Switch camera")
         }
     }
 }
 
-/// Long-press the top-right corner for 1.5 s → adult settings.
-struct Hotspot: View {
+/// A grown-up corner sticker: press and hold `seconds` (1.2) → action. While held, a grape ring
+/// fills and "Keep holding…" shows beside it; a haptic tick at 50 %, a pop at full. Let go early:
+/// the ring drains and nothing happens; a short tap shows `hint` (~2.5 s) and wiggles the sticker.
+/// VoiceOver activation opens straight away (an adult using assistive tech, not a kid mashing).
+struct HoldButton<Label: View>: View {
     @EnvironmentObject var booth: Booth
+    let id: String
+    let a11y: String
+    let hint: String
+    var size: CGFloat = 44
+    var tilt: Double = 0
+    var pillSide: HorizontalEdge = .leading
+    var seconds: Double = 1.2
+    let action: () -> Void
+    @ViewBuilder var label: Label
+    @State private var progress: CGFloat = 0
+    @State private var t0: Date?
+    @State private var task: Task<Void, Never>?
+    @State private var wiggle = 0
+
     var body: some View {
-        Color.clear.frame(width: 90, height: 90).contentShape(Rectangle())
-            .onLongPressGesture(minimumDuration: 1.5) { booth.openSettings() }
-            .accessibilityHidden(true)
+        Sticker(fill: .white, corner: size * 0.3, line: 3, shadow: 3, tilt: tilt, pressed: t0 != nil) {
+            label.frame(width: size * 0.8, height: size * 0.8).frame(width: size, height: size)
+        }
+        .overlay {
+            ZStack {
+                Circle().stroke(Color.ink.opacity(0.18), lineWidth: 8)
+                Circle().trim(from: 0, to: progress).stroke(Color.ink, style: StrokeStyle(lineWidth: 9, lineCap: .round))
+                Circle().trim(from: 0, to: progress).stroke(Color.grape, style: StrokeStyle(lineWidth: 5, lineCap: .round))
+            }
+            .rotationEffect(.degrees(-90))
+            .frame(width: size + 22, height: size + 22)
+            .opacity(t0 != nil || progress > 0 ? 1 : 0)
+            .allowsHitTesting(false)
+        }
+        .keyframeAnimator(initialValue: 0.0, trigger: wiggle) { v, a in v.rotationEffect(.degrees(a)) } keyframes: { _ in
+            KeyframeTrack { CubicKeyframe(-16, duration: 0.1); CubicKeyframe(13, duration: 0.12); CubicKeyframe(-6, duration: 0.12); CubicKeyframe(0, duration: 0.14) }
+        }
+        .contentShape(Rectangle())
+        .gesture(DragGesture(minimumDistance: 0).onChanged { _ in if t0 == nil, task == nil { begin() } }.onEnded { _ in end() })
+        .accessibilityElement()
+        .accessibilityLabel(a11y)
+        .accessibilityHint("Press and hold")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier(id)
+        .accessibilityAction { action() }
+        .adultHint(id, side: pillSide)   // outside the button's accessibility element, so it's its own static text
+    }
+
+    private func begin() {
+        let start = Date(); t0 = start
+        booth.touched()
+        booth.showHint(id, "Keep holding…", seconds: nil)
+        let tick = UIImpactFeedbackGenerator(style: .light), pop = UINotificationFeedbackGenerator()
+        tick.prepare(); pop.prepare()
+        task = Task { @MainActor in
+            var ticked = false
+            while !Task.isCancelled {
+                let p = min(1, Date().timeIntervalSince(start) / seconds)
+                progress = p
+                if p >= 0.5 && !ticked { ticked = true; tick.impactOccurred() }
+                if p >= 1 {
+                    pop.notificationOccurred(.success); Sfx.shared.play("tap")
+                    t0 = nil; task = nil; progress = 0
+                    booth.hideHint(id)
+                    action()
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(16))
+            }
+        }
+    }
+
+    private func end() {
+        guard let start = t0 else { task = nil; return }
+        task?.cancel(); task = nil; t0 = nil
+        withAnimation(.easeOut(duration: 0.25)) { progress = 0 }   // drain
+        if Date().timeIntervalSince(start) < 0.45 {
+            booth.showHint(id, hint); wiggle += 1; Sfx.shared.play("boop")
+        } else { booth.hideHint(id) }
+    }
+}
+
+/// The one adult label, as a small quiet pill beside its control (`side`: which side of the
+/// control it sits on). Shown only while `booth.hint` belongs to this control.
+struct HintOverlay: ViewModifier {
+    @EnvironmentObject var booth: Booth
+    let id: String
+    let side: HorizontalEdge
+    func body(content: Content) -> some View {
+        let maxW: CGFloat = UIDevice.current.userInterfaceIdiom == .pad ? 380 : 230
+        content.overlay(alignment: side == .leading ? .leading : .trailing) {
+            if let h = booth.hint, h.anchor == id {
+                Text(h.text)
+                    .font(.system(size: 15, weight: .bold, design: .rounded)).foregroundStyle(Color.ink)
+                    .lineLimit(3).fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .background(RoundedRectangle(cornerRadius: 14).fill(.white))
+                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.ink, lineWidth: 3))
+                    .background(RoundedRectangle(cornerRadius: 14).fill(Color.ink).offset(x: 3, y: 3))
+                    .accessibilityIdentifier("adultHint")
+                    .frame(width: maxW, alignment: side == .leading ? .trailing : .leading)
+                    .offset(x: side == .leading ? -(maxW + 14) : maxW + 14)   // beside the control, not over it
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.18), value: booth.hint)
+    }
+}
+extension View {
+    func adultHint(_ id: String, side: HorizontalEdge) -> some View { modifier(HintOverlay(id: id, side: side)) }
+}
+
+/// What the printer needs, drawn (one drawing per problem) on a sun sticker with a slow wiggle.
+/// A tap shows the adult label ("Printer offline · last seen 2:14 pm · Check its power & Wi-Fi").
+struct PrinterBadge: View {
+    @EnvironmentObject var booth: Booth
+    let health: PrinterHealth
+    let id: String
+    var size: CGFloat = 84
+    var body: some View {
+        let state = health.state
+        Button { booth.showHint(id, health.hint()) } label: { IconView(name: state.icon).frame(width: size * 0.84, height: size * 0.84).frame(width: size, height: size) }
+            .buttonStyle(StickerStyle(fill: .sun, corner: size * 0.28, line: LINE_FAT, shadow: 8, tilt: -8))
+            .keyframeAnimator(initialValue: 0.0, repeating: true) { v, a in v.rotationEffect(.degrees(a)) } keyframes: { _ in
+                KeyframeTrack { LinearKeyframe(0, duration: 3.4); CubicKeyframe(-9, duration: 0.12); CubicKeyframe(8, duration: 0.16); CubicKeyframe(-4, duration: 0.16); CubicKeyframe(0, duration: 0.12) }
+            }
+            .accessibilityLabel(state.label)
+            .accessibilityIdentifier("printerBadge")
+            .accessibilityValue(state.rawValue)
+            .adultHint(id, side: .trailing)
     }
 }
 
@@ -230,7 +362,7 @@ struct ReviewScreen: View {
                         GeometryReader { g in
                             let k = g.size.width / CGFloat(PRINT_WIDTH)
                             ForEach(Array(p.layout.photos.enumerated()), id: \.offset) { i, ph in
-                                Button { Task { await booth.rotatePhoto(i) } } label: { Emoji("↻", size: 30).frame(width: 60, height: 60) }
+                                Button { Task { await booth.rotatePhoto(i) } } label: { IconView(name: "rotate").frame(width: 48, height: 48).frame(width: 64, height: 64) }
                                     .buttonStyle(StickerStyle(fill: .white, corner: 999))
                                     .position(x: g.size.width + 18, y: (ph.y + ph.h / 2) * k)
                                     .accessibilityLabel("Rotate photo")
@@ -249,21 +381,22 @@ struct ReviewScreen: View {
             VStack(spacing: 8) {
                 HStack(spacing: 2) { ForEach(0..<min(booth.faceCount ?? 0, 8), id: \.self) { _ in Emoji("🙂", size: 28) } }.accessibilityHidden(true)
                 HStack(spacing: 14) {
-                    Button { booth.bumpCopies(-1) } label: { Emoji("➖", size: 30).frame(width: 72, height: 72) }
+                    Button { booth.bumpCopies(-1) } label: { IconView(name: "minus").frame(width: 52, height: 52).frame(width: 72, height: 72) }
                         .buttonStyle(StickerStyle(fill: .white, corner: 999)).opacity(booth.copies <= 1 ? 0.4 : 1).accessibilityLabel("Fewer copies")
                     Sticker(fill: .sun, corner: 20) {
-                        HStack(spacing: 4) { Emoji("🧾", size: 36); Text("×\(booth.copies)").font(Fonts.display(40)).foregroundStyle(Color.ink) }
+                        HStack(spacing: 4) { IconView(name: "receipt").frame(width: 50, height: 50); Text("×\(booth.copies)").font(Fonts.display(40)).foregroundStyle(Color.ink) }
                             .padding(.horizontal, 16).frame(height: 80)
                     }
                     .accessibilityElement().accessibilityLabel("\(booth.copies) \(booth.copies == 1 ? "copy" : "copies")")
-                    Button { booth.bumpCopies(1) } label: { Emoji("➕", size: 30).frame(width: 72, height: 72) }
-                        .buttonStyle(StickerStyle(fill: .white, corner: 999)).opacity(booth.copies >= MAX_COPIES ? 0.4 : 1).accessibilityLabel("More copies")
+                    Button { booth.bumpCopies(1) } label: { IconView(name: "plus").frame(width: 52, height: 52).frame(width: 72, height: 72) }
+                        .buttonStyle(StickerStyle(fill: booth.iconStyle == .drawn ? .grape : .white, corner: 999))
+                        .opacity(booth.copies >= booth.settings.copiesMax ? 0.4 : 1).accessibilityLabel("More copies")
                 }
             }
             HStack(spacing: 30) {
-                Button { booth.retake() } label: { Emoji("✖️", size: 54).frame(width: 120, height: 120) }
+                Button { booth.retake() } label: { IconView(name: "retake").frame(width: 86, height: 86).frame(width: 120, height: 120) }
                     .buttonStyle(StickerStyle(fill: .tomato, corner: 999, line: LINE_FAT)).accessibilityLabel("Retake")
-                Button { Task { await booth.printStrip() } } label: { Emoji("🖨️", size: 64).frame(width: 150, height: 150) }
+                Button { Task { await booth.printStrip() } } label: { IconView(name: "print").frame(width: 110, height: 110).frame(width: 150, height: 150) }
                     .buttonStyle(StickerStyle(fill: .mint, corner: 999, line: LINE_FAT, shadow: 8)).accessibilityLabel("Print")
                     .disabled(booth.preview == nil)
                 ShareThisPhotoButton(size: 96)
@@ -305,7 +438,7 @@ struct PrintingScreen: View {
                         .offset(y: 120)
                 }
                 Sticker(fill: THEME_ACCENTS[booth.theme]?.0 ?? .sun, corner: 30, line: LINE_FAT, shadow: 8) {
-                    HStack(spacing: 14) { Emoji(st.error ? "😕" : "😺", size: 64); Circle().fill(st.error ? Color.tomato : .mint).frame(width: 22, height: 22).overlay(Circle().stroke(Color.ink, lineWidth: 3)) }
+                    HStack(spacing: 14) { if st.error { Emoji("😕", size: 64) } else { IconView(name: "pPrinting").frame(width: 84, height: 84) }; Circle().fill(st.error ? Color.tomato : .mint).frame(width: 22, height: 22).overlay(Circle().stroke(Color.ink, lineWidth: 3)) }
                         .frame(width: 280, height: 130)
                 }
             }
@@ -316,21 +449,27 @@ struct PrintingScreen: View {
             if st.copies > 1 {
                 HStack(spacing: 12) {
                     ForEach(0..<st.copies, id: \.self) { i in
-                        Sticker(fill: i < st.done ? .mint : .white, corner: 16) { Emoji("🧾", size: 30).padding(8) }
+                        Sticker(fill: i < st.done ? .mint : .white, corner: 16) { IconView(name: "receipt").frame(width: 40, height: 40).padding(6) }
                             .offset(y: i == st.done ? -8 : 0)
                             .animation(.easeInOut(duration: 0.5).repeatForever(), value: st.done)
                     }
                 }.accessibilityHidden(true)
             }
             if st.position > 1 {
-                HStack(spacing: 8) { Emoji("⏳", size: 30); ForEach(0..<min(4, st.position - 1), id: \.self) { _ in Emoji("🧾", size: 26) } }
+                // In line: Drawn = one hourglass with the number of jobs ahead; Classic = ⏳ + a 🧾 per job.
+                if booth.iconStyle == .drawn {
+                    Sticker(fill: .white, corner: 999) { IconView(name: "queue", arg: st.position - 1).frame(width: 60, height: 60).padding(8) }
+                        .accessibilityElement().accessibilityLabel("\(st.position - 1) ahead in line")
+                } else {
+                    HStack(spacing: 8) { Emoji("⏳", size: 30); ForEach(0..<min(4, st.position - 1), id: \.self) { _ in Emoji("🧾", size: 26) } }
+                }
             }
-            if let s = booth.printer?.sticker { Sticker(fill: .tomato, corner: 999) { Emoji(s + "❗", size: 44).padding(14) } }
+            if let h = booth.printer, h.state.needsAdult { PrinterBadge(health: h, id: "printerWait", size: 110) }
             if !st.error { ShareThisPhotoButton(size: 88) }
             if st.error {
                 HStack(spacing: 30) {
-                    Button { booth.printBack() } label: { Emoji("✖️", size: 44).frame(width: 100, height: 100) }.buttonStyle(StickerStyle(fill: .tomato, corner: 999)).accessibilityLabel("Back")
-                    Button { Task { await booth.printRetry() } } label: { Emoji("🔁", size: 44).frame(width: 100, height: 100) }.buttonStyle(StickerStyle(fill: .sun, corner: 999)).accessibilityLabel("Try again")
+                    Button { booth.printBack() } label: { IconView(name: "back").frame(width: 72, height: 72).frame(width: 100, height: 100) }.buttonStyle(StickerStyle(fill: .tomato, corner: 999)).accessibilityLabel("Back")
+                    Button { Task { await booth.printRetry() } } label: { IconView(name: "again").frame(width: 72, height: 72).frame(width: 100, height: 100) }.buttonStyle(StickerStyle(fill: .sun, corner: 999)).accessibilityLabel("Try again")
                 }
             }
         }
@@ -339,11 +478,14 @@ struct PrintingScreen: View {
 
 struct DoneOverlay: View {
     let face: String
+    @EnvironmentObject var booth: Booth
     @State private var pop = false
     var body: some View {
         ZStack {
             Confetti()
-            Sticker(fill: .sun, corner: 999, line: LINE_FAT, shadow: 10, tilt: -8) { Emoji(face, size: 120).padding(40) }
+            Sticker(fill: .sun, corner: 999, line: LINE_FAT, shadow: 10, tilt: -8) {
+                if booth.iconStyle == .drawn { DrawnIcon(name: "done").frame(width: 150, height: 150).padding(30) } else { Emoji(face, size: 120).padding(40) }
+            }
                 .scaleEffect(pop ? 1 : 0.2).animation(.spring(response: 0.35, dampingFraction: 0.45), value: pop)
         }
         .allowsHitTesting(false)
@@ -377,50 +519,113 @@ struct Confetti: View {
 struct SettingsScreen: View {
     @EnvironmentObject var booth: Booth
     @State private var footer = ""
-    @State private var count = 3
     @State private var server = ""
     @State private var pending = (0, 0)
+    @State private var retrying = false
     @State private var tick = 0
     var body: some View {
         let s = booth.settings
         NavigationStack {
             Form {
-                Section("Party") {
-                    if let p = booth.party {
-                        Text("Shooting for “\(p.name)”\(p.qr ? " · QR on strips" : "")\(p.footer.map { $0.isEmpty ? "" : " · footer: \($0)" } ?? "")")
-                    } else { Text("No party — photos go to the archive only.").foregroundStyle(.secondary) }
-                    Link("🎉 Parties, signs & albums", destination: s.server.appendingPathComponent("party.html"))
-                    Link("🗂️ Archive", destination: s.server.appendingPathComponent("gallery.html"))
-                    Text("Archive queue: \(pending.0) session\(pending.0 == 1 ? "" : "s") waiting (\(pending.1 / 1024) KB)").foregroundStyle(.secondary)
-                }
-                Section("Strip") {
-                    TextField("Footer text (optional)", text: $footer).onChange(of: footer) { s.footer = String(footer.prefix(40)) }
-                    Stepper("Countdown: \(count) s", value: $count, in: 1...10).onChange(of: count) { s.count = count }
-                }
+                // Status first (is anything wrong?), then the fixes. Red tint = needs attention.
                 Section {
-                    chips(CALIBRATION_GAINS.enumerated().map { ("\(Character(UnicodeScalar(65 + $0.offset)!)) · \($0.element)", $0.element) }, s.gain) { s.gain = $0 }
-                    Button("🧪 Print calibration strip") { Task { await booth.printCalibration() } }
-                } header: { Text("Anti-ghosting") } footer: { Text("Print the calibration strip, then pick the band whose greys under the black block match the greys to its right.") }
-                Section("Print density") { chips([("−2", 5), ("−1", 4), ("std", 3), ("+1", 2), ("+2", 1)], s.density) { s.density = $0 } }
-                Section { chips([("fast", 0), ("mid", 1), ("slow", 2)], s.speed) { s.speed = $0 } } header: { Text("Print speed") } footer: { Text("Slower = cooler head = less ghosting.") }
-                Section("Sounds") { chips([("on", true), ("off", false)], s.sound) { s.sound = $0 } }
-                Section { chips([("on", true), ("off", false)], s.livePreview) { s.livePreview = $0 } } header: { Text("Live print preview") } footer: {
-                    Text("The camera shows the photo in printer dots, cropped as it prints. If this device can't keep up it shows the plain camera until settings are closed again.")
+                    statusTiles
+                    HStack(spacing: 10) {
+                        Button("Nudge printer") { Task { await booth.nudgePrinter() } }.buttonStyle(.borderedProminent).tint(.sun).foregroundStyle(Color.ink)
+                        Button("Upload now") { Task { await booth.uploadNow(); await refreshQueue() } }.buttonStyle(.bordered).tint(Color.ink)
+                        Button("Print test strip") { Task { await booth.printCalibration() } }.buttonStyle(.bordered).tint(Color.ink)
+                    }
+                    .font(.callout.bold()).buttonBorderShape(.capsule)
+                    if let st = booth.status { Text(st).accessibilityIdentifier("settingsStatus") }
                 }
-                Section("Server") {
+                .listRowSeparator(.hidden)
+
+                Section {
+                    LabeledContent("Icon style") {
+                        Picker("Icon style", selection: bind({ booth.iconStyle }, { booth.setIconStyle($0) })) {
+                            Text("Drawn").tag(IconStyle.drawn); Text("Classic 📸").tag(IconStyle.classic)
+                        }.pickerStyle(.segmented).labelsHidden().fixedSize().accessibilityIdentifier("iconStyle")
+                    }
+                    Toggle(isOn: bind({ s.livePreview }, { s.livePreview = $0 })) { sub("Live print preview", "Camera shows the 1-bit print look (plain camera until settings close if the device can't keep up)") }
+                    Toggle("Sounds", isOn: bind({ s.sound }, { s.sound = $0 }))
+                    Toggle(isOn: bind({ s.flash }, { s.flash = $0 })) { sub("Screen flash", "White flash on capture") }
+                } header: { head("shutter", "Booth") }
+
+                Section {
+                    LabeledContent("Start with") {
+                        Picker("Start with", selection: bind({ s.startFront }, { s.startFront = $0; booth.camera.facing = $0 ? .front : .back })) {
+                            Text("Front").tag(true); Text("Back").tag(false)
+                        }.pickerStyle(.segmented).labelsHidden().fixedSize()
+                    }
+                    Toggle(isOn: bind({ s.mirror }, { s.mirror = $0 })) { sub("Mirror preview", "Selfie camera only; prints are never mirrored") }
+                    Stepper("Countdown: \(s.count) s", value: bind({ s.count }, { s.count = $0 }), in: 1...10)
+                    LabeledContent { 
+                        Picker("Photos per strip", selection: bind({ booth.shots }, { booth.shots = $0; s.shots = $0 })) { Text("1").tag(1); Text("3").tag(3) }
+                            .pickerStyle(.segmented).labelsHidden().fixedSize()
+                    } label: { sub("Photos per strip", "Kids can switch") }
+                } header: { head("flip", "Camera") }
+
+                Section {
+                    Stepper(value: bind({ s.copiesStart }, { s.copiesStart = $0 }), in: 1...s.copiesMax) { sub("Copies to start with: \(s.copiesStart)", "One per face, but at least this") }
+                    Stepper(value: bind({ s.copiesMax }, { s.copiesMax = $0; if s.copiesStart > $0 { s.copiesStart = $0 } }), in: 1...MAX_COPIES) {
+                        sub("Most copies a kid can pick: \(s.copiesMax)", "The printer takes \(MAX_COPIES) at most")
+                    }
+                    TextField("Footer text (optional)", text: $footer).onChange(of: footer) { s.footer = String(footer.prefix(40)) }
+                } header: { head("receipt", "Strip & copies") }
+
+                Section {
+                    if let p = booth.party {
+                        sub("Party: \(p.name)", "Photos also go to its album\(p.footer.map { $0.isEmpty ? "" : " · footer: \($0)" } ?? "")")
+                        sub("QR on strips: \(p.qr ? "on" : "off")", "Follows the party (set it on the party page)")
+                    } else { sub("No party", "Photos go to the archive only") }
+                    Link("Parties, signs & albums", destination: s.server.appendingPathComponent("party.html"))
+                    if let links = booth.shareLinks {
+                        NavigationLink { ShareBoothView(web: links.web, app: links.app, pin: booth.api.pin) } label: { Label("Make another booth: PIN and QR codes", systemImage: "qrcode") }
+                        ShareLink(item: links.web, subject: Text("Photo booth"), message: Text("Open the photo booth (already unlocked)")) { Label("Booth on the web", systemImage: "safari") }
+                        ShareLink(item: links.app, subject: Text("Photo Booth app"), message: Text("Get the Photo Booth app (TestFlight). After it's installed, tap this link again to set it up.")) {
+                            Label("Booth app (TestFlight)", systemImage: "apps.iphone")
+                        }
+                    }
+                } header: { head("party", "Party & sharing") } footer: {
+                    if booth.shareLinks != nil {
+                        Text("Make another booth lets them use your booth (prints, photos). Both links contain the booth PIN, so only send them to people you'd hand the iPad to. Also on the camera: hold the phone-with-plus.")
+                    }
+                }
+
+                Section {
+                    HStack {
+                        sub("Status", printerLine)
+                        Spacer()
+                        Button("Nudge") { Task { await booth.nudgePrinter() } }.buttonStyle(.bordered).buttonBorderShape(.capsule).tint(Color.ink)
+                    }
+                    VStack(alignment: .leading, spacing: 6) {
+                        sub("Anti-ghosting", "Print the calibration strip, then pick the band whose greys under the black block match the greys to its right")
+                        chips(CALIBRATION_GAINS.enumerated().map { ("\(Character(UnicodeScalar(65 + $0.offset)!))", $0.element) }, s.gain) { s.gain = $0 }
+                    }
+                    VStack(alignment: .leading, spacing: 6) { Text("Darkness"); chips([("−2", 5), ("−1", 4), ("std", 3), ("+1", 2), ("+2", 1)], s.density) { s.density = $0 } }
+                    VStack(alignment: .leading, spacing: 6) { sub("Speed", "Slower = cooler head = less ghosting"); chips([("fast", 0), ("mid", 1), ("slow", 2)], s.speed) { s.speed = $0 } }
+                    Button("Print calibration strip") { Task { await booth.printCalibration() } }
+                } header: { head("pReady", "Printer") }
+
+                Section {
+                    HStack {
+                        sub("Upload queue", pending.0 == 0 ? "Nothing waiting" : "\(pending.0) session\(pending.0 == 1 ? "" : "s") · \(pending.1 / 1024) KB\(retrying ? " · retrying" : "")")
+                        Spacer()
+                        Button("Upload now") { Task { await booth.uploadNow(); await refreshQueue() } }.buttonStyle(.bordered).buttonBorderShape(.capsule).tint(Color.ink)
+                    }
+                    Link("Archive (every session, by day)", destination: s.server.appendingPathComponent("gallery.html"))
                     TextField("https://booth.receiptd.sh", text: $server).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
                     Button("Use this server") { if let u = URL(string: server), u.scheme == "https" { booth.pair(server: u, pin: nil) } }
-                }
-                if let links = booth.shareLinks { shareSection(links) }
-                if let st = booth.status { Section { Text(st) } }
+                } header: { head("upload", "Archive & server") }
+
                 Section {
                     if s.bundledPin.isEmpty {
-                        Button("🔒 Lock booth", role: .destructive) { booth.forgetSavedPin() }
+                        Button("Lock booth now", role: .destructive) { booth.forgetSavedPin() }
                     } else if !s.pin.isEmpty {
                         Button("Forget saved PIN", role: .destructive) { booth.forgetSavedPin(); tick += 1 }
-                    }
-                } footer: {
-                    if !s.bundledPin.isEmpty { Text(s.pin.isEmpty ? "Using the PIN built into this app." : "A saved PIN is in use; forgetting it goes back to the PIN built into this app.") }
+                    } else { Text("Using the PIN built into this app.").foregroundStyle(.secondary) }
+                } header: { head("gear", "Lock") } footer: {
+                    if !s.bundledPin.isEmpty && !s.pin.isEmpty { Text("A saved PIN is in use; forgetting it goes back to the PIN built into this app.") }
                 }
             }
             .id(tick)
@@ -428,24 +633,58 @@ struct SettingsScreen: View {
             .toolbar { Button("Done") { booth.closeSettings() }.bold() }
         }
         .onAppear {
-            footer = s.footer; count = s.count; server = s.server.absoluteString
-            Task { pending = await booth.archive.pending() }
+            footer = s.footer; server = s.server.absoluteString
+            Task { await refreshQueue() }
         }
     }
 
-    /// Peer-to-peer setup: links that carry the booth PIN, as share sheets and as QR codes.
-    func shareSection(_ links: (web: URL, app: URL)) -> some View {
-        Section {
-            ShareLink(item: links.web, subject: Text("Photo booth"), message: Text("Open the photo booth (already unlocked)")) {
-                Label("Booth on the web", systemImage: "safari")
-            }
-            ShareLink(item: links.app, subject: Text("Photo Booth app"), message: Text("Get the Photo Booth app (TestFlight). After it's installed, tap this link again to set it up.")) {
-                Label("Booth app (TestFlight)", systemImage: "apps.iphone")
-            }
-            NavigationLink { ShareBoothView(web: links.web, app: links.app, pin: booth.api.pin) } label: { Label("Show PIN and QR codes", systemImage: "qrcode") }
-        } header: { Text("Make another booth") } footer: {
-            Text("This lets them use your booth (prints, photos). Booth on the web opens this booth in Safari, already unlocked. Booth app signs the phone up for the TestFlight app; once it's installed, the same link opens the app set up for this booth. Both links contain the booth PIN, so only send them to people you'd hand the iPad to. Also on the camera screen: the small phone-with-plus at the top.")
+    func refreshQueue() async { pending = await booth.archive.pending(); retrying = await booth.archive.retrying() }
+
+    /// A setting binding that also redraws the form.
+    func bind<T>(_ get: @escaping () -> T, _ set: @escaping (T) -> Void) -> Binding<T> {
+        Binding(get: get, set: { set($0); tick += 1 })
+    }
+    func head(_ icon: String, _ title: String) -> some View {
+        HStack(spacing: 8) { IconView(name: icon).frame(width: 24, height: 24); Text(title) }
+    }
+    func sub(_ title: String, _ detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) { Text(title); Text(detail).font(.caption).foregroundStyle(.secondary) }
+    }
+
+    var printerLine: String {
+        guard let h = booth.printer else { return "Checking…" }
+        if h.state == .offline { return h.hint() }
+        let paper = h.paperOut ? "out of paper" : h.coverOpen ? "cover open" : h.paperLow == true ? "paper low" : "paper OK"
+        return "\(h.state == .offline ? "Offline" : h.state == .error ? "Error" : "Ready") · \(paper)\(h.text.map { $0.isEmpty ? "" : " · \($0)" } ?? "")"
+    }
+
+    /// Printer · paper · uploads, drawn, with words. Red tint when it needs attention.
+    var statusTiles: some View {
+        let h = booth.printer, state = h?.state
+        let printer: (String, String, String, Bool) = state == nil ? ("pReady", "Printer", "checking…", false)
+            : state == .offline ? ("pOffline", "Printer offline", h?.lastSeenSec.map { "since \(PrinterHealth.clock(Date().addingTimeInterval(-Double($0))))" } ?? "never seen", true)
+            : state == .error ? ("pError", "Printer error", "turn it off and on", true) : ("pReady", "Printer ready", "online", false)
+        let paper: (String, String, String, Bool) = h == nil ? ("paperOk", "Paper", "—", false)
+            : state == .offline ? ("paperOk", "Paper", "unknown while offline", false)
+            : h!.paperOut ? ("pPaperOut", "Out of paper", "load a roll", true)
+            : h!.coverOpen ? ("pCover", "Cover open", "close the lid", true)
+            : h!.paperLow == true ? ("pPaperLow", "Paper low", "cover closed", false) : ("paperOk", "Paper OK", "cover closed", false)
+        let up: (String, String, String, Bool) = pending.0 == 0 ? ("upload", "All uploaded", "archive", false) : ("upload", "\(pending.0) waiting", retrying ? "retrying" : "to upload", retrying)
+        return HStack(spacing: 10) { tile(printer); tile(paper); tile(up) }
+            .accessibilityElement(children: .contain).accessibilityIdentifier("statusTiles")
+    }
+    func tile(_ t: (String, String, String, Bool)) -> some View {
+        VStack(spacing: 3) {
+            IconView(name: t.0).frame(width: 46, height: 46)
+            Text(t.1).font(.footnote.bold()).multilineTextAlignment(.center)
+            Text(t.2).font(.caption2).foregroundStyle(.secondary)
         }
+        .foregroundStyle(Color.ink)
+        .frame(maxWidth: .infinity).padding(.vertical, 8).padding(.horizontal, 4)
+        .background(RoundedRectangle(cornerRadius: 14).fill(t.3 ? Color(hex: 0xFFDED7) : Color.white))   // tomato 22 % on white (index.html .tile.bad)
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.ink, lineWidth: 3))
+        .background(RoundedRectangle(cornerRadius: 14).fill(Color.ink).offset(x: 3, y: 3))
+        .accessibilityElement(children: .combine)
     }
 
     func chips<T: Equatable>(_ opts: [(String, T)], _ cur: T, set: @escaping (T) -> Void) -> some View {
@@ -517,15 +756,17 @@ struct ShareBoothView: View {
 }
 
 /// The camera screen's "make another booth" control: a small, wordless grown-up sticker (a phone
-/// with a +) up in the top corner area, outside the camera window (kids' targets are the big ones).
+/// with a +) in the camera window's top-left corner. Press and hold (it grants access): a tap only
+/// shows "Hold to share the booth".
 struct MakeBoothButton: View {
     @EnvironmentObject var booth: Booth
+    var size: CGFloat = 44
     @State private var open = false
     var body: some View {
         if let links = booth.shareLinks {
-            Button { Sfx.shared.play("tap"); open = true } label: { PhonePlusIcon().frame(width: 34, height: 34).frame(width: 50, height: 50) }
-                .buttonStyle(StickerStyle(fill: .white, corner: 14, line: 3, shadow: 3, tilt: 4))
-                .accessibilityLabel("Make another booth")
+            HoldButton(id: "makeBooth", a11y: "Make another booth", hint: "Hold to share the booth", size: size, tilt: -4, pillSide: .trailing) { open = true } label: {
+                IconView(name: "makeBooth")
+            }
                 .sheet(isPresented: $open) {
                     NavigationStack {
                         ShareBoothView(web: links.web, app: links.app, pin: booth.api.pin)
@@ -577,7 +818,7 @@ struct ShareThisPhotoButton: View {
     @EnvironmentObject var booth: Booth
     var size: CGFloat = 96
     var body: some View {
-        Button { Task { await booth.openMine() } } label: { StripArrowIcon().frame(width: size * 0.56, height: size * 0.56).frame(width: size, height: size) }
+        Button { Task { await booth.openMine() } } label: { IconView(name: "sharePhoto").frame(width: size * 0.7, height: size * 0.7).frame(width: size, height: size) }
             .buttonStyle(StickerStyle(fill: .sky, corner: 999, tilt: -5))
             .accessibilityLabel("Share this photo")
             .disabled(booth.shot == nil)
@@ -604,14 +845,14 @@ struct MineOverlay: View {
                             QRCodeView(text: url).padding(10)
                                 .accessibilityElement().accessibilityAddTraits(.isImage).accessibilityLabel("QR code: Your photos")
                                 .accessibilityValue(url)
-                        } else { Emoji(share.failed ? "🙈" : "⏳", size: side * 0.3) }
+                        } else if share.failed { Emoji("🙈", size: side * 0.3) } else { IconView(name: "wait").frame(width: side * 0.32, height: side * 0.32) }
                     }
                     .frame(width: side, height: side)
                     .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.ink, lineWidth: LINE))
                     HStack(spacing: 30) {
                         Button { send() } label: { Emoji(sending ? "⏳" : "📲", size: 46).frame(width: 100, height: 100) }
                             .buttonStyle(StickerStyle(fill: .sky, corner: 999, tilt: -4)).accessibilityLabel("Send photos")
-                        Button { Sfx.shared.play("boop"); booth.closeMine() } label: { Emoji("✖️", size: 44).frame(width: 100, height: 100) }
+                        Button { Sfx.shared.play("boop"); booth.closeMine() } label: { IconView(name: "retake").frame(width: 70, height: 70).frame(width: 100, height: 100) }
                             .buttonStyle(StickerStyle(fill: .white, corner: 999, tilt: 4)).accessibilityLabel("Close")
                     }
                 }

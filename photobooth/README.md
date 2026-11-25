@@ -12,15 +12,29 @@ phone/tablet browser ──► booth.receiptd.sh  (Worker: static UI + /api)
 printer (WiFi) ── polls ──► cprnt.receiptd.sh  (receiptd-cprnt Worker)
 ```
 
-Kid-first, no reading needed: emoji theme picker (🎞️ ⭐ 💖 🎉 🦖 🚀 📷), a
-strip/single pictogram toggle, a giant bouncing 📸 button, ring countdown with
-beeps, flash + shutter sound, ✖️ / 🖨️ review, a printer animation, a confetti
-finish, and an anti-mashing cooldown ring (1–15 s; UX borrowed from
-`ChaseBro/photo-receipts`). The screen stays awake (Wake Lock). Long-press the
-top-right corner for 1.5 s to open adult settings.
+Kid-first, no reading needed: emoji theme picker (🎞️ ⭐ 💖 🎉 🦖 🚀 📷), drawn
+sticker icons everywhere else (`public/icons.js`; settings → Icon style: Drawn /
+Classic emoji), a strip/single toggle, a giant bouncing camera button, ring
+countdown with beeps, flash + shutter sound, retake / print review, a printer
+animation, a confetti finish, and an anti-mashing cooldown ring (1–15 s; UX
+borrowed from `ChaseBro/photo-receipts`). The screen stays awake (Wake Lock).
+**Press and hold the small gear** at the camera's top-right for 1.2 s to open
+adult settings (a filling ring and "Keep holding…"; a tap only says "Hold to
+open settings"). When the printer needs a grown-up (offline, out of paper,
+cover open, error) a drawn sun sticker wiggles at the camera's bottom-left; tap
+it for one line of words (`public/printer-state.js`). See DESIGN.md "Grown-up
+controls" for the adult-label rules.
 
-The review screen has a copies picker (➖ 🧾×N ➕, 1–6). It defaults to one
-copy per face: `public/faces.js` runs MediaPipe's BlazeFace short-range
+Settings (one sheet): a status strip (printer · paper · upload queue, red when
+something needs attention) with Nudge printer / Upload now / Print test strip;
+then Booth (icon style, live print preview, sounds, screen flash), Camera
+(start with front/back, mirror preview, countdown, photos per strip), Strip &
+copies (copies to start with — a floor under one-per-face —, most copies a kid
+can pick, default 3, hard cap 6, footer), Party & sharing, Printer
+(anti-ghost A–E, darkness, speed, calibration), Archive, Lock.
+
+The review screen has a copies picker (− receipt×N +, 1 to the kid max, default 3, cap 6). It defaults to one
+copy per face (at least "copies to start with"): `public/faces.js` runs MediaPipe's BlazeFace short-range
 detector on-device (self-hosted WASM in `public/vendor/`, lazy-loaded after
 the camera starts; falls back to 1 copy if it's missing or slow) and takes the
 most faces in any frame. The face boxes are also passed to `compose()` as
@@ -70,8 +84,7 @@ Guests unlock with a shared PIN (`BOOTH_PIN`), cached in `localStorage`. It can 
 digits, a word or a phrase: lock screens use a normal text keyboard (no autocorrect,
 no auto-caps) and trim the ends. The match is exact, case included (the server trims
 the ends of both sides too, so a secret pasted with a trailing newline still works).
-Settings (long-press top-right) set footer, countdown, anti-ghost gain,
-density, speed, and sounds per device, and can re-lock the booth.
+Settings (hold the gear) are per device and can re-lock the booth.
 
 Two different "share" actions:
 
@@ -97,9 +110,9 @@ it makes that session's archive upload jump the queue (`archive.js`
   (the record is deleted; the photos stay in the archive). `src/session-share.ts`.
 
 **Make another booth** (hosts; it grants access) passes the PIN peer to peer:
-the small phone-with-plus sticker at the top right (outside the camera, clear of
-the theme picker and the long-press strip; only when unlocked) or settings →
-Make another booth opens a sheet that says "This lets them use your booth
+**hold** the small phone-with-plus sticker at the camera's top-left (only when
+unlocked; a tap says "Hold to share the booth") or settings → Make another
+booth opens a sheet that says "This lets them use your booth
 (prints, photos)", shows the PIN in big type with Copy PIN, and two links, each
 as a QR code and a "Send link" button (share sheet → AirDrop / Messages;
 clipboard where `navigator.share` is missing). Both links contain the PIN
@@ -149,10 +162,12 @@ Storage (PHOTOS bucket, same prefix as the archive): `events/<slug>/event.json`,
 ### Testing
 
 ```sh
-npm test                 # unit + API (in-memory R2) + design lint
+npm test                 # unit + API (in-memory R2) + design lint + printer badge / icons
 npm run dev:e2e          # local booth + cprnt DO (PIN from .dev.vars: BOOTH_PIN=1234)
 npm run test:e2e         # Playwright: party → booth (fake camera) → 5 strips, QR decoded → print → album;
                          #   share.e2e: stage shape, make-another-booth PIN, share photo → /s/<token> → expiry
+                         #   redesign.e2e: gear tap/hold, printer badges + labels, Drawn/Classic, new settings
+                         #   (screenshots → ios/build/shots/redesign/web-*.png; e2e/icon-sheet.mjs renders all icons)
 ```
 
 ## Photo archive

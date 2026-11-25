@@ -74,4 +74,43 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(segs.first?.y0, 0); XCTAssertEqual(segs.last?.y1, H)
         for (a, b) in zip(segs, segs.dropFirst()) { XCTAssertEqual(a.y1, b.y0) }
     }
+
+    func testStartCopiesMatchesWeb() {
+        // public/copies.js startCopies (test/copies.test.mjs, same cases).
+        XCTAssertEqual(START_COPIES, 1); XCTAssertEqual(KID_MAX_COPIES, 3)
+        XCTAssertEqual(startCopies(nil), 1)
+        XCTAssertEqual(startCopies([2, 1]), 2)
+        XCTAssertEqual(startCopies([5]), 3)
+        XCTAssertEqual(startCopies([5], start: 1, max: 6), 5)
+        XCTAssertEqual(startCopies([1], start: 2, max: 3), 2)
+        XCTAssertEqual(startCopies([0], start: 4, max: 3), 3)
+        XCTAssertEqual(startCopies([9], start: 1, max: 99), 6)
+        XCTAssertEqual(kidMax(0), 1); XCTAssertEqual(kidMax(12), 6)
+    }
+
+    /// The camera badge: each printer problem maps to its own state + drawing (public/printer-state.js).
+    func testPrinterBadgeStates() throws {
+        func h(_ json: String) throws -> PrinterHealth { try JSONDecoder().decode(PrinterHealth.self, from: Data(json.utf8)) }
+        let ok = #""code":200,"text":"200 OK","paperOut":false,"paperLow":false,"coverOpen":false,"error":false"#
+        XCTAssertEqual(try h("{\(ok),\"online\":true,\"lastSeenSec\":5}").state, .ready)
+        XCTAssertEqual(try h("{\(ok),\"online\":false,\"lastSeenSec\":600}").state, .offline, "stale lastSeen = offline")
+        XCTAssertEqual(try h(#"{"code":null,"text":"","paperOut":false,"paperLow":false,"coverOpen":false,"error":false,"online":false,"lastSeenSec":null}"#).state, .offline, "never seen")
+        XCTAssertEqual(try h(#"{"paperOut":true,"coverOpen":false,"error":false}"#).state, .offline, "no online field (old server): offline")
+        XCTAssertEqual(PrinterHealth(paperOut: true, online: false).state, .offline, "offline wins: paper info is stale")
+        XCTAssertEqual(PrinterHealth(code: 410, paperOut: true, online: true).state, .paperOut)
+        XCTAssertEqual(PrinterHealth(code: 420, coverOpen: true, online: true).state, .coverOpen)
+        XCTAssertEqual(PrinterHealth(code: 520, error: true, online: true).state, .error)
+        XCTAssertEqual(PrinterHealth(code: 411, paperLow: true, online: true).state, .paperLow)
+        XCTAssertEqual(PrinterState.allCases.filter(\.needsAdult), [.offline, .paperOut, .coverOpen, .error])
+        XCTAssertEqual(Set(PrinterState.allCases.map(\.icon)).count, PrinterState.allCases.count, "one drawing per state")
+        XCTAssertEqual(Set([PrinterState.offline, .paperOut, .coverOpen, .error].map(\.emoji)).count, 4, "Classic emoji distinct")
+        // Adult labels.
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(identifier: "America/New_York")!
+        let now = ISO8601DateFormatter().date(from: "2026-11-24T19:30:00Z")!   // 2:30 pm New York
+        XCTAssertEqual(PrinterHealth(online: false, lastSeenSec: 960).hint(now: now, calendar: cal), "Printer offline · last seen 2:14 pm · Check its power & Wi-Fi")
+        XCTAssertEqual(PrinterHealth(online: false).hint(now: now, calendar: cal), "Printer offline · not seen yet · Check its power & Wi-Fi")
+        XCTAssertEqual(PrinterHealth(paperOut: true, online: true).hint(), "Out of paper")
+        XCTAssertEqual(PrinterHealth(coverOpen: true, online: true).hint(), "Cover open")
+        XCTAssertEqual(PrinterHealth(error: true, online: true).hint(), "Printer error — turn it off and on")
+    }
 }

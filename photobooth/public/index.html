@@ -56,6 +56,7 @@
     --shutter:clamp(96px, 22vmin, 190px);
     --gap:clamp(8px, 2vmin, 18px);
     --pick:clamp(64px, 11vmin, 84px);
+    --gear:clamp(44px, 7vmin, 60px);   /* adult corner stickers: 44 on phones, ~60 on iPads */
     --zigzag:
       conic-gradient(from -45deg at bottom, transparent, var(--ink) 1deg 89deg, transparent 90deg) bottom / var(--zz) 51% repeat-x,
       conic-gradient(from 135deg at top, transparent, var(--ink) 1deg 89deg, transparent 90deg) top / var(--zz) 51% repeat-x;
@@ -76,6 +77,14 @@
   .sticker.sq { border-radius:22px; }
   .sticker.fat { border-width:var(--line-fat); box-shadow:var(--shadow-lg); }
   .sticker.fat:active { transform:translate(7px,7px) scale(.95); box-shadow:var(--shadow-sm); }
+  .sticker[hidden] { display:none; }
+
+  /* ---------- drawn icons (icons.js): an SVG per [data-ic] slot, or the Classic emoji ---------- */
+  .ic { display:block; width:74%; height:74%; overflow:visible; pointer-events:none; }
+  .ics { display:flex; align-items:center; justify-content:center; width:100%; height:100%; pointer-events:none; }
+  .ics .ic { width:80%; height:80%; }
+  /* Drawn style: the tray tools are white stickers (the drawings carry the colour). */
+  .icons-drawn .tool { background:var(--white); }
 
   @keyframes pop-in { 0% { transform:scale(.2) rotate(-25deg); opacity:0 } 100% { transform:scale(1) rotate(var(--tilt,0deg)); opacity:1 } }
   @keyframes wiggle { 0%,86%,100% { transform:rotate(0) } 89% { transform:rotate(-9deg) scale(1.06) } 93% { transform:rotate(8deg) scale(1.06) } 97% { transform:rotate(-4deg) } }
@@ -99,7 +108,7 @@
   /* ---------- camera ---------- */
   /* Camera: grid that always fits the viewport. Portrait = themes / stage / tray;
      landscape = themes | stage | tray (like the iOS Camera app). */
-  #cam.on { display:grid; place-items:stretch; place-content:stretch; grid-template:"themes booth" auto "stage stage" minmax(0,1fr) "tray tray" auto / minmax(0,1fr) auto; gap:var(--gap);
+  #cam.on { display:grid; place-items:stretch; place-content:stretch; grid-template:"themes" auto "stage" minmax(0,1fr) "tray" auto / minmax(0,1fr); gap:var(--gap);
     padding:calc(env(safe-area-inset-top) + var(--gap)) calc(env(safe-area-inset-right) + var(--gap))
             calc(env(safe-area-inset-bottom) + var(--gap)) calc(env(safe-area-inset-left) + var(--gap)); }
   /* Centred when it fits, scrollable (from the first theme) when it doesn't: auto margins, not justify-content. */
@@ -119,11 +128,36 @@
     border:var(--line-fat) solid var(--ink); border-radius:clamp(20px, 4vmin, 34px); box-shadow:var(--shadow-lg); overflow:hidden; background:var(--ink);
     transition:width .3s var(--ease-pop); }
   #stage.kick { animation:shake .25s; }
-  /* Printer needs a human (paper out / cover open): wordless sticker. */
-  #paperBadge { position:absolute; left:var(--gap); bottom:var(--gap); z-index:2; width:calc(var(--tap) * 1.2); height:calc(var(--tap) * 1.2);
-    font-size:calc(var(--tap) * .7); background:var(--sun); --tilt:-8deg; animation:wiggle 1.6s infinite; }
-  #paperWait { position:relative; margin-top:22px; width:clamp(120px, 26vmin, 200px); height:clamp(120px, 26vmin, 200px);
-    font-size:clamp(48px, 11vmin, 90px); background:var(--sun); --tilt:6deg; animation:wiggle 1.6s infinite; }
+  /* Printer needs a grown-up (offline / out of paper / cover open / error): a wordless sun sticker,
+     one drawing per problem, slow wiggle. A tap shows the adult label (#adultHint). */
+  #printerBadge { position:absolute; left:var(--gap); bottom:var(--gap); z-index:2; width:calc(var(--tap) * 1.2); height:calc(var(--tap) * 1.2);
+    font-size:calc(var(--tap) * .7); border-radius:22px; background:var(--sun); --tilt:-8deg; animation:wiggle 4s infinite; }
+  #printerBadge .ic, #paperWait .ic { width:86%; height:86%; }
+  #paperWait { position:relative; margin-top:22px; width:clamp(120px, 26vmin, 200px); height:clamp(120px, 26vmin, 200px); border-radius:30px;
+    font-size:clamp(48px, 11vmin, 90px); background:var(--sun); --tilt:6deg; animation:wiggle 4s infinite; }
+  /* Adult corner stickers on the camera window: white (not candy, so they don't invite kids), small.
+     Press and hold (holdable()): a grape ring fills; a short tap shows a hint instead. */
+  .adult { position:absolute; z-index:4; top:calc(var(--gap) + 6px); width:var(--gear); height:var(--gear); padding:0; border-width:3px;
+    border-radius:30%; box-shadow:var(--shadow-sm); background:var(--white); touch-action:none; font-size:calc(var(--gear) * .5); }
+  #gearBtn { right:calc(var(--gap) + 6px); --tilt:6deg; }
+  #boothBtn { left:calc(var(--gap) + 6px); --tilt:-4deg; }
+  .holdring { position:absolute; left:-10px; top:-10px; width:calc(100% + 20px); height:calc(100% + 20px); rotate:-90deg; overflow:visible;
+    pointer-events:none; opacity:0; transition:opacity .15s; }
+  .holding .holdring { opacity:1; }
+  .holdring circle { fill:none; stroke-linecap:round; }
+  .holdring .track { stroke:color-mix(in srgb, var(--ink) 18%, transparent); stroke-width:8; }
+  .holdring .under { stroke:var(--ink); stroke-width:9; }
+  .holdring .arc { stroke:var(--grape); stroke-width:5; }
+  .nudge { animation:nudge .5s var(--ease-pop); }
+  @keyframes nudge { 20% { rotate:-16deg } 45% { rotate:13deg } 70% { rotate:-6deg } }
+  /* The adult label layer: ONE quiet pill, shown only in answer to an adult's tap/hold on the gear,
+     make-another-booth or the printer badge; gone after ~2.5 s or on any other touch. Lives outside
+     the kid screens and is empty at rest (design lint: "adult hint layer"). */
+  #adultHint { position:fixed; z-index:40; max-width:min(84vw, 360px); padding:6px 12px; border-radius:16px; border:3px solid var(--ink);
+    background:var(--white); box-shadow:var(--shadow-sm); font-family:var(--font-body); font-size:14px; font-weight:700; line-height:1.3;
+    pointer-events:none; opacity:0; transition:opacity .18s; }
+  #adultHint.on { opacity:1; }
+  #adultHint[hidden] { display:none; }
   #video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
   /* Like the iPhone Camera: the selfie *preview* is mirrored; captures, prints and saved photos are not. */
   #video.mirror { transform:scaleX(-1); }
@@ -137,24 +171,19 @@
   #tray { grid-area:tray; display:flex; align-items:center; justify-content:space-evenly; gap:var(--gap); z-index:3; padding-bottom:6px; }
   #shutter { width:var(--shutter); height:var(--shutter); font-size:calc(var(--shutter) * .5); background:var(--accent); }
   @media (orientation: landscape) {
-    #cam.on { grid-template:"themes stage booth" auto "themes stage tray" minmax(0,1fr) / auto minmax(0,1fr) auto; }
+    #cam.on { grid-template:"themes stage tray" minmax(0,1fr) / auto minmax(0,1fr) auto; }
     #themes { flex-direction:column; justify-content:flex-start; padding:6px 10px 6px 4px; }
     #themes > :first-child { margin-inline-start:0; margin-block-start:auto; } #themes > :last-child { margin-inline-end:0; margin-block-end:auto; }
     #tray { flex-direction:column; padding:0 8px 0 0; }
   }
-  #shutter span { animation:wiggle 3.2s infinite; display:block; }
+  #shutter > span { animation:wiggle 3.2s infinite; display:flex; align-items:center; justify-content:center; width:100%; height:100%; }
+  #shutter .ic { width:78%; height:78%; }
   #shutter:disabled { opacity:.45; }
   .tool { width:var(--tap); height:var(--tap); font-size:calc(var(--tap) * .46); background:var(--accent-2); }
   #mode { --tilt:-6deg; } #flip { --tilt:6deg; }
   .strip-ico { display:flex; flex-direction:column; gap:3px; padding:4px; background:var(--white); border:3px solid var(--ink); border-radius:5px; }
   .strip-ico b { display:block; width:18px; height:10px; background:var(--ink); border-radius:2px; }
   .strip-ico.one b { width:24px; height:24px; }
-  #hotspot { position:absolute; top:0; right:0; width:54px; height:20px; z-index:4; }
-  /* Make another booth (grown-ups): small, up in the corner with the settings hotspot, never on the camera.
-     The top margin keeps it below the 20px long-press strip. */
-  #boothBtn { grid-area:booth; align-self:start; justify-self:end; margin-top:16px; width:50px; height:50px; padding:6px;
-    border-radius:14px; border-width:3px; box-shadow:var(--shadow-sm); --tilt:4deg; background:var(--white); z-index:3; }
-  #boothBtn[hidden] { display:none; }
   .ico { display:block; width:100%; height:100%; overflow:visible; }
   .ico .paper { fill:var(--white); stroke:var(--ink); stroke-width:4; stroke-linejoin:round; }
   .ico .inkf { fill:var(--ink); }
@@ -200,6 +229,7 @@
     border-radius:18px; border:var(--line) solid var(--ink); background:var(--white); font-size:min(24vw, 120px); }
   #mineQR svg { display:block; width:100%; height:auto; }
   #mineQR .emoji { animation:bob 1.2s ease-in-out infinite; }
+  #mineQR .wait { display:flex; width:34%; height:34%; } #mineQR .wait .ic { width:100%; height:100%; }
   #mineFiles { background:var(--sky); --tilt:-4deg; }
 
   /* ---------- review ---------- */
@@ -227,6 +257,8 @@
   #nCopies { height:calc(var(--pick) * 1.08); padding:0 calc(var(--pick) * .22); gap:4px; border-radius:22px; --tilt:-2deg;
     font-family:var(--font-display); font-size:calc(var(--pick) * .62); }
   #nCopies .emoji { font-size:calc(var(--pick) * .56); }
+  #nCopies > [data-ic] { display:flex; width:calc(var(--pick) * .7); height:calc(var(--pick) * .7); align-items:center; justify-content:center; }
+  #nCopies > [data-ic] .ic { width:100%; height:100%; }
   #nCopies.tick { animation:bump .3s var(--ease-pop); }
   @keyframes bump { 40% { scale:1.22 } }
   @media (orientation: landscape) {
@@ -235,7 +267,7 @@
     #receipt { width:min(38vw, 330px); }
     #actions { gap:calc(var(--gap) * 2); }
   }
-  #printBtn span { display:block; animation:bob 1.2s ease-in-out infinite; }
+  #printBtn > span { display:flex; align-items:center; justify-content:center; width:100%; height:100%; animation:bob 1.2s ease-in-out infinite; }
 
   /* ---------- printing ---------- */
   #machine { position:relative; display:flex; flex-direction:column; align-items:center; }
@@ -244,13 +276,15 @@
   #printer::before { content:""; position:absolute; left:14%; right:14%; bottom:22px; height:18px; border-radius:99px; background:var(--ink); }
   #printer .led { position:absolute; top:22px; right:26px; width:22px; height:22px; border-radius:50%; background:var(--mint);
     border:var(--line) solid var(--ink); animation:blink .6s steps(2) infinite; }
-  #printer .face { position:absolute; top:16px; left:24px; font-size:42px; }
+  #printer .face { position:absolute; top:10px; left:18px; width:70px; height:70px; font-size:42px; display:flex; align-items:center; justify-content:center; }
+  #printer .face .ic { width:100%; height:100%; }
   #slip { position:relative; z-index:1; margin-top:-40px; width:min(54vw,216px); height:0; background:var(--white) top / 100% auto no-repeat;
     image-rendering:pixelated; border:var(--line) solid var(--ink); border-top:0; box-shadow:var(--shadow); rotate:1.5deg; }
   #printing.go #slip { animation:feed var(--feed-ms, 6s) linear forwards; }
   @keyframes feed { to { height:var(--slip-h, 300px); } }
   #queue { position:relative; margin-top:26px; display:flex; gap:10px; min-height:56px; }
   #queue .sticker { width:56px; height:56px; font-size:28px; background:var(--white); }
+  #queue .sticker.q { width:72px; height:72px; }
   #ticks { position:relative; margin-top:22px; display:flex; flex-wrap:wrap; justify-content:center; gap:8px; max-width:92vw; }
   #ticks .sticker { width:52px; height:52px; font-size:26px; border-radius:14px; opacity:.55; }
   #ticks .sticker:nth-child(odd) { --tilt:-5deg; } #ticks .sticker:nth-child(even) { --tilt:4deg; }
@@ -266,8 +300,51 @@
   @keyframes fall { to { translate:var(--dx) 112vh; rotate:900deg; } }
 
   /* ---------- settings (adult) ---------- */
-  #settings { z-index:20; overflow:auto; touch-action:pan-y; justify-content:flex-start; padding:36px 18px 60px; }
-  #settings h2 { font-family:var(--font-display); font-size:38px; margin:0 0 10px; font-weight:400; }
+  /* One scrolling sheet, ordered by how often you touch it: status + fixes, then Booth / Camera /
+     Strip (party-day knobs), Party & sharing, Printer tuning, Archive & server, Lock. */
+  #settings { z-index:20; overflow:auto; touch-action:pan-y; justify-content:flex-start; padding:calc(env(safe-area-inset-top) + 20px) 16px 60px; }
+  #settings > * { width:min(94vw, 560px); flex:none; }
+  .sbar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:6px; }
+  .sbar h2 { font-family:var(--font-display); font-size:34px; margin:0; font-weight:400; }
+  .status { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; margin-top:4px; }
+  .tile { background:var(--white); border:3px solid var(--ink); border-radius:16px; box-shadow:var(--shadow-sm); padding:8px 6px 10px;
+    text-align:center; font-size:13px; font-weight:800; line-height:1.2; }
+  .tile .ic { width:46px; height:46px; margin:0 auto 4px; }
+  .tile.bad { background:color-mix(in srgb, var(--tomato) 22%, var(--white)); }
+  .tile .sub { display:block; font-weight:600; opacity:.65; font-size:11.5px; margin-top:2px; }
+  .quick { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+  .btn { font-weight:800; font-size:14px; padding:8px 14px; border-radius:999px; border:3px solid var(--ink); background:var(--white);
+    box-shadow:var(--shadow-sm); white-space:nowrap; color:var(--ink); text-decoration:none; }
+  .btn:active { transform:translate(2px,2px); box-shadow:none; }
+  .quick .btn { font-size:13px; padding:7px 11px; }
+  .btn.go { background:var(--mint); } .btn.warm { background:var(--sun); } .btn.hot { background:var(--tomato); }
+  .grp { margin-top:18px; }
+  .gh { display:flex; align-items:center; gap:8px; font-weight:900; font-size:12.5px; letter-spacing:.08em; text-transform:uppercase; margin:0 4px 7px; opacity:.85; }
+  .gh .ic { width:24px; height:24px; }
+  .gh .emoji { font-size:18px; }
+  .list { background:var(--white); border:3px solid var(--ink); border-radius:18px; box-shadow:var(--shadow-sm); overflow:hidden; }
+  .it { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 14px; min-height:52px; font-size:15px; font-weight:700; }
+  .it + .it { border-top:2px solid color-mix(in srgb, var(--ink) 12%, transparent); }
+  .it .sub { display:block; font-size:12px; font-weight:600; opacity:.6; margin-top:2px; }
+  .it .r { display:flex; align-items:center; gap:8px; flex:0 0 auto; }
+  .it input[type=text] { font:inherit; font-weight:500; font-size:14px; padding:7px 10px; border-radius:12px; border:3px solid var(--ink);
+    background:var(--paper); color:var(--ink); width:min(50vw, 220px); -webkit-user-select:text; user-select:text; }
+  .tog { width:54px; height:32px; flex:none; border-radius:999px; border:3px solid var(--ink); background:color-mix(in srgb, var(--ink) 12%, var(--white)); position:relative; }
+  .tog::after { content:""; position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:50%; background:var(--white); border:2.5px solid var(--ink);
+    transition:left .15s var(--ease-pop); }
+  .tog[aria-checked=true] { background:var(--mint); }
+  .tog[aria-checked=true]::after { left:25px; }
+  .seg { display:flex; flex-wrap:wrap; border:3px solid var(--ink); border-radius:16px; overflow:hidden; flex:0 0 auto; }
+  .seg button { padding:6px 11px; font-size:13.5px; font-weight:800; display:flex; align-items:center; gap:5px; }
+  .seg button + button { border-left:2.5px solid var(--ink); }
+  .seg button.sel { background:var(--sun); }
+  .seg .ic { width:22px; height:22px; }
+  .stp { display:flex; align-items:center; border:3px solid var(--ink); border-radius:999px; overflow:hidden; font-weight:800; }
+  .stp button { width:38px; height:34px; font-size:18px; font-weight:900; }
+  .stp output { min-width:52px; text-align:center; font-family:var(--font-display); font-size:18px; padding:4px 6px; align-self:stretch; display:flex;
+    align-items:center; justify-content:center; border-left:2.5px solid var(--ink); border-right:2.5px solid var(--ink); background:var(--paper); }
+  .legend { font-size:12.5px; opacity:.7; margin-top:12px; }
+  .it[hidden] { display:none; }
   .card { width:min(94vw,440px); margin:9px 0; padding:14px 16px; border-radius:var(--r); background:var(--white);
     border:var(--line) solid var(--ink); box-shadow:var(--shadow); font-size:15px; font-weight:700; }
   .card input { display:block; width:100%; margin-top:8px; font:inherit; font-weight:500; padding:10px 12px; border-radius:14px;
@@ -316,25 +393,26 @@
 
 <section id="cam" class="screen">
   <div id="themes"></div>
-  <button id="boothBtn" class="sticker" aria-label="Make another booth" hidden><svg class="ico" viewBox="0 0 48 48" aria-hidden="true"><rect class="paper" x="9" y="3" width="24" height="41" rx="5"/><rect class="inkf" x="17" y="7" width="8" height="3" rx="1.5"/><circle class="inkf" cx="21" cy="39" r="2"/><circle class="plus" cx="35" cy="33" r="10"/><path class="plusbar" d="M35 27.5 V38.5 M29.5 33 H40.5"/></svg></button>
   <div id="stageBox"><div id="stage">
     <video id="video" playsinline autoplay muted></video>
     <canvas id="live" aria-hidden="true"></canvas>
     <div id="dots"></div>
-    <div id="paperBadge" class="sticker fat emoji" hidden>🧻</div>
+    <!-- Grown-up controls: press and hold (a short tap only shows a hint). Wordless at rest. -->
+    <button id="boothBtn" class="sticker adult emoji" aria-label="Make another booth (press and hold)" hidden><span class="ics" data-ic="makeBooth"></span></button>
+    <button id="gearBtn" class="sticker adult emoji" aria-label="Settings (press and hold)"><span class="ics" data-ic="gear"></span></button>
+    <button id="printerBadge" class="sticker fat emoji" aria-label="Printer needs help" hidden><span class="ics" data-ic="pOffline"></span></button>
   </div></div>
-  <div id="hotspot" aria-hidden="true"></div>
   <div id="tray">
-    <button id="mode" class="sticker sq tool" aria-label="One or three photos"><span class="strip-ico"><b></b><b></b><b></b></span></button>
-    <button id="shutter" class="sticker fat emoji" aria-label="Take photo"><span>📸</span></button>
-    <button id="flip" class="sticker sq tool emoji" aria-label="Switch camera">🔄</button>
+    <button id="mode" class="sticker sq tool emoji" aria-label="Three photos" data-ic="three"></button>
+    <button id="shutter" class="sticker fat emoji" aria-label="Take photo"><span data-ic="shutter"></span></button>
+    <button id="flip" class="sticker sq tool emoji" aria-label="Switch camera" data-ic="flip"></button>
   </div>
   <div id="ring"><div class="burst"></div><div class="dim"></div>
     <svg viewBox="0 0 220 220"><circle class="track" cx="110" cy="110" r="96"/><circle id="arc" class="arc" cx="110" cy="110" r="96"/></svg>
     <div id="num"></div>
   </div>
   <div id="flash"></div>
-  <div class="err" id="camErr"><div class="sticker fat face emoji">🙈</div><button class="sticker big again emoji" id="camRetry" aria-label="Try again">🔁</button></div>
+  <div class="err" id="camErr"><div class="sticker fat face emoji" data-ic="nocam"></div><button class="sticker big again emoji" id="camRetry" aria-label="Try again" data-ic="again"></button></div>
 </section>
 
 <section id="review" class="screen">
@@ -343,40 +421,40 @@
     <div id="copies">
       <div id="faces" class="emoji" aria-hidden="true"></div>
       <div class="pick">
-        <button class="sticker pm emoji" id="less" aria-label="Fewer copies">➖</button>
-        <div class="sticker sq" id="nCopies" role="status" aria-label="Copies"><span class="emoji">🧾</span>×<span id="copyN">1</span></div>
-        <button class="sticker pm emoji" id="more" aria-label="More copies">➕</button>
+        <button class="sticker pm emoji" id="less" aria-label="Fewer copies" data-ic="minus"></button>
+        <div class="sticker sq emoji" id="nCopies" role="status" aria-label="Copies"><span data-ic="receipt"></span><span class="x">×</span><span id="copyN">1</span></div>
+        <button class="sticker pm emoji" id="more" aria-label="More copies" data-ic="plus"></button>
       </div>
     </div>
     <div class="row">
-      <button class="sticker fat big no emoji" id="retake" aria-label="Retake">✖️</button>
-      <button class="sticker fat big yes emoji" id="printBtn" aria-label="Print"><span>🖨️</span></button>
-      <button class="sticker mineBtn" id="mineReview" aria-label="Share this photo"><svg class="ico" viewBox="0 0 48 48" aria-hidden="true"><rect class="paper" x="6" y="3" width="21" height="42" rx="3"/><rect class="inkf" x="10.5" y="8" width="12" height="8.5" rx="1.5"/><rect class="inkf" x="10.5" y="19.75" width="12" height="8.5" rx="1.5"/><rect class="inkf" x="10.5" y="31.5" width="12" height="8.5" rx="1.5"/><path class="halo" d="M22 28 L41 9 M30 8 H42 V20"/><path class="arrow" d="M22 28 L41 9 M30 8 H42 V20"/></svg></button>
+      <button class="sticker fat big no emoji" id="retake" aria-label="Retake" data-ic="retake"></button>
+      <button class="sticker fat big yes emoji" id="printBtn" aria-label="Print"><span data-ic="print"></span></button>
+      <button class="sticker mineBtn" id="mineReview" aria-label="Share this photo" data-ic="sharePhoto"></button>
     </div>
   </div>
 </section>
 
 <section id="printing" class="screen">
   <div id="machine">
-    <div id="printer"><span class="face emoji">😺</span><span class="led"></span></div>
+    <div id="printer"><span class="face emoji" data-ic="pPrinting"></span><span class="led"></span></div>
     <div id="slip"></div>
   </div>
   <div id="ticks" aria-hidden="true"></div>
   <div id="queue"></div>
-  <button class="sticker mineBtn" id="minePrinting" aria-label="Share this photo"><svg class="ico" viewBox="0 0 48 48" aria-hidden="true"><rect class="paper" x="6" y="3" width="21" height="42" rx="3"/><rect class="inkf" x="10.5" y="8" width="12" height="8.5" rx="1.5"/><rect class="inkf" x="10.5" y="19.75" width="12" height="8.5" rx="1.5"/><rect class="inkf" x="10.5" y="31.5" width="12" height="8.5" rx="1.5"/><path class="halo" d="M22 28 L41 9 M30 8 H42 V20"/><path class="arrow" d="M22 28 L41 9 M30 8 H42 V20"/></svg></button>
-  <div id="paperWait" class="sticker fat emoji" hidden>🧻❗</div>
+  <button class="sticker mineBtn" id="minePrinting" aria-label="Share this photo" data-ic="sharePhoto"></button>
+  <button id="paperWait" class="sticker fat emoji" aria-label="Printer needs help" hidden><span class="ics" data-ic="pOffline"></span></button>
   <div class="err" id="printErr"><div class="sticker fat face emoji">😕</div>
-    <div class="row"><button class="sticker big no emoji" id="printBack" aria-label="Back">✖️</button>
-      <button class="sticker big again emoji" id="printRetry" aria-label="Try again">🔁</button></div></div>
+    <div class="row"><button class="sticker big no emoji" id="printBack" aria-label="Back" data-ic="back"></button>
+      <button class="sticker big again emoji" id="printRetry" aria-label="Try again" data-ic="again"></button></div></div>
 </section>
-<div id="done"><div class="sticker emoji" id="doneFace">🎉</div></div>
+<div id="done"><div class="sticker emoji" id="doneFace"></div></div>
 <!-- Your photos (kid overlay, wordless): scan the QR with another phone (/s/<token>, 24 h), or 📲 send the files. Tap anywhere else to close. -->
 <div id="mine" hidden role="dialog" aria-label="Your photos">
   <div class="card2 sticker fat">
     <div id="mineQR" role="img" aria-label="Your photos QR code"></div>
     <div class="row">
       <button class="sticker big emoji" id="mineFiles" aria-label="Send photos">📲</button>
-      <button class="sticker big no emoji" id="mineClose" aria-label="Close">✖️</button>
+      <button class="sticker big no emoji" id="mineClose" aria-label="Close" data-ic="retake"></button>
     </div>
   </div>
 </div>
@@ -400,45 +478,79 @@
 </div>
 
 <section id="settings" class="screen">
-  <h2>Booth settings</h2>
-  <div class="card" id="sParty">Party<div class="hint" id="sPartyName">No party — photos go to the archive only.</div>
-    <div class="chips"><a class="pill" href="./party.html">🎉 Parties, signs &amp; albums</a><a class="pill" href="./gallery.html">🗂️ Archive</a></div></div>
-  <div class="card">Footer text (optional)<input type="text" id="sFooter" maxlength="40"></div>
-  <div class="card">Countdown seconds<input type="number" id="sCount" min="1" max="10"></div>
-  <div class="card">Anti-ghosting
-    <div class="chips" id="sGain"></div>
-    <div class="hint">Print the calibration strip, then pick the band whose greys under the black block match the greys to its right.</div>
+  <div class="sbar"><h2>Booth settings</h2><button class="btn go" id="sDone">Done</button></div>
+  <!-- Status first (is anything wrong?), then the fixes. Red tint = needs attention. -->
+  <div class="status" id="sTiles">
+    <div class="tile" id="tPrinter"><span data-ic="pReady"></span><span class="t">Printer</span><span class="sub">checking…</span></div>
+    <div class="tile" id="tPaper"><span data-ic="paperOk"></span><span class="t">Paper</span><span class="sub">—</span></div>
+    <div class="tile" id="tUpload"><span data-ic="upload"></span><span class="t">Uploads</span><span class="sub">—</span></div>
   </div>
-  <div class="card">Print density<div class="chips" id="sDensity"></div></div>
-  <div class="card">Print speed<div class="chips" id="sSpeed"></div><div class="hint">Slower = cooler head = less ghosting.</div></div>
-  <div class="card">Sounds<div class="chips" id="sSound"></div></div>
-  <div class="card">Live print preview<div class="chips" id="sLive"></div>
-    <div class="hint">The camera shows the photo in printer dots, cropped as it prints. Turns itself off for this visit if the device is too slow.</div></div>
-  <div class="card" id="sShare">Make another booth
-    <div class="hint">This lets them use your booth (prints, photos). Shows the PIN, plus links and codes for the web booth and the iPhone app (TestFlight); both links contain the PIN. Also on the camera screen: the small phone-with-plus at the top right.</div>
-    <div class="chips"><button class="pill go" id="sShareOpen">📱 Make another booth</button></div>
-  </div>
-  <div class="card chips">
-    <button class="pill" id="calib">🧪 Calibration</button>
-    <button class="pill" id="fs">⛶ Fullscreen</button>
-    <button class="pill" id="lockNow">🔒 Lock</button>
-    <button class="pill go" id="sDone">Done</button>
-  </div>
+  <div class="quick"><button class="btn warm" id="qNudge">Nudge printer</button><button class="btn" id="qUpload">Upload now</button><button class="btn" id="qTest">Print test strip</button></div>
   <div class="card" id="sStatus" hidden></div>
+
+  <div class="grp"><div class="gh"><span data-ic="shutter"></span>Booth</div><div class="list">
+    <div class="it">Icon style<span class="r"><span class="seg" id="sIcons"></span></span></div>
+    <div class="it"><span>Live print preview<span class="sub">camera shows the 1-bit print look (off for this visit if the device is too slow)</span></span><button class="tog" role="switch" id="sLive" aria-label="Live print preview"></button></div>
+    <div class="it">Sounds<button class="tog" role="switch" id="sSound" aria-label="Sounds"></button></div>
+    <div class="it"><span>Screen flash<span class="sub">white flash on capture</span></span><button class="tog" role="switch" id="sFlash" aria-label="Screen flash"></button></div>
+  </div></div>
+
+  <div class="grp"><div class="gh"><span data-ic="flip"></span>Camera</div><div class="list">
+    <div class="it">Start with<span class="r"><span class="seg" id="sCamera"></span></span></div>
+    <div class="it"><span>Mirror preview<span class="sub">selfie camera only; prints are never mirrored</span></span><button class="tog" role="switch" id="sMirror" aria-label="Mirror preview"></button></div>
+    <div class="it">Countdown<span class="r"><span class="stp" id="sCount"></span></span></div>
+    <div class="it"><span>Photos per strip<span class="sub">kids can switch</span></span><span class="r"><span class="seg" id="sShots"></span></span></div>
+  </div></div>
+
+  <div class="grp"><div class="gh"><span data-ic="receipt"></span>Strip &amp; copies</div><div class="list">
+    <div class="it"><span>Copies to start with<span class="sub">one per face, but at least this</span></span><span class="r"><span class="stp" id="sCopies"></span></span></div>
+    <div class="it"><span>Most copies a kid can pick<span class="sub">the printer takes 6 at most</span></span><span class="r"><span class="stp" id="sKidMax"></span></span></div>
+    <div class="it">Footer text<input type="text" id="sFooter" maxlength="40" placeholder="optional" aria-label="Footer text"></div>
+  </div></div>
+
+  <div class="grp"><div class="gh"><span data-ic="party"></span>Party &amp; sharing</div><div class="list">
+    <div class="it" id="sParty"><span>Party<span class="sub" id="sPartyName">No party — photos go to the archive only.</span></span><a class="btn" href="./party.html">Parties</a></div>
+    <div class="it"><span>QR on strips<span class="sub" id="sPartyQR">follows the party (set it on the party page)</span></span></div>
+    <div class="it" id="sShare"><span>Make another booth<span class="sub">this lets them use your booth (prints, photos): PIN + QR codes. Also: hold the phone-with-plus on the camera.</span></span><button class="btn go" id="sShareOpen">Open</button></div>
+    <div class="it"><span>Web booth link<span class="sub">opens unlocked in a browser (contains the PIN)</span></span><button class="btn" id="sSendWeb">Send</button></div>
+    <div class="it"><span>App join link<span class="sub">TestFlight; opens the app set up for this booth</span></span><button class="btn" id="sSendApp">Send</button></div>
+  </div></div>
+
+  <div class="grp"><div class="gh"><span data-ic="pReady"></span>Printer</div><div class="list">
+    <div class="it"><span>Status<span class="sub" id="sPrinterLine">checking…</span></span><button class="btn warm" id="sNudge">Nudge</button></div>
+    <div class="it"><span>Anti-ghosting<span class="sub">print the calibration strip, pick the band whose greys under the black block match the greys to its right</span></span><span class="r"><span class="seg" id="sGain"></span></span></div>
+    <div class="it">Darkness<span class="r"><span class="seg" id="sDensity"></span></span></div>
+    <div class="it"><span>Speed<span class="sub">slower = cooler head = less ghosting</span></span><span class="r"><span class="seg" id="sSpeed"></span></span></div>
+    <div class="it">Calibration strip<button class="btn" id="calib">Print</button></div>
+  </div></div>
+
+  <div class="grp"><div class="gh"><span data-ic="upload"></span>Archive &amp; server</div><div class="list">
+    <div class="it"><span>Upload queue<span class="sub" id="sQueue">—</span></span><button class="btn" id="sUpload">Upload now</button></div>
+    <div class="it"><span>Archive<span class="sub">every session, by day</span></span><a class="btn" href="./gallery.html">Open</a></div>
+    <div class="it">Fullscreen<button class="btn" id="fs">Go</button></div>
+  </div></div>
+
+  <div class="grp"><div class="gh"><span data-ic="gear"></span>Lock</div><div class="list">
+    <div class="it"><span>Lock booth now<span class="sub">forgets the saved PIN on this device</span></span><button class="btn hot" id="lockNow">Lock</button></div>
+  </div></div>
   <div class="card permhint" id="permHint2" hidden></div>
 </section>
+<!-- Adult label layer (outside every kid screen, empty at rest): see showHint(). -->
+<div id="adultHint" role="status" aria-live="polite" hidden></div>
 
 <script type="module">
 import { THEMES, compose, calibrationGray, layout as stripLayout, coverCrop } from "./frames.js";
 import { PRINT_WIDTH as W, luminance, packBits, toBase64 } from "./raster.js";
 import { play as playSound, unlockSounds } from "./sound.js";
 import { uprightRotation as orient } from "./orient.js";
-import { clampCopies, defaultCopies, maxFaces, MAX_COPIES } from "./copies.js";
+import { clampCopies, maxFaces, kidMax, startCopies, MAX_COPIES, START_COPIES, KID_MAX_COPIES } from "./copies.js";
 import { detectFaces, loadFaceDetector, rotateBoxes } from "./faces.js";
-import { archiveOriginals, archiveStrip, encodeOriginals, newSessionId, pause as pauseArchive, prioritize as prioritizeArchive, resume as resumeArchive, startArchive } from "./archive.js";
+import { archiveOriginals, archiveStrip, encodeOriginals, newSessionId, pause as pauseArchive, prioritize as prioritizeArchive, queueStats, resume as resumeArchive, startArchive, uploadNow } from "./archive.js";
 import { encodeBitPNG } from "./archive-codecs.js";
 import { qrSVG } from "./qr.js";
 import { appJoinLink, webBoothLink } from "./share.js";
+import { iconHTML, paintIcons } from "./icons.js";
+import { needsAdult, printerHint, printerState, STATE_ICON, statusWords } from "./printer-state.js";
 
 const $ = (id) => document.getElementById(id);
 const GAINS = [0, 0.1, 0.15, 0.25, 0.4];               // calibration bands A..E
@@ -465,7 +577,20 @@ const cfg = () => ({
   footer: S.get("footer", ""), count: Math.min(10, Math.max(1, S.get("count", 3))),
   gain: S.get("gain", 0.15), density: S.get("density", 3), speed: S.get("speed", 2), sound: S.get("sound", true),
   ticket: S.get("ticket", 0), live: S.get("live", true),
+  icons: S.get("icons", "drawn") === "classic" ? "classic" : "drawn",   // Icon style: Drawn (icons.js) / Classic (emoji)
+  flash: S.get("flash", true),                                          // white screen flash on capture
+  camera: S.get("camera", "user") === "environment" ? "environment" : "user",   // camera to start with
+  mirror: S.get("mirror", true),                                        // mirror the selfie preview (prints never are)
+  copiesStart: clampCopies(S.get("copiesStart", START_COPIES)),         // copies to start with (a floor under one-per-face)
+  copiesMax: kidMax(S.get("copiesMax", KID_MAX_COPIES)),                // most copies a kid can pick (hard cap MAX_COPIES)
 });
+/** Fill every icon slot in the chosen style (and the few built at runtime use iconHTML + this style). */
+function paint() {
+  const style = cfg().icons;
+  document.body.classList.toggle("icons-drawn", style === "drawn");
+  paintIcons(document, style);
+}
+const ic = (name, arg) => iconHTML(name, cfg().icons, arg);
 
 // ---------- active event (party / album), set from party.html ----------
 // The booth shoots "for" the active event: its themes, footer and the QR code
@@ -491,7 +616,7 @@ const qrURL = () => (party?.qr && party.share && session ? `${location.origin}/a
 // ---------- screens / api ----------
 function show(id) {
   for (const s of document.querySelectorAll(".screen")) s.classList.toggle("on", s.id === id);
-  $("share").hidden = true;
+  $("share").hidden = true; hideHint(); paint();
   if (id === "lock" || id === "settings" || id === "review") closeMine();   // "your photos" may stay up over printing → camera
 }
 async function api(path, opts = {}) {
@@ -550,15 +675,26 @@ async function cameraPermissionHint() {
 }
 cameraPermissionHint();
 
-// ---------- printer health (paper out / cover open) ----------
+// ---------- printer health (printer-state.js: offline / out of paper / cover open / error) ----------
+// The camera badge (and the printing screen's wait sticker) shows only when the printer needs a
+// grown-up: one drawing per problem. Tapping it shows the adult label (showHint).
+let lastPrinter = null;
+const STATE_LABEL = { offline: "Printer offline", paperOut: "Printer out of paper", cover: "Printer cover open", error: "Printer error" };
 function showPrinter(h) {
   if (!h) return;
-  const paper = !!h.paperOut, other = !!(h.coverOpen || h.error);
-  $("paperBadge").hidden = !(paper || other);
-  $("paperBadge").textContent = paper ? "🧻" : "🖨️";
-  $("paperWait").hidden = !(paper || other);
-  $("paperWait").textContent = paper ? "🧻❗" : "🖨️❗";
+  lastPrinter = h;
+  const state = printerState(h), on = needsAdult(state);
+  for (const id of ["printerBadge", "paperWait"]) {
+    const el = $(id);
+    el.hidden = !on;
+    if (!on) continue;
+    el.querySelector("[data-ic]").dataset.ic = STATE_ICON[state];
+    el.setAttribute("aria-label", STATE_LABEL[state]);
+  }
+  if (on) paint();
+  if ($("settings").classList.contains("on")) renderStatus();
 }
+for (const id of ["printerBadge", "paperWait"]) $(id).onclick = () => { if (lastPrinter) showHint($(id), printerHint(lastPrinter)); };
 // With MQTT the printer barely polls on its own, so its status (paper, cover)
 // goes stale. While the booth is actually in use, ask it to check in (an MQTT
 // nudge makes it poll, which refreshes the status) at most every 2 minutes.
@@ -579,6 +715,78 @@ async function refreshPrinter() {
 setInterval(() => { if ($("cam").classList.contains("on") && document.visibilityState === "visible") refreshPrinter(); }, 15000);
 setInterval(() => { if ($("cam").classList.contains("on") && document.visibilityState === "visible" && !busy) refreshEvent(); }, 60000);
 
+// ---------- adult labels + press-and-hold (grown-up controls on the kid screens) ----------
+// One quiet pill (#adultHint), only ever in answer to an adult's tap/hold on the gear, the
+// make-another-booth sticker or the printer badge: never on load, never because a state changed.
+// One at a time (a new one replaces the old), gone after HINT_MS or on any other touch.
+const HINT_MS = 2500;
+const HINTS = { keep: "Keep holding…", gear: "Hold to open settings", booth: "Hold to share the booth" };
+let hintT = null, hintFor = null;
+function showHint(anchor, text, ms = HINT_MS) {
+  const el = $("adultHint");
+  clearTimeout(hintT);
+  hintFor = anchor; el.textContent = text; el.hidden = false;
+  const r = anchor.getBoundingClientRect(), w = el.offsetWidth, h = el.offsetHeight, pad = 8;
+  // Beside the control, on the side with room; below it if it's at the very top.
+  const right = r.left + r.width / 2 > innerWidth / 2;
+  let x = right ? r.left - w - 12 : r.right + 12, y = r.top + r.height / 2 - h / 2;
+  if (x < pad || x + w > innerWidth - pad) { x = Math.min(innerWidth - w - pad, Math.max(pad, right ? r.right - w : r.left)); y = r.bottom + 14; }
+  if (y + h > innerHeight - pad) y = r.top - h - 14;
+  el.style.left = `${Math.round(x)}px`; el.style.top = `${Math.round(Math.max(pad, y))}px`;
+  requestAnimationFrame(() => el.classList.add("on"));
+  if (ms) hintT = setTimeout(hideHint, ms);
+}
+function hideHint() {
+  clearTimeout(hintT); hintFor = null;
+  const el = $("adultHint"); el.classList.remove("on");
+  hintT = setTimeout(() => { el.hidden = true; el.textContent = ""; }, 200);
+}
+// Any other touch dismisses the label.
+document.addEventListener("pointerdown", (e) => { if (hintFor && !hintFor.contains(e.target)) hideHint(); }, true);
+
+/**
+ * Press and hold `btn` for `ms` (a grape ring fills, "Keep holding…" beside it; a tick at 50%,
+ * a pop at full) → onDone. Let go early: the ring drains and nothing happens; a short tap
+ * shows `hint` for ~2.5 s and wiggles the button. Keyboard / switch activation (a click with no
+ * pointer) opens straight away: those are adults with assistive tech, not kids mashing.
+ */
+const RING_C = 2 * Math.PI * 27;
+function holdable(btn, { ms = 1200, hint, onDone }) {
+  btn.insertAdjacentHTML("beforeend", `<svg class="holdring" viewBox="0 0 62 62" aria-hidden="true"><circle class="track" cx="31" cy="31" r="27"/>` +
+    `<circle class="under" cx="31" cy="31" r="27"/><circle class="arc" cx="31" cy="31" r="27"/></svg>`);
+  const arcs = [...btn.querySelectorAll(".holdring .under, .holdring .arc")];
+  let t0 = 0, raf = 0, ticked = false, p = 0, pointer = false;
+  const set = (v) => { p = v; for (const a of arcs) a.style.strokeDasharray = `${RING_C * v} ${RING_C}`; btn.classList.toggle("holding", v > 0); };
+  set(0);
+  const loop = (now) => {
+    const v = Math.min(1, (now - t0) / ms);
+    set(v);
+    if (v >= 0.5 && !ticked) { ticked = true; buzz(10); }
+    if (v >= 1) { t0 = 0; buzz([20, 30, 40]); sfx.tap(); hideHint(); set(0); onDone(); return; }
+    raf = requestAnimationFrame(loop);
+  };
+  btn.addEventListener("pointerdown", (e) => {
+    if (e.button > 0) return;
+    e.preventDefault(); pointer = true;
+    try { btn.setPointerCapture(e.pointerId); } catch {}
+    t0 = performance.now(); ticked = false;
+    showHint(btn, HINTS.keep, 0);
+    cancelAnimationFrame(raf); raf = requestAnimationFrame(loop);
+  });
+  const release = () => {
+    if (!t0) return;
+    cancelAnimationFrame(raf);
+    const held = performance.now() - t0; t0 = 0;
+    const from = p, d0 = performance.now();   // drain
+    const drain = (now) => { const k = Math.min(1, (now - d0) / 250); set(from * (1 - k)); if (k < 1) raf = requestAnimationFrame(drain); };
+    raf = requestAnimationFrame(drain);
+    if (held < 450) { showHint(btn, hint); restart(btn, "nudge"); sfx.boop(); } else hideHint();
+  };
+  for (const ev of ["pointerup", "pointercancel", "lostpointercapture"]) btn.addEventListener(ev, release);
+  btn.addEventListener("contextmenu", (e) => e.preventDefault());
+  btn.addEventListener("click", (e) => { if (e.detail === 0 && !pointer) onDone(); pointer = false; });
+}
+
 // ---------- lock ----------
 $("lockForm").onsubmit = async (e) => {
   e.preventDefault();
@@ -589,11 +797,11 @@ $("lockForm").onsubmit = async (e) => {
 };
 
 // ---------- camera ----------
-let stream = null, facing = "user";
+let stream = null, facing = cfg().camera;
 let streamFacing = null;
 async function startCam() {
   show("cam"); $("camErr").classList.remove("on"); $("boothBtn").hidden = !cfg().pin;
-  applyTheme(); renderMode(); keepAwake(); refreshPrinter(); refreshEvent();
+  paint(); applyTheme(); renderMode(); keepAwake(); refreshPrinter(); refreshEvent(); applyMirror();
   // Reuse a live stream: every new getUserMedia can re-trigger Safari's prompt.
   if (stream && streamFacing === facing && stream.getVideoTracks().some((t) => t.readyState === "live")) return;
   stopCam();
@@ -602,20 +810,24 @@ async function startCam() {
       video: { facingMode: facing, width: { ideal: 1920 }, height: { ideal: 1440 } } });
     streamFacing = facing;
     $("video").srcObject = stream;
-    $("video").classList.toggle("mirror", facing === "user");
-    $("live").classList.toggle("mirror", facing === "user");
+    applyMirror();
     setTimeout(loadFaceDetector, 1500);   // lazy: after first paint + camera start
   } catch { sfx.boo(); $("camErr").classList.add("on"); }
 }
 function stopCam() { stream?.getTracks().forEach((t) => t.stop()); stream = null; }
+/** Settings → Mirror preview: the selfie preview only (captures and prints are never mirrored). */
+function applyMirror() {
+  const m = facing === "user" && cfg().mirror;
+  $("video").classList.toggle("mirror", m); $("live").classList.toggle("mirror", m);
+}
 $("camRetry").onclick = () => { sfx.tap(); startCam(); };
 $("flip").onclick = () => { sfx.boop(); facing = facing === "user" ? "environment" : "user"; startCam(); };
 $("mode").onclick = () => { sfx.boop(); S.set("shots", cfg().shots === 3 ? 1 : 3); renderMode(); };
 function renderMode() {
-  const one = cfg().shots === 1, ico = $("mode").firstElementChild;
-  ico.className = "strip-ico" + (one ? " one" : "");
-  ico.innerHTML = one ? "<b></b>" : "<b></b><b></b><b></b>";
-  renderDots(0);
+  const one = cfg().shots === 1;
+  $("mode").dataset.ic = one ? "one" : "three";
+  $("mode").setAttribute("aria-label", one ? "One photo" : "Three photos");
+  paint(); renderDots(0);
 }
 function renderDots(done) {
   const n = cfg().shots;
@@ -789,13 +1001,13 @@ $("shutter").onclick = async () => {
       frames.push(g.frame); full.push(g.full); rotations.push(0);
       if (i === 0) session = { id: newSessionId(), capturedAt: new Date().toISOString(), mirrored: false, full, sentRot: null, event: party?.slug ?? null };
       sfx.snap(); buzz(40); restart($("stage"), "kick");
-      $("flash").classList.add("pop"); await sleep(70); $("flash").classList.remove("pop");
+      if (c.flash) { $("flash").classList.add("pop"); await sleep(70); $("flash").classList.remove("pop"); }
       renderDots(i + 1);
       if (i < c.shots - 1) await sleep(700);
     }
     seed = (Math.random() * 2 ** 31) | 0;
     const shot = frames;
-    faceBoxes = null; setCopies(1, null);
+    faceBoxes = null; setCopies(startCopies(null, c.copiesStart, c.copiesMax), null);
     // Usually instant once the model is loaded; wait briefly so the copies
     // default (and compose's face boxes) are ready when review appears. A slow
     // detector still lands later: re-tone and re-default unless a kid already
@@ -805,7 +1017,7 @@ $("shutter").onclick = async () => {
       if (frames !== shot) return;
       faceBoxes = boxes; landed = true;
       const counts = boxes && boxes.map((b) => b.length);
-      if (!copiesTouched) setCopies(defaultCopies(counts), maxFaces(counts));
+      if (!copiesTouched) setCopies(startCopies(counts, cfg().copiesStart, cfg().copiesMax), maxFaces(counts));
     });
     await Promise.race([faces, sleep(1200)]);
     const early = landed;
@@ -863,7 +1075,7 @@ async function buildPreview() {
   $("receipt").querySelectorAll(".rot").forEach((b) => b.remove());
   layout.photos.forEach((p, i) => {
     const b = document.createElement("button");
-    b.className = "sticker rot emoji"; b.textContent = "↻"; b.setAttribute("aria-label", "Rotate photo");
+    b.className = "sticker rot emoji"; b.innerHTML = ic("rotate"); b.setAttribute("aria-label", "Rotate photo");
     b.style.top = `calc(${((p.y + p.h / 2) / layout.H) * 100}% - 26px)`;
     b.onclick = async () => { sfx.boop(); armIdle(); rotations[i] = (rotations[i] + 90) % 360; await buildPreview(); };
     $("receipt").appendChild(b);
@@ -874,10 +1086,11 @@ async function buildPreview() {
 let copies = 1, copiesTouched = false;
 function setCopies(n, faces) {
   const prev = copies;
-  copies = clampCopies(n);
+  const top = cfg().copiesMax;   // settings → most copies a kid can pick (≤ MAX_COPIES)
+  copies = Math.min(top, clampCopies(n));
   $("copyN").textContent = copies;
   $("nCopies").setAttribute("aria-label", `${copies} ${copies === 1 ? "copy" : "copies"}`);
-  $("less").classList.toggle("off", copies <= 1); $("more").classList.toggle("off", copies >= MAX_COPIES);
+  $("less").classList.toggle("off", copies <= 1); $("more").classList.toggle("off", copies >= top);
   if (copies !== prev) restart($("nCopies"), "tick");
   if (faces !== undefined) {
     copiesTouched = false;
@@ -887,7 +1100,7 @@ function setCopies(n, faces) {
 }
 function bump(d) {
   armIdle();
-  if (copies + d < 1 || copies + d > MAX_COPIES) { sfx.boo(); restart($("nCopies"), "tick"); return; }
+  if (copies + d < 1 || copies + d > Math.min(MAX_COPIES, cfg().copiesMax)) { sfx.boo(); restart($("nCopies"), "tick"); return; }
   copiesTouched = true; d > 0 ? sfx.tap() : sfx.boop(); setCopies(copies + d);
 }
 $("less").onclick = () => bump(-1);
@@ -915,7 +1128,7 @@ async function sendBits(bits, h, n = 1) {
 /** One 🧾 per copy: done ones turn mint, the one printing now bobs. */
 function renderTicks(n, done) {
   const el = $("ticks");
-  if (el.children.length !== (n > 1 ? n : 0)) el.innerHTML = n > 1 ? `<div class="sticker emoji">🧾</div>`.repeat(n) : "";
+  if (el.children.length !== (n > 1 ? n : 0)) el.innerHTML = n > 1 ? `<div class="sticker emoji">${ic("receipt")}</div>`.repeat(n) : "";
   [...el.children].forEach((t, i) => { t.classList.toggle("done", i < done); t.classList.toggle("now", i === done); });
 }
 
@@ -926,7 +1139,7 @@ async function printFlow() {
   slip.style.backgroundImage = `url(${$("preview").toDataURL()})`;
   slip.style.setProperty("--slip-h", `${Math.min(innerHeight * 0.55, (sw * lastBits.h) / W)}px`);
   restart($("printing"), "go"); sfx.whirr();
-  $("queue").innerHTML = "";
+  $("queue").innerHTML = ""; delete $("queue").dataset.k;
   const n = copies;
   renderTicks(n, 0);
   pauseArchive();   // the print request gets the Wi-Fi to itself
@@ -966,8 +1179,13 @@ async function printFlow() {
         const est = Math.min(n - 1, Math.floor((Date.now() - printingSince) / perCopyMs));
         if (est > shown) { shown = est; renderTicks(n, shown); sfx.whirr(); buzz(30); restart($("printing"), "go"); }
       }
-      $("queue").innerHTML = s.position > 1
-        ? `<div class="sticker emoji">⏳</div>` + `<div class="sticker emoji">🧾</div>`.repeat(Math.min(4, s.position - 1)) : "";
+      // In line: Drawn = one hourglass with the place-in-line number; Classic = ⏳ + a 🧾 per job ahead.
+      const ahead = s.position > 1 ? s.position - 1 : 0, qKey = ahead ? `${cfg().icons}:${ahead}` : "";
+      if ($("queue").dataset.k !== qKey) {
+        $("queue").dataset.k = qKey;
+        $("queue").innerHTML = !ahead ? "" : cfg().icons === "drawn" ? `<div class="sticker emoji q" role="img" aria-label="${ahead} ahead in line">${ic("queue", ahead)}</div>`
+          : `<div class="sticker emoji">⏳</div>` + `<div class="sticker emoji">🧾</div>`.repeat(Math.min(4, ahead));
+      }
       await sleep(1000);
     }
     printingNow = false; if (!$("mine").hidden) armMineClose();   // "your photos" stays ~30 s after the print
@@ -987,7 +1205,7 @@ $("printBack").onclick = () => { sfx.boop(); show("cam"); };
 
 function celebrate() {
   sfx.yay(); buzz([60, 40, 60, 40, 120]);
-  $("doneFace").textContent = ["🎉", "🥳", "🤩", "😻", "🦄"][Math.floor(Math.random() * 5)];
+  $("doneFace").innerHTML = cfg().icons === "drawn" ? ic("done") : ["🎉", "🥳", "🤩", "😻", "🦄"][Math.floor(Math.random() * 5)];
   restart($("done"), "on"); setTimeout(() => $("done").classList.remove("on"), 2200);
   const shapes = ["", "circle", "tri"];
   for (let i = 0; i < 48; i++) {
@@ -1038,7 +1256,7 @@ async function openMine() {
   prioritizeArchive(s.id);
   syncOriginals();            // queued already unless ↻ changed them
   mineFiles(s).catch(() => {});   // encode now, so 📲 opens the share sheet straight away
-  $("mineQR").innerHTML = `<span class="emoji">⏳</span>`;
+  $("mineQR").innerHTML = cfg().icons === "drawn" ? `<span class="emoji wait">${ic("wait")}</span>` : `<span class="emoji">⏳</span>`;
   $("mine").hidden = false;
   armMineClose();
   try {
@@ -1068,33 +1286,97 @@ $("mineFiles").onclick = async () => {
   }
 };
 
-// ---------- settings (long-press top-right corner) ----------
-let pressT;
-$("hotspot").addEventListener("pointerdown", () => { pressT = setTimeout(openSettings, 1500); });
-["pointerup", "pointerleave", "pointercancel"].forEach((ev) => $("hotspot").addEventListener(ev, () => clearTimeout(pressT)));
+// ---------- settings (press and hold the gear on the camera) ----------
+holdable($("gearBtn"), { hint: HINTS.gear, onDone: openSettings });
+holdable($("boothBtn"), { hint: HINTS.booth, onDone: () => openShare() });
 
-function chips(el, options, key) {
+/** Segmented control bound to a setting. options: [[value, label HTML]]. */
+function seg(el, options, key, after) {
   const cur = cfg()[key];
-  el.innerHTML = options.map(([v, label]) => `<button data-v='${JSON.stringify(v)}' class="${v === cur ? "sel" : ""}">${label}</button>`).join("");
-  for (const b of el.children) b.onclick = () => { S.set(key, JSON.parse(b.dataset.v)); chips(el, options, key); };
+  el.innerHTML = options.map(([v, label]) => `<button data-v='${JSON.stringify(v)}' class="${v === cur ? "sel" : ""}" aria-pressed="${v === cur}">${label}</button>`).join("");
+  for (const b of el.children) b.onclick = () => { S.set(key, JSON.parse(b.dataset.v)); seg(el, options, key, after); after?.(); };
+}
+/** On/off switch bound to a setting. */
+function tog(el, key, after) {
+  el.setAttribute("aria-checked", String(!!cfg()[key]));
+  el.onclick = () => { S.set(key, !cfg()[key]); tog(el, key, after); after?.(); };
+}
+/** − value + stepper bound to a setting (integers in lo..hi). */
+function stepper(el, key, lo, hi, fmt = String, after) {
+  const label = el.closest(".it")?.firstChild?.textContent?.trim() ?? key;
+  const v = Math.min(hi(), Math.max(lo(), cfg()[key]));
+  el.innerHTML = `<button aria-label="Less: ${label}">−</button><output aria-live="polite">${fmt(v)}</output><button aria-label="More: ${label}">+</button>`;
+  const [less, , more] = el.children;
+  less.onclick = () => { if (v > lo()) { S.set(key, v - 1); stepper(el, key, lo, hi, fmt, after); after?.(); } };
+  more.onclick = () => { if (v < hi()) { S.set(key, v + 1); stepper(el, key, lo, hi, fmt, after); after?.(); } };
 }
 function status(msg) { $("sStatus").hidden = !msg; $("sStatus").textContent = msg; }
-function openSettings() {
-  const c = cfg();
-  cameraPermissionHint();
-  $("sFooter").value = c.footer; $("sCount").value = c.count; status("");
-  $("sPartyName").textContent = party ? `Shooting for “${party.name}”${party.qr ? " · QR on strips" : ""}${party.footer ? " · footer: " + party.footer : ""}` : "No party — photos go to the archive only.";
-  refreshEvent();
-  chips($("sGain"), GAINS.map((g, i) => [g, `${String.fromCharCode(65 + i)} · ${g}`]), "gain");
-  chips($("sDensity"), [[5, "−2"], [4, "−1"], [3, "std"], [2, "+1"], [1, "+2"]], "density");
-  chips($("sSpeed"), [[0, "fast"], [1, "mid"], [2, "slow"]], "speed");
-  chips($("sSound"), [[true, "on"], [false, "off"]], "sound");
-  chips($("sLive"), [[true, "on"], [false, "off"]], "live");
-  show("settings");
+const kb = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.round(n / 1024)} KB`);
+/** The status strip (printer · paper · uploads) and the printer / queue lines further down. */
+async function renderStatus() {
+  const h = lastPrinter, w = statusWords(h), state = printerState(h);
+  const tile = (id, icon, [t, sub], bad) => {
+    const el = $(id); el.classList.toggle("bad", !!bad);
+    el.querySelector("[data-ic]").dataset.ic = icon; el.querySelector(".t").textContent = t; el.querySelector(".sub").textContent = sub;
+  };
+  tile("tPrinter", state === "offline" ? "pOffline" : state === "error" ? "pError" : "pReady", w.printer, state === "offline" || state === "error");
+  tile("tPaper", state === "offline" ? "paperOk" : h?.paperOut ? "pPaperOut" : h?.coverOpen ? "pCover" : h?.paperLow ? "pPaperLow" : "paperOk", w.paper, state !== "offline" && h && (h.paperOut || h.coverOpen));
+  $("sPrinterLine").textContent = !h ? "checking…" : w.stale ? printerHint(h) : `${w.printer[0]} · ${w.paper[0].toLowerCase()}${h.text ? " · " + h.text : ""}`;
+  const q = await queueStats();
+  tile("tUpload", "upload", q.sessions ? [`${q.sessions} waiting`, q.retrying ? "retrying" : "to upload"] : ["All uploaded", "archive"], q.retrying);
+  $("sQueue").textContent = q.sessions ? `${q.sessions} session${q.sessions === 1 ? "" : "s"} · ${kb(q.bytes)}${q.retrying ? " · retrying" : ""}` : "nothing waiting";
+  paint();
 }
+function renderSettings() {
+  const c = cfg();
+  const drawnLbl = (name, word) => `${iconHTML(name, "drawn")}${word}`;
+  seg($("sIcons"), [["drawn", drawnLbl("shutter", "Drawn")], ["classic", `<span class="emoji">📸</span>Classic`]], "icons", () => { paint(); renderSettings(); });
+  tog($("sLive"), "live"); tog($("sSound"), "sound"); tog($("sFlash"), "flash");
+  seg($("sCamera"), [["user", "Front"], ["environment", "Back"]], "camera", () => { facing = cfg().camera; });
+  tog($("sMirror"), "mirror");
+  stepper($("sCount"), "count", () => 1, () => 10, (v) => `${v} s`);
+  seg($("sShots"), [[1, "1"], [3, "3"]], "shots");
+  stepper($("sKidMax"), "copiesMax", () => 1, () => MAX_COPIES, String, () => renderSettings());
+  stepper($("sCopies"), "copiesStart", () => 1, () => cfg().copiesMax);
+  if (c.copiesStart > c.copiesMax) S.set("copiesStart", c.copiesMax);
+  $("sPartyName").textContent = party ? `Shooting for “${party.name}”${party.qr ? " · QR on strips" : ""}${party.footer ? " · footer: " + party.footer : ""}` : "No party — photos go to the archive only.";
+  $("sPartyQR").textContent = party ? (party.qr ? "on, from the party: links each guest to their photos" : "off for this party (set it on the party page)") : "only with a party (set it on the party page)";
+  $("sShare").hidden = !c.pin;
+  seg($("sGain"), GAINS.map((g, i) => [g, String.fromCharCode(65 + i)]), "gain");
+  seg($("sDensity"), [[5, "−2"], [4, "−1"], [3, "std"], [2, "+1"], [1, "+2"]], "density");
+  seg($("sSpeed"), [[0, "fast"], [1, "mid"], [2, "slow"]], "speed");
+  paint();
+}
+function openSettings() {
+  cameraPermissionHint();
+  $("sFooter").value = cfg().footer; status("");
+  renderSettings(); show("settings"); renderStatus();
+  refreshEvent().then(() => { if ($("settings").classList.contains("on")) renderSettings(); });
+  api("/api/printer").then(showPrinter, () => {});
+}
+$("sFooter").oninput = () => S.set("footer", $("sFooter").value.trim());
+async function nudgePrinter(btn) {
+  btn.disabled = true; status("Asking the printer to check in…");
+  try {
+    await api("/api/nudge", { method: "POST" });
+    await sleep(3000);
+    showPrinter(await api("/api/printer"));
+    status(printerState(lastPrinter) === "offline" ? "No answer yet. Check the printer's power and Wi-Fi." : "The printer checked in.");
+  } catch (e) { status("Failed: " + e.message); }
+  btn.disabled = false;
+}
+$("qNudge").onclick = () => nudgePrinter($("qNudge"));
+$("sNudge").onclick = () => nudgePrinter($("sNudge"));
+async function uploadAll() { status("Uploading…"); await uploadNow(); await renderStatus(); const q = await queueStats(); status(q.sessions ? `${q.sessions} still waiting (will keep retrying).` : "Everything is uploaded."); }
+$("qUpload").onclick = uploadAll;
+$("sUpload").onclick = uploadAll;
+$("qTest").onclick = () => $("calib").click();
 // Share booth: the PIN goes peer to peer (share sheet → AirDrop / Messages, else the clipboard, or a QR).
 const shareLinks = () => ({ web: webBoothLink(location.origin, cfg().pin), app: appJoinLink(location.origin, cfg().pin) });
-function shareMsg(msg) { $("shareStatus").hidden = !msg; $("shareStatus").textContent = msg; }
+function shareMsg(msg) {
+  $("shareStatus").hidden = !msg; $("shareStatus").textContent = msg;
+  if ($("share").hidden && $("settings").classList.contains("on")) status(msg);   // settings → Send
+}
 function openShare() {
   if (!cfg().pin) return;
   const { web, app } = shareLinks();
@@ -1119,11 +1401,12 @@ async function shareLink(url, title, text) {
 $("shareWeb").onclick = () => shareLink(shareLinks().web, "Photo booth", "Open the photo booth (already unlocked)");
 $("shareApp").onclick = () => shareLink(shareLinks().app, "Photo Booth app",
   "Get the Photo Booth app (TestFlight). After it's installed, tap this link again to set it up.");
-$("boothBtn").onclick = () => { sfx.tap(); openShare(); };
 $("sShareOpen").onclick = openShare;
+$("sSendWeb").onclick = () => shareLink(shareLinks().web, "Photo booth", "Open the photo booth (already unlocked)");
+$("sSendApp").onclick = () => shareLink(shareLinks().app, "Photo Booth app", "Get the Photo Booth app (TestFlight). After it's installed, tap this link again to set it up.");
 $("shareClose").onclick = closeShare;
 $("share").onclick = (e) => { if (e.target === $("share")) closeShare(); };
-$("sDone").onclick = () => { S.set("footer", $("sFooter").value.trim()); S.set("count", +$("sCount").value || 3); startCam(); };
+$("sDone").onclick = () => { S.set("footer", $("sFooter").value.trim()); hideHint(); paint(); startCam(); };
 $("lockNow").onclick = () => { S.set("pin"); stopCam(); show("lock"); };
 $("fs").onclick = () => document.documentElement.requestFullscreen?.().catch(() => {});
 $("calib").onclick = async () => {
@@ -1174,6 +1457,7 @@ unzoom(); window.visualViewport?.addEventListener("resize", unzoom);
   if (hp) { S.set("pin", hp.trim()); history.replaceState(null, "", location.pathname); }
 }
 startArchive(() => cfg().pin);
+paint();
 if (cfg().pin) api("/api/unlock", { method: "POST" }).then(startCam, () => show("lock"));
 else show("lock");
 </script>

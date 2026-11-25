@@ -10,6 +10,7 @@ const gallery = readFileSync(new URL("../public/gallery.html", import.meta.url),
 const party = readFileSync(new URL("../public/party.html", import.meta.url), "utf8");
 const album = readFileSync(new URL("../public/album.html", import.meta.url), "utf8");
 const mine = readFileSync(new URL("../public/mine.html", import.meta.url), "utf8");
+const icons = readFileSync(new URL("../public/icons.js", import.meta.url), "utf8");
 const styleOf = (doc) => doc.match(/<style>([\s\S]*?)<\/style>/)[1];
 // Token / shadow / font / motion rules apply to every page; the no-words rules only to kid screens.
 const SHEETS = { "index.html": styleOf(html), "gallery.html": styleOf(gallery), "party.html": styleOf(party), "album.html": styleOf(album), "mine.html": styleOf(mine) };
@@ -96,6 +97,45 @@ test("every kid button has an aria-label", () => {
   assert.match(html, /\$\{v\.icon\}<\/button>/);
   assert.match(html, /<button class="sticker emoji [^`]*aria-label=/, "theme buttons get aria-label");
   assert.match(html, /b\.setAttribute\("aria-label", "Rotate photo"\)/, "rotate buttons get aria-label");
+});
+
+// The adult hint layer: the one sanctioned way words reach a kid screen. A small label for
+// grown-ups, shown only in answer to a tap/hold on an adult control (gear, make another booth,
+// printer badge), never at rest. See DESIGN.md "Adult labels".
+test("adult hint layer: empty at rest, outside kid screens, only from taps, short-lived", () => {
+  const tags = html.match(/<div id="adultHint"[^>]*>([\s\S]*?)<\/div>/g) ?? [];
+  assert.equal(tags.length, 1, "exactly one #adultHint layer");
+  const m = tags[0].match(/<div id="adultHint"([^>]*)>([\s\S]*?)<\/div>/);
+  assert.match(m[1], /\bhidden\b/, "#adultHint starts hidden");
+  assert.match(m[1], /role="status"/, "#adultHint is announced (role=status)");
+  assert.equal(m[2].trim(), "", "#adultHint is empty in the markup");
+  for (const id of KID_SCREENS) assert.ok(!screen(id).includes('id="adultHint"'), `#adultHint is not inside #${id}`);
+  // Words come from one allow-list (HINTS) or the printer label, nothing ad hoc.
+  const script = html.slice(html.indexOf('<script type="module">'));
+  const calls = [...script.matchAll(/showHint\(([^;]*?)\)\s*[;}]/g)].map((c) => c[1]).filter((a) => !/^anchor, text/.test(a));
+  assert.ok(calls.length >= 3, "gear, make-another-booth and printer badge use showHint");
+  for (const a of calls) assert.match(a, /,\s*(HINTS\.\w+|printerHint\(.*\)|hint)\s*(,\s*0)?\s*$/, `showHint text must be HINTS.* or printerHint(): showHint(${a})`);
+  const holds = [...script.matchAll(/holdable\(\$\("\w+"\), \{([^}]*)\}/g)].map((h) => h[1]);
+  assert.ok(holds.length >= 2, "gear + make-another-booth are press-and-hold");
+  for (const h of holds) assert.match(h, /hint: HINTS\.\w+/, `holdable hint comes from HINTS: ${h}`);
+  // Only from interaction: inside holdable() (pointer handlers) or an onclick handler, never on load or on a state change.
+  const hold = script.slice(script.indexOf("function holdable("), script.indexOf("\n}\n", script.indexOf("function holdable(")));
+  for (const line of script.split("\n").filter((l) => /showHint\(/.test(l) && !/function showHint/.test(l))) {
+    assert.ok(hold.includes(line) || /\.onclick\s*=/.test(line), `showHint only from a tap/hold handler: ${line.trim()}`);
+  }
+  const ms = +(script.match(/const HINT_MS = (\d+);/) ?? [])[1];
+  assert.ok(ms > 0 && ms <= 4000, `labels fade within 4 s (HINT_MS = ${ms})`);
+  const css = SHEETS["index.html"].match(/#adultHint \{([^}]*)\}/)[1];
+  assert.ok(!/animation:/.test(css), "#adultHint has no animation beyond its fade");
+  assert.match(css, /pointer-events:none/, "#adultHint never blocks a kid's tap");
+});
+
+test("drawn icons paint only token colours", () => {
+  const root = SHEETS["index.html"].match(/:root\s*\{([^}]*)\}/)[1];
+  const tokens = new Set([...root.matchAll(/#[0-9a-f]{6}\b/gi)].map((m) => m[0].toUpperCase()));
+  const bad = [...icons.matchAll(/#[0-9a-f]{3,8}\b/gi)].map((m) => m[0].toUpperCase()).filter((c) => !tokens.has(c));
+  assert.deepEqual(bad, [], "icons.js colours outside the :root tokens");
+  assert.ok(/<script[^>]*>[\s\S]*from "\.\/icons\.js"/.test(html), "index.html uses the shared icon module");
 });
 
 test("print art is ink only (#000 / #fff)", () => {

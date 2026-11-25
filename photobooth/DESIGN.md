@@ -6,7 +6,9 @@ It should feel like a **toy**, not an app. If a screen could ship in a banking a
 ## Principles
 
 1. **No words for kids.** Camera, review, printing and done screens use only
-   emoji, shapes and numerals. Words live in `aria-label` and adult settings.
+   drawn icons (or Classic emoji), shapes and numerals. Words live in
+   `aria-label`, adult settings, and the adult label layer (below), which is
+   empty at rest.
 2. **Everything is a sticker.** Thick ink outline, hard offset shadow (no blur),
    slight tilt. Stack stickers so they overlap a little.
 3. **Press = squish.** Buttons drop into their shadow when pressed
@@ -36,6 +38,44 @@ It should feel like a **toy**, not an app. If a screen could ship in a banking a
 
 Tap targets for kids are at least **72px**, and the shutter is at least **140px**.
 
+## Drawn icons (`public/icons.js`, `ios/App/Icons.swift`)
+
+Every UI icon on the kid screens is a drawn sticker from one shared module:
+inline SVG in a 100×100 box, thick ink outline, a hard 4-unit ink shadow
+(an SVG filter, no blur), candy fills, Lilita numerals. iOS mirrors the same
+geometry function by function in SwiftUI `Canvas`. Source of truth: the
+approved booth sketch. Settings → **Icon style: Drawn / Classic** (Classic =
+the emoji the booth used before). Theme-picker icons stay emoji.
+
+The set: shutter, flip, 1 / 3 photos, no camera, gear, make another booth
+(phone +), share this photo (strip + arrow), waiting, in line #N, retake,
+print, rotate, copies / minus / plus, try again, back (an arrow, no longer ✖️),
+done, and the printer: ready, printing, offline (sleeping, unplugged from the
+wall; simplified to read at 44 px), out of paper (empty dashed roll), cover
+open (lid up), error (X eyes + smoke), paper low (settings only).
+
+## Grown-up controls on kid screens
+
+- **Gear** (settings) and **make another booth**: small white stickers in the
+  camera window's top corners (44 px phones, ~60 px iPads). **Press and hold
+  1.2 s**: a grape ring fills, "Keep holding…" shows beside it, a haptic tick at
+  50 % and a pop at full. Let go early and the ring drains. A short tap shows
+  "Hold to open settings" / "Hold to share the booth" and wiggles.
+- **Printer badge**: a sun sticker, bottom-left of the camera, with a slow
+  wiggle, only when the printer needs a grown-up (offline, out of paper, cover
+  open, error), one drawing each. A tap shows one line: "Printer offline · last
+  seen 2:14 pm · Check its power & Wi-Fi", "Out of paper", "Cover open",
+  "Printer error — turn it off and on".
+
+### Adult labels (the one way words reach a kid screen)
+
+One quiet pill (`#adultHint` on the web, `AdultHint` on iOS), shown **only in
+answer to an adult's tap or hold on one of those three controls**: never on
+load, never because a state changed, never auto-cycling. One at a time (a new
+one replaces the old), a short fade only, gone after ~2.5 s or on any other
+touch. Not on flip / mode or other kid controls. The strings live in one place
+(`HINTS` + `printerHint()`).
+
 ## Print themes (`public/frames.js`)
 
 Every strip has photos in fat outlined frames with a black offset block behind
@@ -52,6 +92,12 @@ halftone · 🦖 footprints + grass · 🚀 orbits + starfield · 📷 bold (stu
 - `box-shadow` only via `var(--shadow*)`
 - `font-family` only via `var(--font-*)`
 - kid screens have no Latin letters in visible text, and every kid `<button>` has an `aria-label`
+- **adult hint layer**: exactly one `#adultHint`, `hidden`, empty in the markup, `role="status"`, outside
+  every kid screen; `showHint()` text comes only from `HINTS.*` or `printerHint()`; it is called only from
+  `holdable()`'s pointer handlers or an `onclick` (never on load / state change); `HINT_MS` ≤ 4 s; its CSS
+  has no animation (fade only) and `pointer-events:none`. This is how the "no words" rule allows labels
+  without being weakened: words may appear only through this layer, only on interaction.
+- drawn icons (`icons.js`) paint only the `:root` token colours
 - print art in `frames.js` only paints `#000` / `#fff`
 - one-shot animations ≤ 600 ms (ambient loops listed in `AMBIENT`)
 - the colour / shadow / font / motion rules also cover the adult `gallery.html`

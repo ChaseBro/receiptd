@@ -136,7 +136,7 @@ struct LiveDots: UIViewRepresentable {
     func updateUIView(_ v: UIView, context: Context) {
         v.isHidden = !Settings().livePreview || camera.liveFallback
         v.isAccessibilityElement = !v.isHidden
-        v.transform = camera.facing == .front ? CGAffineTransform(scaleX: -1, y: 1) : .identity   // selfie: mirrored, like the video
+        v.transform = camera.mirrored ? CGAffineTransform(scaleX: -1, y: 1) : .identity   // selfie: mirrored, like the video
     }
 
     func makeCoordinator() -> LivePreview { camera.live }

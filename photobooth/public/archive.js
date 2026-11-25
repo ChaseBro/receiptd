@@ -232,6 +232,20 @@ export async function flush() {
   }
 }
 
+/** Settings status strip: sessions waiting, their bytes, and whether any are backing off. */
+export async function queueStats() {
+  try {
+    const all = await qAll();
+    return { sessions: all.length, bytes: all.reduce((n, r) => n + (r.bytes ?? 0), 0), retrying: all.some((r) => r.tries > 0) };
+  } catch { return { sessions: 0, bytes: 0, retrying: false }; }
+}
+
+/** Settings → Upload now: clear every backoff and upload right away. */
+export async function uploadNow() {
+  try { for (const r of await qAll()) if (r.nextAt || r.tries) { r.nextAt = 0; r.tries = 0; await qPut(r); } } catch {}
+  await flush();
+}
+
 /** Drop files that were uploaded (unless replaced meanwhile); delete the record once nothing's left. */
 async function markSent(id, sentRevs, metaRev) {
   const rec = await qGet(id);

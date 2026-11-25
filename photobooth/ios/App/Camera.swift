@@ -24,6 +24,9 @@ final class BoothCamera: NSObject, ObservableObject, AVCaptureVideoDataOutputSam
     @Published var portraitFrames = false
     /// The photo slot's aspect (width / height) for the current frame shape.
     var slotAspect: CGFloat { portraitFrames ? 4.0 / 5 : 4.0 / 3 }
+    /// The on-screen selfie preview is mirrored, like the Camera app (settings → Mirror preview).
+    /// Captures, prints and the archive never are.
+    var mirrored: Bool { facing == .front && Settings().mirror }
 
     private let output = AVCaptureVideoDataOutput()
     private let queue = DispatchQueue(label: "booth.camera")
@@ -182,7 +185,7 @@ struct CameraPreview: UIViewRepresentable {
 
     #if targetEnvironment(simulator)
     func makeUIView(context: Context) -> UIImageView { let v = UIImageView(); v.contentMode = .scaleAspectFill; v.clipsToBounds = true; return v }
-    func updateUIView(_ v: UIImageView, context: Context) { v.image = camera.fake.map { UIImage(cgImage: $0) }; v.transform = camera.facing == .front ? CGAffineTransform(scaleX: -1, y: 1) : .identity }
+    func updateUIView(_ v: UIImageView, context: Context) { v.image = camera.fake.map { UIImage(cgImage: $0) }; v.transform = camera.mirrored ? CGAffineTransform(scaleX: -1, y: 1) : .identity }
     #else
     func makeUIView(context: Context) -> PreviewView {
         let v = PreviewView()
@@ -195,7 +198,7 @@ struct CameraPreview: UIViewRepresentable {
     func updateUIView(_ v: PreviewView, context: Context) {
         if let c = v.preview.connection, c.isVideoMirroringSupported {
             c.automaticallyAdjustsVideoMirroring = false
-            c.isVideoMirrored = camera.facing == .front
+            c.isVideoMirrored = camera.mirrored
         }
     }
     #endif

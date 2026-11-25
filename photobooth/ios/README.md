@@ -11,8 +11,14 @@ face, found with Vision), and printing via `POST /api/print` + `/api/jobs/:id`
 the active party (`/api/events/active`: its frames, its footer, a QR on each
 strip that links to that guest's album page) and runs the background archive
 upload (`POST /api/archive`: originals, then the printed `strip.png`). The kid
-screens use stickers, not words. Long-press the top-right corner for 1.5 s to
-open the adult settings.
+screens use drawn sticker icons (`App/Icons.swift`, the same drawings as
+`public/icons.js`; settings → Icon style: Drawn / Classic emoji), not words.
+Press and hold the small gear at the camera's top-right for 1.2 s to open the
+adult settings (a filling ring, "Keep holding…", a haptic tick at 50 %; a tap
+only shows "Hold to open settings"). The printer badge (bottom-left of the
+camera, only when the printer needs a grown-up) maps `PrinterHealth.state`
+(BoothCore: offline / out of paper / cover open / error) to one drawing each; a
+tap shows its one-line adult label. See ../DESIGN.md "Grown-up controls".
 
 ```
 App/          SwiftUI screens, camera (AVFoundation), faces (Vision), sounds
@@ -100,9 +106,9 @@ strip + originals as images in a UIActivityViewController: AirDrop, Messages,
 Save), ✖️. It stays until tapped away or ~30 s after the print. The session's
 archive upload jumps the queue (`ArchiveQueue.prioritize`).
 
-**Make another booth** (hosts): the small phone-with-plus sticker at the end of
-the top bar (left of the 90 pt long-press corner; top of the tray column in
-landscape), and settings → Make another booth. The sheet says "This lets them use
+**Make another booth** (hosts): hold the small phone-with-plus sticker at the
+camera window's top-left (a tap only says "Hold to share the booth"), or
+settings → Party & sharing. The sheet says "This lets them use
 your booth (prints, photos)", shows the PIN in big type with Copy PIN, and two
 links, each as a big QR code and a share-sheet button. Both carry the PIN
 (`BoothLinks` in `BoothCore/Share.swift`, mirrored by `public/share.js`):
@@ -130,7 +136,10 @@ cd ios && xcodebuild test -project PhotoBooth.xcodeproj -scheme PhotoBoothUITest
   -destination 'platform=iOS Simulator,name=iPad Air 11-inch (M4)'
 ```
 
-`testUnlockShootReviewPrint` ignores any bundled PIN and unlocks the booth. It checks that the party narrows the frames, then
+`testGearTapHintsHoldOpens` (tap → hint, settings stay shut; hold → settings),
+`testPrinterOfflineBadgeAndLabel` (the local booth has no printer, so it's offline)
+and `testClassicIcons` write screenshots to `$BOOTH_SHOTS` (pass it as
+`TEST_RUNNER_BOOTH_SHOTS=…` to xcodebuild). `testUnlockShootReviewPrint` ignores any bundled PIN and unlocks the booth. It checks that the party narrows the frames, then
 shoots 3 photos. It reviews, bumps copies and prints. Then check
 `/api/photos?day=…`: the session should have `orig-1..3.jpg` and `strip.png`,
 with `printed: true`, `copies: 2` and `event: <party>`. The QR on the strip
