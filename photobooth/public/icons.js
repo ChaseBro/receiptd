@@ -130,8 +130,8 @@ export const DRAWN = {
   three: () => strip(3),
   nocam: () => scaleG(camera({ star: false, tilt: -6 }), 0.9, 5, 2) + ol("M16 16 L84 84", K.tomato, 10),
   gear: () => `<g transform="rotate(10 50 50)"><polygon points="${gearPts(50, 50, 41, 30, 8)}" fill="${K.grape}" ${st()}/><circle cx="50" cy="50" r="12" fill="${K.white}" ${st()}/></g>`,
-  // Make another booth (hosts): a phone with a + badge. Restyled from the old line icon to the set.
-  makeBooth: () => `<g transform="rotate(-6 50 50)"><rect x="22" y="8" width="44" height="80" rx="10" fill="${K.white}" ${st()}/>
+  // Share the booth (hosts: guests' own phones become booths too): a phone with a + badge.
+  shareBooth: () => `<g transform="rotate(-6 50 50)"><rect x="22" y="8" width="44" height="80" rx="10" fill="${K.white}" ${st()}/>
       <rect x="29" y="20" width="30" height="50" rx="4" fill="${K.sky}" ${st(4)}/><path d="M38 14 H50" ${st(4.5)}/><circle cx="44" cy="79" r="3.5" fill="${K.ink}"/></g>
       <circle cx="72" cy="70" r="20" fill="${K.mint}" ${st()}/>` + ol("M72 60 V80 M62 70 H82", K.white, 6),
   // Share this photo (kids): the strip with an arrow leaving it. Restyled to the set.
@@ -184,7 +184,7 @@ export const CLASSIC = {
 const CLASSIC_HTML = {
   one: `<span class="strip-ico one"><b></b></span>`,
   three: `<span class="strip-ico"><b></b><b></b><b></b></span>`,
-  makeBooth: OLD_PHONE,
+  shareBooth: OLD_PHONE,
   sharePhoto: OLD_STRIP,
 };
 export const ICON_NAMES = Object.keys(DRAWN);

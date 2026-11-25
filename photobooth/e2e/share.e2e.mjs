@@ -1,6 +1,6 @@
 // Sharing, end to end against the local booth (npm run dev:e2e, PIN 1234; nothing reaches the
 // real printer): shoot → "share this photo" (QR on review) → print → open /s/<token> → strip +
-// originals shown; an expired link → 404; "make another booth" sheet shows the PIN; the stage is
+// originals shown; an expired link → 404; "share the booth" sheet shows the PIN; the stage is
 // the slot's shape in portrait / landscape iPad and an iPhone. Screenshots → e2e/out/share/.
 //   BASE=http://localhost:8788 PIN=1234 node e2e/share.e2e.mjs
 import { chromium, devices } from "playwright";
@@ -47,17 +47,20 @@ for (const [name, dev] of [["ipad-portrait", devices["iPad Pro 11"]], ["ipad-lan
     const r = st.getBoundingClientRect(), bw = parseFloat(cs.borderLeftWidth);
     const inner = { w: r.width - 2 * bw, h: r.height - 2 * bw };
     const b = document.getElementById("boothBtn").getBoundingClientRect(), hs = document.getElementById("gearBtn").getBoundingClientRect();
-    const th = document.getElementById("themes").getBoundingClientRect();
-    const hit = (a, c) => a.left < c.right && c.left < a.right && a.top < c.bottom && c.top < a.bottom;
+    const th = document.getElementById("themes").getBoundingClientRect(), tray = document.getElementById("tray").getBoundingClientRect();
+    const badge = document.getElementById("printerBadge").getBoundingClientRect();
+    const hit = (a, c) => c.width > 0 && a.left < c.right && c.left < a.right && a.top < c.bottom && c.top < a.bottom;
     return { inner, frame: v.videoWidth / v.videoHeight, live: document.getElementById("live").classList.contains("on"),
       inView: r.right <= innerWidth && r.bottom <= innerHeight && r.left >= 0 && r.top >= 0,
-      boothHitsGear: hit(b, hs), boothHitsThemes: hit(b, th), boothInStage: b.left >= r.left && b.right <= r.right && b.top >= r.top && b.bottom <= r.bottom, boothSize: b.width };
+      boothHitsGear: hit(b, hs), boothHitsThemes: hit(b, th), boothHitsTray: hit(b, tray), boothHitsBadge: hit(b, badge), boothHitsStage: hit(b, r),
+      boothInView: b.width > 0 && b.left >= 0 && b.top >= 0 && b.right <= innerWidth && b.bottom <= innerHeight, boothSize: b.width };
   });
   const want = m.frame >= 1 ? 4 / 3 : 4 / 5, got = m.inner.w / m.inner.h;
   assert.ok(Math.abs(got - want) < 0.01, `${name}: stage ${m.inner.w.toFixed(1)}×${m.inner.h.toFixed(1)} = ${got.toFixed(3)}, slot ${want.toFixed(3)}`);
   assert.ok(m.inView, `${name}: stage fits on screen`);
-  // The approved sketch: make-another-booth in the camera window's top-left corner, the gear top-right.
-  assert.ok(!m.boothHitsGear && !m.boothHitsThemes && m.boothInStage, `${name}: make-another-booth in the camera's corner, clear of gear/themes ${JSON.stringify(m)}`);
+  // Share the booth: off the camera window, at the end of the theme bar, clear of the themes, gear, tray and printer badge.
+  assert.ok(m.boothInView && !m.boothHitsStage && !m.boothHitsGear && !m.boothHitsThemes && !m.boothHitsTray && !m.boothHitsBadge,
+    `${name}: share-the-booth beside the themes, off the stage ${JSON.stringify(m)}`);
   log(`${name}: stage ${m.inner.w.toFixed(0)}×${m.inner.h.toFixed(0)} (slot ${want.toFixed(3)}), live dots ${m.live ? "on" : "off"}`);
   await shot(page, `stage-${name}`);
   if (name === "ipad-portrait") {   // the plain camera (live preview off) has the same shape
@@ -68,7 +71,7 @@ for (const [name, dev] of [["ipad-portrait", devices["iPad Pro 11"]], ["ipad-lan
   await ctx.close();
 }
 
-// ---------- 2. make another booth: sheet shows the PIN ----------
+// ---------- 2. share the booth: sheet shows the PIN ----------
 {
   const { ctx, page } = await booth(devices["iPad Pro 11"]);
   // Press and hold (a tap only shows "Hold to share the booth").
@@ -78,13 +81,14 @@ for (const [name, dev] of [["ipad-portrait", devices["iPad Pro 11"]], ["ipad-lan
   const bb = await page.locator("#boothBtn").boundingBox();
   await page.mouse.move(bb.x + bb.width / 2, bb.y + bb.height / 2); await page.mouse.down(); await page.waitForTimeout(1500); await page.mouse.up();
   await page.locator("#share:not([hidden])").waitFor();
-  assert.equal(await page.textContent("#share h2"), "Make another booth");
+  assert.equal(await page.textContent("#share h2"), "Share the booth");
+  assert.match(await page.textContent("#share .lead"), /use their own phone as a booth too/);
   assert.match(await page.textContent("#share .grants"), /This lets them use your booth \(prints, photos\)/);
   assert.equal(await page.textContent("#sharePin"), PIN);
   assert.ok(await page.locator("#qrWeb svg").count() && await page.locator("#qrApp svg").count());
-  await shot(page, "make-another-booth");
+  await shot(page, "share-the-booth");
   await page.click("#shareClose");
-  log("make another booth: PIN + both QR codes");
+  log("share the booth: PIN + both QR codes");
   await ctx.close();
 }
 

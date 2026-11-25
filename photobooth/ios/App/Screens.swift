@@ -1,6 +1,6 @@
 // Kid screens: drawn icons (or Classic emoji), shapes and numerals only (words are accessibility
 // labels). Adult settings: press and hold the small gear at the camera's top-right for 1.2 s.
-// Adult labels (AdultHint) appear only in answer to a tap/hold on the gear, make-another-booth
+// Adult labels (AdultHint) appear only in answer to a tap/hold on the gear, share-the-booth
 // or the printer badge, one at a time, and fade after ~2.5 s.
 
 import SwiftUI
@@ -102,7 +102,23 @@ struct CameraScreen: View {
         .onAppear { booth.applyTheme() }
     }
 
+    /// The theme picker (scrolls) and, at its end, the grown-up "share the booth" sticker: off the
+    /// camera window, beside the themes (portrait: top bar, right end; landscape: column, bottom).
     func themePicker(landscape: Bool) -> some View {
+        let gear: CGFloat = UIDevice.current.userInterfaceIdiom == .pad ? 60 : 44
+        let bar = landscape ? AnyLayout(VStackLayout(spacing: 10)) : AnyLayout(HStackLayout(spacing: 10))
+        return bar {
+            themeScroller(landscape: landscape)
+            if booth.shareLinks != nil {
+                ShareBoothButton(size: gear, pillSide: landscape ? .trailing : .leading)
+                    .padding(landscape ? .bottom : .trailing, 10)
+                    .padding(landscape ? .trailing : .bottom, 6)
+            }
+        }
+        .frame(maxWidth: landscape ? 110 : .infinity, maxHeight: landscape ? .infinity : 110)
+    }
+
+    func themeScroller(landscape: Bool) -> some View {
         let l = landscape ? AnyLayout(VStackLayout(spacing: 14)) : AnyLayout(HStackLayout(spacing: 14))
         return ScrollView(landscape ? .vertical : .horizontal, showsIndicators: false) {
             l {
@@ -116,6 +132,7 @@ struct CameraScreen: View {
             }.padding(12)
         }
         .frame(maxWidth: landscape ? 110 : .infinity, maxHeight: landscape ? .infinity : 110)
+        .accessibilityIdentifier("themes")
     }
 
     func stage(accent: Color) -> some View {
@@ -139,12 +156,11 @@ struct CameraScreen: View {
                         .buttonStyle(StickerStyle(fill: .sun, corner: 999)).accessibilityLabel("Try again")
                 }.frame(maxHeight: .infinity)
             }
-            // Grown-up corner stickers on the camera window (the approved sketch): make another booth
-            // top-left, the settings gear top-right, both press-and-hold; the printer badge bottom-left,
-            // only when the printer needs a grown-up.
+            // Grown-up stickers on the camera window: the settings gear top-right (press-and-hold); the
+            // printer badge bottom-left, only when the printer needs a grown-up. (Share the booth sits
+            // beside the theme picker, off the camera window.)
             let gear: CGFloat = UIDevice.current.userInterfaceIdiom == .pad ? 60 : 44
             HStack(alignment: .top) {
-                if booth.shareLinks != nil { MakeBoothButton(size: gear) }
                 Spacer()
                 HoldButton(id: "gear", a11y: "Settings", hint: "Hold to open settings", size: gear, tilt: 6, pillSide: .leading) { booth.openSettings() } label: {
                     IconView(name: "gear")
@@ -361,6 +377,14 @@ struct ReviewScreen: View {
                     .overlay {
                         GeometryReader { g in
                             let k = g.size.width / CGFloat(PRINT_WIDTH)
+                            // Each photo's place on the strip (for the orientation UI tests: "up is up" in review).
+                            ForEach(Array(p.layout.photos.enumerated()), id: \.offset) { i, ph in
+                                Rectangle().fill(Color.clear).frame(width: ph.w * k, height: ph.h * k)
+                                    .accessibilityElement().accessibilityLabel("Photo \(i + 1)").accessibilityAddTraits(.isImage)
+                                    .accessibilityIdentifier("reviewPhoto\(i + 1)")
+                                    .position(x: (ph.x + ph.w / 2) * k, y: (ph.y + ph.h / 2) * k)
+                                    .allowsHitTesting(false)
+                            }
                             ForEach(Array(p.layout.photos.enumerated()), id: \.offset) { i, ph in
                                 Button { Task { await booth.rotatePhoto(i) } } label: { IconView(name: "rotate").frame(width: 48, height: 48).frame(width: 64, height: 64) }
                                     .buttonStyle(StickerStyle(fill: .white, corner: 999))
@@ -580,7 +604,7 @@ struct SettingsScreen: View {
                     } else { sub("No party", "Photos go to the archive only") }
                     Link("Parties, signs & albums", destination: s.server.appendingPathComponent("party.html"))
                     if let links = booth.shareLinks {
-                        NavigationLink { ShareBoothView(web: links.web, app: links.app, pin: booth.api.pin) } label: { Label("Make another booth: PIN and QR codes", systemImage: "qrcode") }
+                        NavigationLink { ShareBoothView(web: links.web, app: links.app, pin: booth.api.pin) } label: { Label("Share the booth: PIN and QR codes", systemImage: "qrcode") }
                         ShareLink(item: links.web, subject: Text("Photo booth"), message: Text("Open the photo booth (already unlocked)")) { Label("Booth on the web", systemImage: "safari") }
                         ShareLink(item: links.app, subject: Text("Photo Booth app"), message: Text("Get the Photo Booth app (TestFlight). After it's installed, tap this link again to set it up.")) {
                             Label("Booth app (TestFlight)", systemImage: "apps.iphone")
@@ -588,7 +612,7 @@ struct SettingsScreen: View {
                     }
                 } header: { head("party", "Party & sharing") } footer: {
                     if booth.shareLinks != nil {
-                        Text("Make another booth lets them use your booth (prints, photos). Both links contain the booth PIN, so only send them to people you'd hand the iPad to. Also on the camera: hold the phone-with-plus.")
+                        Text("Share the booth lets guests use their own phone as a booth too: it prints to the same printer and their photos join the party album. It lets them use your booth (prints, photos): both links contain the booth PIN. Also on the camera screen: hold the phone-with-plus beside the themes.")
                     }
                 }
 
@@ -700,17 +724,19 @@ struct SettingsScreen: View {
     }
 }
 
-/// Make another booth: the PIN in big type (to type it in) with a copy button, and each link as a big
-/// QR code (black on white, for a phone next to the iPad to scan) and a share sheet button (AirDrop,
-/// Messages, …). Settings → Make another booth, and the camera screen's phone-with-plus sticker (in
-/// a sheet). It grants access, so it says so. Adult surface: words allowed.
+/// Share the booth (guests' own phones become booths too): the PIN in big type (to type it in) with a
+/// copy button, and each link as a big QR code (black on white, for a phone next to the iPad to scan)
+/// and a share sheet button (AirDrop, Messages, …). Settings → Share the booth, and the camera
+/// screen's phone-with-plus sticker (in a sheet). It grants access, so it says so. Adult surface: words allowed.
 struct ShareBoothView: View {
     let web: URL, app: URL, pin: String
     @State private var copied = false
     var body: some View {
         ScrollView {
             VStack(spacing: 14) {
-                Text("This lets them use your booth (prints, photos).").font(.title3.bold()).foregroundStyle(.black).multilineTextAlignment(.center)
+                Text("Let guests use their own phone as a booth too — it prints to the same printer and their photos join the party album.")
+                    .font(.title3).foregroundStyle(.black).multilineTextAlignment(.center).frame(maxWidth: 560).accessibilityIdentifier("shareIntro")
+                Text("This lets them use your booth (prints, photos).").font(.headline).foregroundStyle(.black).multilineTextAlignment(.center)
                 VStack(spacing: 8) {
                     Text("Booth PIN").font(.callout).foregroundStyle(.black.opacity(0.6))
                     Text(pin).font(Fonts.display(52)).foregroundStyle(.black).multilineTextAlignment(.center).textSelection(.enabled)
@@ -729,12 +755,12 @@ struct ShareBoothView: View {
                 VStack(spacing: 40) { codes }
             }
             .padding(24).frame(maxWidth: .infinity)
-            Text("Both links contain the booth PIN: only share them with people you'd hand the booth to.")
+            Text("Both links contain the booth PIN.")
                 .font(.footnote).foregroundStyle(.black.opacity(0.6)).multilineTextAlignment(.center).padding(.horizontal, 24).padding(.bottom, 24)
         }
         .background(Color.white)
         .environment(\.colorScheme, .light)
-        .navigationTitle("Make another booth")
+        .navigationTitle("Share the booth")
         .navigationBarTitleDisplayMode(.inline)
     }
     @ViewBuilder var codes: some View {
@@ -755,17 +781,19 @@ struct ShareBoothView: View {
     }
 }
 
-/// The camera screen's "make another booth" control: a small, wordless grown-up sticker (a phone
-/// with a +) in the camera window's top-left corner. Press and hold (it grants access): a tap only
-/// shows "Hold to share the booth".
-struct MakeBoothButton: View {
+/// The camera screen's "share the booth" control: a small, wordless grown-up sticker (a phone with a
+/// +) at the end of the theme picker, off the camera window. Press and hold (it grants access): a tap
+/// only shows "Hold to share the booth".
+struct ShareBoothButton: View {
     @EnvironmentObject var booth: Booth
     var size: CGFloat = 44
+    /// Which side the hint pill goes: towards the screen's middle.
+    var pillSide: HorizontalEdge = .leading
     @State private var open = false
     var body: some View {
         if let links = booth.shareLinks {
-            HoldButton(id: "makeBooth", a11y: "Make another booth", hint: "Hold to share the booth", size: size, tilt: -4, pillSide: .trailing) { open = true } label: {
-                IconView(name: "makeBooth")
+            HoldButton(id: "shareBooth", a11y: "Share the booth", hint: "Hold to share the booth", size: size, tilt: -4, pillSide: pillSide) { open = true } label: {
+                IconView(name: "shareBooth")
             }
                 .sheet(isPresented: $open) {
                     NavigationStack {
@@ -799,17 +827,18 @@ struct QRCodeView: View {
 
 // MARK: share this photo (kids: wordless)
 
-/// The stage at the photo slot's aspect (4:3 / 4:5 from the camera's frame shape), fitted and centred,
-/// with room for the sticker's offset shadow. Re-lays out (springs) when the device turns.
+/// The stage at the photo slot's aspect (4:5 when the upright photo is portrait, 4:3 when landscape,
+/// turned to the screen: BoothCamera.stageAspect), fitted and centred, with room for the sticker's
+/// offset shadow. Re-lays out (springs) when the device turns.
 struct SlotShaped<Content: View>: View {
     @ObservedObject var camera: BoothCamera
     @ViewBuilder var content: Content
     var body: some View {
         content
-            .aspectRatio(camera.slotAspect, contentMode: .fit)
+            .aspectRatio(camera.stageAspect, contentMode: .fit)
             .padding(.trailing, 8).padding(.bottom, 8)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: camera.portraitFrames)
+            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: camera.stageAspect)
     }
 }
 
@@ -918,7 +947,7 @@ struct StripArrowIcon: View {
     }
 }
 
-/// Icon: a phone with a + badge ("make another booth").
+/// Icon: a phone with a + badge ("share the booth").
 struct PhonePlusIcon: View {
     var body: some View {
         GeometryReader { g in

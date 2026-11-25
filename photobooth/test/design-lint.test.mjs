@@ -100,7 +100,7 @@ test("every kid button has an aria-label", () => {
 });
 
 // The adult hint layer: the one sanctioned way words reach a kid screen. A small label for
-// grown-ups, shown only in answer to a tap/hold on an adult control (gear, make another booth,
+// grown-ups, shown only in answer to a tap/hold on an adult control (gear, share the booth,
 // printer badge), never at rest. See DESIGN.md "Adult labels".
 test("adult hint layer: empty at rest, outside kid screens, only from taps, short-lived", () => {
   const tags = html.match(/<div id="adultHint"[^>]*>([\s\S]*?)<\/div>/g) ?? [];
@@ -113,10 +113,10 @@ test("adult hint layer: empty at rest, outside kid screens, only from taps, shor
   // Words come from one allow-list (HINTS) or the printer label, nothing ad hoc.
   const script = html.slice(html.indexOf('<script type="module">'));
   const calls = [...script.matchAll(/showHint\(([^;]*?)\)\s*[;}]/g)].map((c) => c[1]).filter((a) => !/^anchor, text/.test(a));
-  assert.ok(calls.length >= 3, "gear, make-another-booth and printer badge use showHint");
+  assert.ok(calls.length >= 3, "gear, share-the-booth and printer badge use showHint");
   for (const a of calls) assert.match(a, /,\s*(HINTS\.\w+|printerHint\(.*\)|hint)\s*(,\s*0)?\s*$/, `showHint text must be HINTS.* or printerHint(): showHint(${a})`);
   const holds = [...script.matchAll(/holdable\(\$\("\w+"\), \{([^}]*)\}/g)].map((h) => h[1]);
-  assert.ok(holds.length >= 2, "gear + make-another-booth are press-and-hold");
+  assert.ok(holds.length >= 2, "gear + share-the-booth are press-and-hold");
   for (const h of holds) assert.match(h, /hint: HINTS\.\w+/, `holdable hint comes from HINTS: ${h}`);
   // Only from interaction: inside holdable() (pointer handlers) or an onclick handler, never on load or on a state change.
   const hold = script.slice(script.indexOf("function holdable("), script.indexOf("\n}\n", script.indexOf("function holdable(")));

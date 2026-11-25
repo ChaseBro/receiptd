@@ -47,7 +47,7 @@ geometry function by function in SwiftUI `Canvas`. Source of truth: the
 approved booth sketch. Settings → **Icon style: Drawn / Classic** (Classic =
 the emoji the booth used before). Theme-picker icons stay emoji.
 
-The set: shutter, flip, 1 / 3 photos, no camera, gear, make another booth
+The set: shutter, flip, 1 / 3 photos, no camera, gear, share the booth
 (phone +), share this photo (strip + arrow), waiting, in line #N, retake,
 print, rotate, copies / minus / plus, try again, back (an arrow, no longer ✖️),
 done, and the printer: ready, printing, offline (sleeping, unplugged from the
@@ -56,8 +56,12 @@ open (lid up), error (X eyes + smoke), paper low (settings only).
 
 ## Grown-up controls on kid screens
 
-- **Gear** (settings) and **make another booth**: small white stickers in the
-  camera window's top corners (44 px phones, ~60 px iPads). **Press and hold
+- **Gear** (settings): a small white sticker in the camera window's top-right
+  corner. **Share the booth** (let guests use their own phones as booths too):
+  the same small white sticker, *off* the camera window, at the end of the theme
+  bar (portrait: top right of the screen; landscape: bottom of the theme
+  column), clear of the themes' scroll, the gear, the tray and the printer
+  badge. Both 44 px on phones, ~60 px on iPads. **Press and hold
   1.2 s**: a grape ring fills, "Keep holding…" shows beside it, a haptic tick at
   50 % and a pop at full. Let go early and the ring drains. A short tap shows
   "Hold to open settings" / "Hold to share the booth" and wiggles.

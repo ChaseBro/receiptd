@@ -112,7 +112,11 @@
     padding:calc(env(safe-area-inset-top) + var(--gap)) calc(env(safe-area-inset-right) + var(--gap))
             calc(env(safe-area-inset-bottom) + var(--gap)) calc(env(safe-area-inset-left) + var(--gap)); }
   /* Centred when it fits, scrollable (from the first theme) when it doesn't: auto margins, not justify-content. */
-  #themes { grid-area:themes; z-index:3; display:flex; justify-content:flex-start; gap:calc(var(--gap) * .7);
+  /* The top bar: the theme picker (scrolls) and, at its end, the grown-up "share the booth" sticker
+     (off the camera window: kids look at the stage, adults find it beside the themes). Landscape: a
+     column, the sticker at its bottom. */
+  #topbar { grid-area:themes; z-index:3; display:flex; align-items:center; gap:calc(var(--gap) * .6); min-width:0; min-height:0; }
+  #themes { flex:1 1 auto; min-width:0; min-height:0; display:flex; justify-content:flex-start; gap:calc(var(--gap) * .7);
     padding:4px 6px 10px; overflow:auto; scrollbar-width:none; }
   #themes > :first-child { margin-inline-start:auto; } #themes > :last-child { margin-inline-end:auto; }
   #themes button { flex:0 0 auto; width:calc(var(--tap) * .82); height:calc(var(--tap) * .82); font-size:calc(var(--tap) * .42); }
@@ -135,12 +139,12 @@
   #printerBadge .ic, #paperWait .ic { width:86%; height:86%; }
   #paperWait { position:relative; margin-top:22px; width:clamp(120px, 26vmin, 200px); height:clamp(120px, 26vmin, 200px); border-radius:30px;
     font-size:clamp(48px, 11vmin, 90px); background:var(--sun); --tilt:6deg; animation:wiggle 4s infinite; }
-  /* Adult corner stickers on the camera window: white (not candy, so they don't invite kids), small.
+  /* Adult stickers (the gear on the camera window, share-the-booth in the top bar): white (not candy, so they don't invite kids), small.
      Press and hold (holdable()): a grape ring fills; a short tap shows a hint instead. */
   .adult { position:absolute; z-index:4; top:calc(var(--gap) + 6px); width:var(--gear); height:var(--gear); padding:0; border-width:3px;
     border-radius:30%; box-shadow:var(--shadow-sm); background:var(--white); touch-action:none; font-size:calc(var(--gear) * .5); }
   #gearBtn { right:calc(var(--gap) + 6px); --tilt:6deg; }
-  #boothBtn { left:calc(var(--gap) + 6px); --tilt:-4deg; }
+  #boothBtn { position:relative; top:auto; flex:none; margin:0 8px 6px 0; --tilt:-4deg; }
   .holdring { position:absolute; left:-10px; top:-10px; width:calc(100% + 20px); height:calc(100% + 20px); rotate:-90deg; overflow:visible;
     pointer-events:none; opacity:0; transition:opacity .15s; }
   .holding .holdring { opacity:1; }
@@ -151,7 +155,7 @@
   .nudge { animation:nudge .5s var(--ease-pop); }
   @keyframes nudge { 20% { rotate:-16deg } 45% { rotate:13deg } 70% { rotate:-6deg } }
   /* The adult label layer: ONE quiet pill, shown only in answer to an adult's tap/hold on the gear,
-     make-another-booth or the printer badge; gone after ~2.5 s or on any other touch. Lives outside
+     share-the-booth or the printer badge; gone after ~2.5 s or on any other touch. Lives outside
      the kid screens and is empty at rest (design lint: "adult hint layer"). */
   #adultHint { position:fixed; z-index:40; max-width:min(84vw, 360px); padding:6px 12px; border-radius:16px; border:3px solid var(--ink);
     background:var(--white); box-shadow:var(--shadow-sm); font-family:var(--font-body); font-size:14px; font-weight:700; line-height:1.3;
@@ -172,7 +176,9 @@
   #shutter { width:var(--shutter); height:var(--shutter); font-size:calc(var(--shutter) * .5); background:var(--accent); }
   @media (orientation: landscape) {
     #cam.on { grid-template:"themes stage tray" minmax(0,1fr) / auto minmax(0,1fr) auto; }
+    #topbar { flex-direction:column; }
     #themes { flex-direction:column; justify-content:flex-start; padding:6px 10px 6px 4px; }
+    #boothBtn { margin:0 8px 8px 0; }
     #themes > :first-child { margin-inline-start:0; margin-block-start:auto; } #themes > :last-child { margin-inline-end:0; margin-block-end:auto; }
     #tray { flex-direction:column; padding:0 8px 0 0; }
   }
@@ -356,7 +362,7 @@
   .pill { padding:12px 18px; border-radius:999px; font-weight:800; background:var(--white); }
   a.pill { color:var(--ink); text-decoration:none; border:3px solid var(--ink); }
   .pill.go { background:var(--mint); }
-  /* make another booth: one sheet (the corner control + settings), the PIN in big type, each link as a QR + share sheet / clipboard */
+  /* share the booth: one sheet (the corner control + settings), the PIN in big type, each link as a QR + share sheet / clipboard */
   #share { position:fixed; inset:0; z-index:30; display:flex; align-items:center; justify-content:center; padding:18px;
     background:color-mix(in srgb, var(--ink) 55%, transparent); }
   #share[hidden] { display:none; }
@@ -371,6 +377,7 @@
   .share .pill { margin-top:10px; border:3px solid var(--ink); }
   .share-top { display:flex; align-items:center; justify-content:space-between; gap:12px; }
   .grants { margin-top:8px; font-size:16px; font-weight:800; }
+  #share .lead { margin-top:8px; font-size:17px; line-height:1.35; }
   .pinbox { display:flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:12px 16px; margin-top:12px; padding:12px 14px;
     border-radius:18px; border:3px solid var(--ink); background:var(--paper); }
   .pinbox .lbl { font-size:14px; opacity:.7; }
@@ -392,13 +399,16 @@
 </section>
 
 <section id="cam" class="screen">
-  <div id="themes"></div>
+  <div id="topbar">
+    <div id="themes"></div>
+    <!-- Grown-up: share the booth (guests' own phones become booths). Press and hold; a tap only shows a hint. -->
+    <button id="boothBtn" class="sticker adult emoji" aria-label="Share the booth (press and hold)" hidden><span class="ics" data-ic="shareBooth"></span></button>
+  </div>
   <div id="stageBox"><div id="stage">
     <video id="video" playsinline autoplay muted></video>
     <canvas id="live" aria-hidden="true"></canvas>
     <div id="dots"></div>
-    <!-- Grown-up controls: press and hold (a short tap only shows a hint). Wordless at rest. -->
-    <button id="boothBtn" class="sticker adult emoji" aria-label="Make another booth (press and hold)" hidden><span class="ics" data-ic="makeBooth"></span></button>
+    <!-- Grown-up control: press and hold (a short tap only shows a hint). Wordless at rest. -->
     <button id="gearBtn" class="sticker adult emoji" aria-label="Settings (press and hold)"><span class="ics" data-ic="gear"></span></button>
     <button id="printerBadge" class="sticker fat emoji" aria-label="Printer needs help" hidden><span class="ics" data-ic="pOffline"></span></button>
   </div></div>
@@ -458,12 +468,13 @@
     </div>
   </div>
 </div>
-<!-- Make another booth (adult sheet, from the corner control or settings): words allowed. -->
-<div id="share" hidden role="dialog" aria-label="Make another booth">
+<!-- Share the booth (adult sheet, from the top-bar sticker or settings): words allowed. -->
+<div id="share" hidden role="dialog" aria-label="Share the booth">
   <div class="card">
-    <div class="share-top"><h2>Make another booth</h2><button class="pill" id="shareClose">Done</button></div>
+    <div class="share-top"><h2>Share the booth</h2><button class="pill" id="shareClose">Done</button></div>
+    <div class="lead">Let guests use their own phone as a booth too — it prints to the same printer and their photos join the party album.</div>
     <div class="grants">This lets them use your booth (prints, photos).</div>
-    <div class="hint">Turn another phone or tablet into this booth: let it scan a code, send it a link (AirDrop, Messages, …), or type the PIN. The links contain the PIN: only share them with people you'd hand the booth to.</div>
+    <div class="hint">Let them scan a code, send them a link (AirDrop, Messages, …) or tell them the PIN. The links contain the PIN.</div>
     <div class="pinbox"><span class="lbl">Booth PIN</span><b id="sharePin"></b><button class="pill" id="sharePinCopy">Copy PIN</button></div>
     <div class="share">
       <div><h3>🌐 Booth on the web</h3>
@@ -511,7 +522,7 @@
   <div class="grp"><div class="gh"><span data-ic="party"></span>Party &amp; sharing</div><div class="list">
     <div class="it" id="sParty"><span>Party<span class="sub" id="sPartyName">No party — photos go to the archive only.</span></span><a class="btn" href="./party.html">Parties</a></div>
     <div class="it"><span>QR on strips<span class="sub" id="sPartyQR">follows the party (set it on the party page)</span></span></div>
-    <div class="it" id="sShare"><span>Make another booth<span class="sub">this lets them use your booth (prints, photos): PIN + QR codes. Also: hold the phone-with-plus on the camera.</span></span><button class="btn go" id="sShareOpen">Open</button></div>
+    <div class="it" id="sShare"><span>Share the booth<span class="sub">let guests use their own phone as a booth too (it can print and see photos): PIN + QR codes. Also: hold the phone-with-plus beside the themes.</span></span><button class="btn go" id="sShareOpen">Open</button></div>
     <div class="it"><span>Web booth link<span class="sub">opens unlocked in a browser (contains the PIN)</span></span><button class="btn" id="sSendWeb">Send</button></div>
     <div class="it"><span>App join link<span class="sub">TestFlight; opens the app set up for this booth</span></span><button class="btn" id="sSendApp">Send</button></div>
   </div></div>
@@ -717,7 +728,7 @@ setInterval(() => { if ($("cam").classList.contains("on") && document.visibility
 
 // ---------- adult labels + press-and-hold (grown-up controls on the kid screens) ----------
 // One quiet pill (#adultHint), only ever in answer to an adult's tap/hold on the gear, the
-// make-another-booth sticker or the printer badge: never on load, never because a state changed.
+// share-the-booth sticker or the printer badge: never on load, never because a state changed.
 // One at a time (a new one replaces the old), gone after HINT_MS or on any other touch.
 const HINT_MS = 2500;
 const HINTS = { keep: "Keep holding…", gear: "Hold to open settings", booth: "Hold to share the booth" };

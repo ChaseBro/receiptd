@@ -1,11 +1,14 @@
 // Live print preview: the camera stage shows the photo as the printer will dot
-// it (index.html's #live canvas + preview.worker.js, natively). Each camera
-// frame is cover-cropped to the photo slot the strip will use (Frames.swift
+// it (index.html's #live canvas + preview.worker.js, natively). Each sensor
+// frame is stood upright with the capture angle (the same turn grab() gives the
+// photo), cover-cropped to the photo slot the strip will use (Frames.swift
 // layout: 4:3 landscape / 4:5 portrait, at the width it prints for the current
 // theme), scaled on the GPU (Core Image), then run through BoothCore's toneMap
 // + ditherThermal + relieveSolids, like the print, on a background queue. One
 // frame in flight: frames that arrive while busy are dropped. Below 5 fps for
-// 3 s straight it turns itself off until settings are next closed.
+// 3 s straight it turns itself off until settings are next closed. The dots are
+// then turned by (preview − capture) so they line up with the plain video (0° unless
+// a rotation-locked phone is held sideways).
 //
 // Shortcuts vs the print: no face metering (centre-weighted exposure), and the
 // head heat starts cold at the top of the photo (the strip header and earlier
@@ -35,8 +38,9 @@ final class LivePreview: @unchecked Sendable {
     /// LiveDots on/off screen: frames are only processed while the camera screen shows them.
     func setActive(_ on: Bool) { lock.lock(); active = on; t0 = 0; lock.unlock() }
 
-    /// From the camera (any thread): an upright, unmirrored frame. Dropped when busy or off screen.
-    func offer(_ frame: @autoclosure () -> CIImage) {
+    /// From the camera (any thread): a sensor frame (unmirrored) and the camera's angles
+    /// (BoothCamera / BoothCore Upright). Dropped when busy or off screen.
+    func offer(_ frame: @autoclosure () -> CIImage, capture: Int, preview: Int) {
         lock.lock()
         guard active, !busy, Settings().livePreview else { lock.unlock(); return }
         let now = CACurrentMediaTime()
@@ -58,7 +62,7 @@ final class LivePreview: @unchecked Sendable {
         let img = frame()
         queue.async { [self] in
             let t = CACurrentMediaTime()
-            let cg = render(img)
+            let cg = render(BoothCamera.upright(img, capture)).map { rotate($0, Upright.displayTurn(capture: capture, preview: preview)) }
             let dt = (CACurrentMediaTime() - t) * 1000
             lock.lock(); busy = false; if cg != nil { done += 1 }; ms = ms == 0 ? dt : 0.9 * ms + 0.1 * dt; let f = fps, m = ms; lock.unlock()
             guard let cg else { return }

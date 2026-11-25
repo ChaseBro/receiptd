@@ -132,7 +132,7 @@ for (const [state, [h, label, icon]] of Object.entries(PROBLEMS)) {
   await ctx.close();
 }
 
-// Make another booth: tap → hint; hold → the sheet with the PIN.
+// Share the booth: tap → hint; hold → the sheet with the PIN.
 {
   const { ctx, page } = await booth(devices["iPhone 13"], {}, READY);
   await page.click("#boothBtn");
@@ -145,7 +145,7 @@ for (const [state, [h, label, icon]] of Object.entries(PROBLEMS)) {
   await page.waitForTimeout(800); await page.mouse.up();
   await page.locator("#share:not([hidden])").waitFor({ timeout: 3000 });
   assert.equal(await page.textContent("#sharePin"), PIN);
-  log("make another booth: tap → hint, hold → sheet");
+  log("share the booth: tap → hint, hold → sheet");
   await ctx.close();
 }
 const errs = [];

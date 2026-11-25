@@ -109,10 +109,12 @@ it makes that session's archive upload jump the queue (`archive.js`
   /api/s/<token>/file?key=…` serves only that session's images. Expired → 404
   (the record is deleted; the photos stay in the archive). `src/session-share.ts`.
 
-**Make another booth** (hosts; it grants access) passes the PIN peer to peer:
-**hold** the small phone-with-plus sticker at the camera's top-left (only when
-unlocked; a tap says "Hold to share the booth") or settings → Make another
-booth opens a sheet that says "This lets them use your booth
+**Share the booth** (hosts; it grants access) lets guests use their own phones
+as a booth too, alongside the iPad: same printer, same party album. It passes
+the PIN peer to peer: **hold** the small phone-with-plus sticker at the end of
+the theme bar, off the camera window (only when unlocked; a tap says "Hold to
+share the booth"), or settings → Share the booth. The sheet says "Let guests use
+their own phone as a booth too…" and "This lets them use your booth
 (prints, photos)", shows the PIN in big type with Copy PIN, and two links, each
 as a QR code and a "Send link" button (share sheet → AirDrop / Messages;
 clipboard where `navigator.share` is missing). Both links contain the PIN
@@ -165,7 +167,7 @@ Storage (PHOTOS bucket, same prefix as the archive): `events/<slug>/event.json`,
 npm test                 # unit + API (in-memory R2) + design lint + printer badge / icons
 npm run dev:e2e          # local booth + cprnt DO (PIN from .dev.vars: BOOTH_PIN=1234)
 npm run test:e2e         # Playwright: party → booth (fake camera) → 5 strips, QR decoded → print → album;
-                         #   share.e2e: stage shape, make-another-booth PIN, share photo → /s/<token> → expiry
+                         #   share.e2e: stage shape, share-the-booth placement + PIN, share photo → /s/<token> → expiry
                          #   redesign.e2e: gear tap/hold, printer badges + labels, Drawn/Classic, new settings
                          #   (screenshots → ios/build/shots/redesign/web-*.png; e2e/icon-sheet.mjs renders all icons)
 ```

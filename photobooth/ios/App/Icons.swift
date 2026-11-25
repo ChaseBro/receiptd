@@ -35,7 +35,7 @@ struct ClassicIcon: View {
                 switch name {
                 case "one": StripIcon(shots: 1).scaleEffect(side / 60)
                 case "three": StripIcon(shots: 3).scaleEffect(side / 70)
-                case "makeBooth": PhonePlusIcon()
+                case "shareBooth": PhonePlusIcon()
                 case "sharePhoto": StripArrowIcon()
                 default: Text(ClassicIcon.emoji[name] ?? "").font(.system(size: side * 0.62)).minimumScaleFactor(0.3).lineLimit(1)
                 }
@@ -201,7 +201,7 @@ enum Icons {
         m.a1 = 0; m.a2 = 0; m.a3 = 0; m.a4 = 1; m.a5 = 0
         return m
     }()
-    static let names = ["shutter", "flip", "one", "three", "nocam", "gear", "makeBooth", "sharePhoto", "wait", "queue", "retake", "print",
+    static let names = ["shutter", "flip", "one", "three", "nocam", "gear", "shareBooth", "sharePhoto", "wait", "queue", "retake", "print",
                         "rotate", "receipt", "minus", "plus", "again", "back", "done", "pReady", "pPrinting", "pOffline", "pPaperOut",
                         "pPaperLow", "pCover", "pError", "paperOk", "upload", "party"]
 
@@ -343,7 +343,7 @@ enum Icons {
         case "nocam": p.scaled(0.9, 5, 2) { camera($0, star: false, tilt: -6) }; p.ol("M16 16 L84 84", .tomato, 10)
         case "gear":
             p.rotated(10, 50, 50) { p in p.polygon(gearPts(50, 50, 41, 30, 8), fill: .grape, stroke: st()); p.circle(50, 50, 12, fill: .white, stroke: st()) }
-        case "makeBooth":
+        case "shareBooth":   // share the booth: a phone with a +
             p.rotated(-6, 50, 50) { p in
                 p.rect(22, 8, 44, 80, rx: 10, fill: .white, stroke: st())
                 p.rect(29, 20, 30, 50, rx: 4, fill: .sky, stroke: st(4)); p.path("M38 14 H50", stroke: st(4.5)); p.circle(44, 79, 3.5, fill: .ink)

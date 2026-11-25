@@ -36,7 +36,7 @@ struct Settings {
         nonmutating set { d.set(newValue.absoluteString, forKey: "booth.server") }
     }
     var theme: String { get { d.string(forKey: "booth.theme") ?? "stars" } nonmutating set { d.set(newValue, forKey: "booth.theme") } }
-    var shots: Int { get { d.object(forKey: "booth.shots") as? Int ?? 3 } nonmutating set { d.set(newValue, forKey: "booth.shots") } }
+    var shots: Int { get { d.object(forKey: "booth.shots") == nil ? 3 : (d.integer(forKey: "booth.shots") == 1 ? 1 : 3) } nonmutating set { d.set(newValue, forKey: "booth.shots") } }
     var footer: String { get { d.string(forKey: "booth.footer") ?? "" } nonmutating set { d.set(newValue, forKey: "booth.footer") } }
     var count: Int { get { min(10, max(1, d.object(forKey: "booth.count") == nil ? 3 : d.integer(forKey: "booth.count"))) } nonmutating set { d.set(newValue, forKey: "booth.count") } }
     var gain: Double { get { d.object(forKey: "booth.gain") as? Double ?? 0.15 } nonmutating set { d.set(newValue, forKey: "booth.gain") } }
@@ -118,7 +118,7 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
     struct MineShare: Equatable { var id: String; var url: String?; var failed = false }
     /// Icon style (settings): drawn or classic emoji.
     @Published var iconStyle: IconStyle = .drawn
-    /// The one adult label on screen (gear / make another booth / printer badge), or nil.
+    /// The one adult label on screen (gear / share the booth / printer badge), or nil.
     @Published var hint: AdultHint?
     struct AdultHint: Equatable { var anchor: String; var text: String; var id = UUID(); var shown = Date() }
 
@@ -163,7 +163,7 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
     }
 
     // MARK: adult labels
-    // One quiet pill, only in answer to an adult's tap/hold on the gear, make-another-booth or the
+    // One quiet pill, only in answer to an adult's tap/hold on the gear, share-the-booth or the
     // printer badge: never on load, never because a state changed. One at a time; ~2.5 s.
     static let hintSeconds = 2.5
     private var hintTask: Task<Void, Never>?

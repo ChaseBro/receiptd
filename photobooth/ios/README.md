@@ -97,7 +97,7 @@ bundled one rejected, so it isn't retried until a new build carries a different
 PIN; an adult types the new one. With a bundled PIN, settings offers
 "Forget saved PIN" instead of "Lock booth".
 
-### Share this photo / Make another booth
+### Share this photo / Share the booth
 
 **Share this photo** (kids, wordless): the strip-with-arrow sticker on the review
 and printing screens opens "your photos": a big QR to `/s/<token>` (a 24 h link
@@ -106,10 +106,11 @@ strip + originals as images in a UIActivityViewController: AirDrop, Messages,
 Save), ✖️. It stays until tapped away or ~30 s after the print. The session's
 archive upload jumps the queue (`ArchiveQueue.prioritize`).
 
-**Make another booth** (hosts): hold the small phone-with-plus sticker at the
-camera window's top-left (a tap only says "Hold to share the booth"), or
-settings → Party & sharing. The sheet says "This lets them use
-your booth (prints, photos)", shows the PIN in big type with Copy PIN, and two
+**Share the booth** (hosts: guests' own phones become booths too, same printer,
+same party album): hold the small phone-with-plus sticker at the end of the
+theme bar, off the camera window (a tap only says "Hold to share the booth"),
+or settings → Party & sharing. The sheet says "Let guests use their own phone as
+a booth too…" and "This lets them use your booth (prints, photos)", shows the PIN in big type with Copy PIN, and two
 links, each as a big QR code and a share-sheet button. Both carry the PIN
 (`BoothLinks` in `BoothCore/Share.swift`, mirrored by `public/share.js`):
 
@@ -123,9 +124,30 @@ links, each as a big QR code and a share-sheet button. Both carry the PIN
 The PIN may be a word or phrase: the lock screen uses the normal keyboard
 (no autocorrect / auto-caps) and trims the ends; matching is exact.
 
-The camera stage is the photo slot's shape (4:3 / 4:5 from the frame shape,
-`BoothCamera.portraitFrames`), fitted and centred, so the live dots and the plain
-preview fill it edge to edge.
+The camera stage is the photo slot's shape (4:5 when the upright photo is
+portrait, 4:3 when landscape; `BoothCamera.stageAspect`), fitted and centred, so
+the live dots and the plain preview fill it edge to edge.
+
+### Which way is up
+
+Sensor frames are landscape. `BoothCamera` keeps two clockwise angles
+(`BoothCore/Orientation.swift`, `Upright`): the rotation coordinator's
+horizon-level **capture** angle (from gravity) turns every grabbed photo and every
+live-preview frame upright before the slot crop + dither, and sets the slot's
+shape; the **preview** angle (from the interface orientation) turns the plain
+video, and the live dots are turned by (preview − capture) to line up with it.
+The coordinator reports 0° for preview while its layer isn't in a window, so it is
+only made once `CameraPreview`'s layer is on screen (`didMoveToWindow`); until then
+both angles come from `Upright.builtInAngle`. A rotation-locked phone held
+sideways gets a landscape photo, upright, with the stage showing that crop turned
+to the screen (3:4).
+
+In the Simulator, a fake sensor draws an up arrow (plus a block at the right edge
+to show mirroring), turns it the way a real sensor sees it (by −capture angle,
+from the simulated device orientation) and feeds that landscape frame through the
+same path. `testUpIsUpPortrait` reads the screenshots back: arrow up in the plain
+preview, the live dots and the captured photo on the review strip; selfie preview
+mirrored, photo not. `testUpIsUpPhoneHeldSideways` covers the locked phone turned.
 
 End-to-end against a local booth (nothing reaches the real printer):
 
@@ -144,10 +166,10 @@ shoots 3 photos. It reviews, bumps copies and prints. Then check
 `/api/photos?day=…`: the session should have `orig-1..3.jpg` and `strip.png`,
 with `printed: true`, `copies: 2` and `event: <party>`. The QR on the strip
 decodes to `/a/<share>/<session id>`. The other tests: a saved PIN opens straight
-to the camera and the make-another-booth sheet (corner + settings) shows the PIN
+to the camera and the share-the-booth sheet (theme bar + settings) shows the PIN
 and both QR codes; share this photo on review shows the `/s/<token>` QR; the stage
 has the slot's aspect; a `booth://setup` link lands on the camera; a rejected PIN
-shows the lock screen (no make-another-booth button).
+shows the lock screen (no share-the-booth button).
 If signing the BoothCore resource bundle fails locally, add `CODE_SIGNING_ALLOWED=NO`.
 
 ## Ship (TestFlight)
@@ -163,8 +185,8 @@ cd ~/src/microapps
 
 - Faces come from Vision, not BlazeFace. Archive JPEGs come from ImageIO, not
   Safari's encoder. The strip itself is unaffected by either.
-- Upright frames use AVFoundation's rotation coordinator (horizon level), not
-  the tilt-sensor maths in `orient.js`.
+- Upright frames use AVFoundation's rotation coordinator (horizon level; see
+  "Which way is up"), not the tilt-sensor maths in `orient.js`.
 - The archive queue lives in Application Support, not IndexedDB, so iOS never
   evicts it. Uploads also get a little background time when the app goes to the
   background.
