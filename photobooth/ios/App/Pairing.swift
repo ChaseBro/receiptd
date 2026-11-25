@@ -2,13 +2,13 @@ import Foundation
 
 /// The one server this app talks to, set by a setup link:
 /// `booth://setup#server=https://…&key=…`, or the sign's own QR once the app is installed,
-/// `https://join.chasebro.com/booth#server=…&key=…` (a universal link: Safari until installed).
+/// `https://join.receiptd.sh/booth#server=…&key=…` (a universal link: Safari until installed).
 struct Pairing: Codable, Equatable {
     var server: URL
     var key: String?
 
     init?(url: URL) {
-        guard url.scheme == "booth" || url.host() == "join.chasebro.com" || url.path().hasSuffix("/setup"),
+        guard url.scheme == "booth" || url.host() == "join.receiptd.sh" || url.path().hasSuffix("/setup"),
               let frag = url.fragment(percentEncoded: false) else { return nil }
         var q: [String: String] = [:]
         for part in frag.split(separator: "&") {

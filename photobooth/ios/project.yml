@@ -28,11 +28,11 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
-    # Universal links: the sign's QR (join.chasebro.com/booth) opens the app once installed.
+    # Universal links: the sign's QR (join.receiptd.sh/booth) opens the app once installed.
     entitlements:
       path: App/PhotoBooth.entitlements
       properties:
-        com.apple.developer.associated-domains: [applinks:join.chasebro.com]
+        com.apple.developer.associated-domains: [applinks:join.receiptd.sh]
     info:
       path: App/Info.plist
       properties:
