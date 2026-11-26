@@ -87,7 +87,7 @@ for (const [name, dev] of [["ipad-mini-portrait", devices["iPad Mini"]], ["ipad-
 // ---------- B. capture flows (Chromium, iPad Mini portrait), no party ----------
 console.log("B. capture flows");
 {
-  const { ctx, page } = await newCtx(chromiumB, devices["iPad Mini"], { seed: { shots: 1, count: 1 } });
+  const { ctx, page } = await newCtx(chromiumB, devices["iPad Mini"], { seed: { shots: 1 } });
   await page.goto(BASE + "/");
   await camReady(page);
   // 1 shot
@@ -147,7 +147,7 @@ console.log("B. capture flows");
   await shot(page, "idle-return");
   // 3 shots
   await ctx.close();
-  const c3 = await newCtx(chromiumB, devices["iPad Mini"], { seed: { shots: 3, count: 1 } });
+  const c3 = await newCtx(chromiumB, devices["iPad Mini"], { seed: { shots: 3 } });
   await c3.page.goto(BASE + "/"); await camReady(c3.page);
   await c3.page.click("#shutter");
   await c3.page.locator("#review.on").waitFor({ timeout: 40000 });
@@ -232,7 +232,7 @@ const ev = created.event ?? created;
 console.log("   created", JSON.stringify(ev).slice(0, 200));
 try {
   await setActive(ev.slug);
-  const { ctx, page } = await newCtx(chromiumB, devices["iPad Mini"], { seed: { shots: 3, count: 1 } });
+  const { ctx, page } = await newCtx(chromiumB, devices["iPad Mini"], { seed: { shots: 3 } });
   await page.goto(BASE + "/"); await camReady(page);
   await page.waitForFunction(() => document.querySelectorAll("#themes button").length < 12, null, { timeout: 10000 }).catch(() => {});
   const n = await page.locator("#themes button").count();
@@ -284,7 +284,7 @@ try {
 // ---------- F. first-run coach: the hand on the shutter, then on Print; gone once a print went out ----------
 console.log("F. first-run coach");
 {
-  const { ctx, page } = await newCtx(chromiumB, devices["iPhone 13"], { seed: { coachDone: false, ticket: 0, count: 1 } });
+  const { ctx, page } = await newCtx(chromiumB, devices["iPhone 13"], { seed: { coachDone: false, ticket: 0 } });
   await page.goto(BASE + "/");
   await camReady(page);
   const coachAt = () => page.evaluate(() => {
@@ -302,7 +302,7 @@ console.log("F. first-run coach");
   await shot(page, "coach-1-shutter");
   check(await page.evaluate(() => getComputedStyle(document.getElementById("shutter")).pointerEvents !== "none"), "shutter still tappable");
   await page.click("#shutter");
-  check(await coachAt() === null, "gone once the shutter is tapped (countdown + flash unblocked)");
+  check((await coachAt())?.step !== "shutter", "gone once the shutter is tapped (instant capture + flash unblocked)");
   await page.locator("#review.on").waitFor({ timeout: 30000 });
   await page.waitForTimeout(600);
   at = await coachAt();
@@ -323,6 +323,109 @@ console.log("F. first-run coach");
   await page.mouse.click(5, 300);
   check(await coachAt() === null, "a tap elsewhere skips it");
   await ctx.close();
+}
+
+// ---------- G. speed: instant capture, posing beats in strips, printing screen never waits ----------
+console.log("G. instant capture + quick printing screen");
+{
+  // Count how often the countdown ring shows (and the numbers it shows) for the shots below.
+  const watchRing = (page) => page.evaluate(() => {
+    window.__rings = []; const r = document.getElementById("ring");
+    new MutationObserver(() => { if (r.classList.contains("counting") && window.__rings.at(-1) !== "on") window.__rings.push("on"); else if (!r.classList.contains("on") && window.__rings.at(-1) === "on") window.__rings.push("off"); })
+      .observe(r, { attributes: true, attributeFilter: ["class"] });
+    window.__nums = new Set(); const num = document.getElementById("num");
+    new MutationObserver(() => { if (r.classList.contains("counting")) window.__nums.add(num.textContent); }).observe(num, { childList: true, characterData: true, subtree: true });
+  });
+  const rings = (page) => page.evaluate(() => ({ shown: window.__rings.filter((x) => x === "on").length, nums: [...window.__nums] }));
+
+  // Fresh device (no countdown stored): one tap → flash + snap at once, no ring at all.
+  const { ctx, page } = await newCtx(chromiumB, devices["iPad Mini"], { seed: { shots: 1 } });
+  await page.goto(BASE + "/"); await camReady(page);
+  await watchRing(page);
+  const flashAt = page.evaluate(() => new Promise((res) => {
+    const t0 = performance.now(), f = document.getElementById("flash");
+    new MutationObserver(() => { if (f.classList.contains("pop")) res(performance.now() - t0); }).observe(f, { attributes: true });
+  }));
+  await page.click("#shutter");
+  const flashMs = await Promise.race([flashAt, new Promise((r) => setTimeout(() => r(Infinity), 3000))]);
+  check(flashMs < 500, `instant: the flash fires right after the tap (${Math.round(flashMs)} ms)`);
+  await page.locator("#review.on").waitFor({ timeout: 30000 });
+  let r = await rings(page);
+  check(r.shown === 0, `instant single shot: reaches review with no countdown ring (${JSON.stringify(r)})`);
+  check(await page.evaluate(() => localStorage.getItem("booth.count")) === null, "the default isn't stored (only an explicit choice is)");
+
+  // The printing screen: the local booth has no printer polling, so the job stays queued. The
+  // screen must not wait for it: back to the camera in well under 10 s.
+  const printReq = page.waitForResponse((res) => res.url().endsWith("/api/print") && res.request().method() === "POST");
+  const t0 = Date.now();
+  await page.click("#printBtn");
+  await page.locator("#printing.on").waitFor({ timeout: 5000 });
+  const job = await (await printReq).json();
+  await page.locator("#cam.on").waitFor({ timeout: 10000 });
+  const back = Date.now() - t0;
+  const js = await j("/api/jobs/" + job.id);
+  check(back < 10000, `printing screen → camera in ${(back / 1000).toFixed(1)} s (< 10 s)`);
+  check(js.status !== "completed", `…while the job is still waiting for the printer (${js.status}, position ${js.position})`);
+  check(!(await page.locator("#printErr.on").count()), "no error face for an accepted print");
+  // The cooldown ring runs, then the shutter is back; the next shot isn't blocked by the job.
+  await page.waitForFunction(() => !document.getElementById("shutter").disabled, null, { timeout: 20000 });
+  check(true, "shutter free again after the cooldown");
+  // Background follow-up: it keeps asking about the job (slower) after the screen moved on.
+  const polls = [];
+  page.on("request", (q) => { if (q.url().includes("/api/jobs/" + job.id)) polls.push(Date.now()); });
+  await page.waitForTimeout(7000);
+  check(polls.length >= 1 && polls.length <= 4, `job followed in the background every ~3 s (${polls.length} polls in 7 s)`);
+  await shot(page, "after-quick-print");
+  await ctx.close();
+
+  // Settings: Countdown shows "Instant" on a fresh device and goes 0..10.
+  {
+    const s = await newCtx(chromiumB, devices["iPad Mini"]);
+    await s.page.goto(BASE + "/"); await camReady(s.page);
+    await s.page.focus("#gearBtn"); await s.page.keyboard.press("Enter");   // keyboard activation opens at once (adults with assistive tech)
+    await s.page.locator("#settings.on").waitFor({ timeout: 3000 }).catch(() => {});
+    if (await s.page.locator("#settings.on").count()) {
+      check((await s.page.textContent("#sCount output")) === "Instant", "settings: Countdown reads Instant by default");
+      await s.page.click("#sCount button:last-child");
+      check((await s.page.textContent("#sCount output")) === "1 s" && await s.page.evaluate(() => localStorage.getItem("booth.count")) === "1", "settings: + → 1 s, stored");
+      await s.page.click("#sCount button:first-child");
+      check((await s.page.textContent("#sCount output")) === "Instant" && await s.page.evaluate(() => localStorage.getItem("booth.count")) === "0", "settings: − → Instant, stored as an explicit 0");
+    } else check(false, "settings opened for the countdown check");
+    await s.ctx.close();
+  }
+
+  // A device that chose a countdown keeps it: 2 s → the ring shows 2, 1.
+  {
+    const c = await newCtx(chromiumB, devices["iPad Mini"], { seed: { shots: 1, count: 2 } });
+    await c.page.goto(BASE + "/"); await camReady(c.page);
+    await watchRing(c.page);
+    await c.page.click("#shutter");
+    await c.page.locator("#review.on").waitFor({ timeout: 30000 });
+    r = await rings(c.page);
+    check(r.shown === 1 && r.nums.includes("2") && r.nums.includes("1"), `explicit 2 s countdown kept (${JSON.stringify(r)})`);
+    await c.ctx.close();
+  }
+
+  // Strip of 3 with the instant default: first shot at once, a 1 s posing ring before shots 2 and 3.
+  {
+    const c = await newCtx(chromiumB, devices["iPad Mini"], { seed: { shots: 3 } });
+    await c.page.goto(BASE + "/"); await camReady(c.page);
+    await watchRing(c.page);
+    const dotsAt = c.page.evaluate(() => new Promise((res) => {
+      const t0 = performance.now(), f = document.getElementById("flash"), at = [];
+      new MutationObserver(() => { if (f.classList.contains("pop")) { at.push(Math.round(performance.now() - t0)); if (at.length === 3) res(at); } }).observe(f, { attributes: true });
+    }));
+    await c.page.click("#shutter");
+    const at = await dotsAt;
+    await c.page.locator("#review.on").waitFor({ timeout: 30000 });
+    r = await rings(c.page);
+    check(at[0] < 500, `strip: first shot instant (${at})`);
+    check(at[1] - at[0] >= 1500 && at[2] - at[1] >= 1500, `strip: a posing beat between shots (${at})`);
+    check(r.shown === 2 && r.nums.length === 1 && r.nums[0] === "1", `strip: two 1 s rings, between shots only (${JSON.stringify(r)})`);
+    const bad = c.page.errs.filter((e) => !noise.test(e));
+    check(bad.length === 0, `G: no console/page errors ${bad.join("|")}`);
+    await c.ctx.close();
+  }
 }
 
 // ---------- E. WebKit: layout only (no camera) ----------

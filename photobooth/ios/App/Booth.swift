@@ -38,7 +38,9 @@ struct Settings {
     var theme: String { get { d.string(forKey: "booth.theme") ?? "stars" } nonmutating set { d.set(newValue, forKey: "booth.theme") } }
     var shots: Int { get { d.object(forKey: "booth.shots") == nil ? 1 : (d.integer(forKey: "booth.shots") == 1 ? 1 : 3) } nonmutating set { d.set(newValue, forKey: "booth.shots") } }
     var footer: String { get { d.string(forKey: "booth.footer") ?? "" } nonmutating set { d.set(newValue, forKey: "booth.footer") } }
-    var count: Int { get { min(10, max(1, d.object(forKey: "booth.count") == nil ? 3 : d.integer(forKey: "booth.count"))) } nonmutating set { d.set(newValue, forKey: "booth.count") } }
+    /// Countdown (s): 0 = instant, the default; stored only when chosen in settings, so a device
+    /// that picked one keeps it.
+    var count: Int { get { clampCountdown(d.object(forKey: "booth.count") == nil ? nil : d.integer(forKey: "booth.count")) } nonmutating set { d.set(newValue, forKey: "booth.count") } }
     var gain: Double { get { d.object(forKey: "booth.gain") as? Double ?? 0.15 } nonmutating set { d.set(newValue, forKey: "booth.gain") } }
     var density: Int { get { d.object(forKey: "booth.density") as? Int ?? 3 } nonmutating set { d.set(newValue, forKey: "booth.density") } }
     var speed: Int { get { d.object(forKey: "booth.speed") as? Int ?? 2 } nonmutating set { d.set(newValue, forKey: "booth.speed") } }
@@ -391,7 +393,9 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
         var frames: [CGImage] = [], full: [CGImage] = []
         dotsDone = 0
         for i in 0..<shots {
-            await ring(.countdown, seconds: Double(settings.count))
+            // Instant by default (no ring at all); strips get a short posing beat between shots.
+            let wait = shotCountdown(settings.count, shot: i)
+            if wait > 0 { await ring(.countdown, seconds: Double(wait)) }
             guard let g = camera.grab() else { Sfx.shared.play("boo"); return }
             frames.append(g.frame); full.append(g.full)
             Sfx.shared.play("snap"); buzz(.heavy)
@@ -593,12 +597,22 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
             settings.head = (r.sink, Date().timeIntervalSince1970)
             settings.ticket += 1
             for _ in 0..<n { printTimes.append(Date()) }
-            await waitForJob(job.id, copies: n, height: H)
+            // The job is safely queued (201): the printer takes it when it next polls (nudged over
+            // MQTT), so don't wait for the printer. The animation runs for a beat (ticks advance on
+            // an estimate if it starts printing, all fill if it finishes), then confetti and back to
+            // the camera, PRINT_HOLD s after the 201 at most. followJob keeps watching in the
+            // background (re-nudges, the printer badge) and never blocks the next shot.
+            let view = JobView(copies: n, height: H)
+            Task { await followJob(job.id, view: view) }
+            let t0 = Date()
+            while !printScreenDone(elapsed: Date().timeIntervalSince(t0), status: view.status) { try? await Task.sleep(for: .milliseconds(250)) }
+            view.on = false
+            if view.status == "completed" { printing.done = n }
             Task { await refreshPrinter(force: true) }
             printingNow = false; if mine != nil { armMineClose() }
             celebrate = ["🎉", "🥳", "🤩", "😻", "🦄"].randomElement()
             Sfx.shared.play("yay")
-            try? await Task.sleep(for: .seconds(2.4))
+            try? await Task.sleep(for: .seconds(CELEBRATE))
             celebrate = nil
             screen = .camera
             shutterLocked = true
@@ -612,27 +626,41 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
         }
     }
 
-    private func waitForJob(_ id: String, copies n: Int, height: Int) async {
-        let until = Date().addingTimeInterval(60 + 30 * Double(n))
-        let perCopy = 1.5 + Double(height) * 0.002
-        var printingSince: Date?, shown = 0, nudges = 0
-        let sent = Date()
+    /// One queued job as the printing screen sees it (`on` while that screen shows it).
+    private final class JobView {
+        let copies: Int, height: Int
+        var on = true, status: String?, printingSince: Date?, shown = 0
+        init(copies: Int, height: Int) { self.copies = copies; self.height = height }
+    }
+
+    /// Follow a queued job in the background until the printer acks it (or followSeconds): re-send
+    /// the MQTT "poll now" if the first one seems lost, and keep the printer badge current. Polls
+    /// every 1 s while the printing screen shows it, then every 3 s.
+    private func followJob(_ id: String, view v: JobView) async {
+        let sent = Date(), until = sent.addingTimeInterval(followSeconds(copies: v.copies))
+        let perCopy = perCopySeconds(height: v.height)
+        var nudges = 0
         while Date() < until {
-            // Not done after ~6 s (+ print time)? Re-send the MQTT poke, up to 5 times.
-            if nudges < 5, Date().timeIntervalSince(sent) > 6 * Double(nudges + 1) + perCopy * Double(n - 1) {
-                nudges += 1; Task { await api.nudge() }
+            if nudgeDue(sinceSent: Date().timeIntervalSince(sent), nudges: nudges, copies: v.copies, height: v.height) {
+                nudges += 1; Task { await sendNudge() }
             }
-            if let s = try? await api.job(id) {
+            do {
+                let s = try await api.job(id)
                 if let p = s.printer { printer = p }
-                if s.status == "completed" { printing.done = n; return }
-                if s.status == "printing", n > 1 {
-                    printingSince = printingSince ?? Date()
-                    let est = min(n - 1, Int(Date().timeIntervalSince(printingSince!) / perCopy))
-                    if est > shown { shown = est; printing.done = est; Sfx.shared.play("whirr"); buzz(.medium); printing.go += 1 }
+                v.status = s.status
+                if v.on {
+                    if s.status == "printing", v.copies > 1 {
+                        v.printingSince = v.printingSince ?? Date()
+                        let est = min(v.copies - 1, Int(Date().timeIntervalSince(v.printingSince!) / perCopy))
+                        if est > v.shown { v.shown = est; printing.done = est; Sfx.shared.play("whirr"); buzz(.medium); printing.go += 1 }
+                    }
+                    printing.position = s.position ?? 0
                 }
-                printing.position = s.position ?? 0
+                if s.status == "completed" { return }
+            } catch {
+                if case BoothAPIError.locked = error { return }   // locked: stop asking
             }
-            try? await Task.sleep(for: .seconds(1))
+            try? await Task.sleep(for: .seconds(v.on ? 1 : 3))
         }
     }
 

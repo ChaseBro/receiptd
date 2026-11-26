@@ -14,8 +14,10 @@ printer (WiFi) ── polls ──► cprnt.receiptd.sh  (receiptd-cprnt Worker)
 
 Kid-first, no reading needed: emoji theme picker (🎞️ ⭐ 💖 🎉 🦖 🚀 📷), drawn
 sticker icons everywhere else (`public/icons.js`; settings → Icon style: Drawn /
-Classic emoji), a strip/single toggle, a giant bouncing camera button, ring
-countdown with beeps, flash + shutter sound, retake / print review, a printer
+Classic emoji), a strip/single toggle, a giant bouncing camera button, instant
+capture (flash + shutter sound the moment it's tapped; an optional 1–10 s ring
+countdown with beeps in settings; 3-photo strips always give at least a 1 s ring to
+pose between shots), retake / print review, a printer
 animation, a confetti finish, and an anti-mashing cooldown ring (1–15 s; UX
 borrowed from `ChaseBro/photo-receipts`). The screen stays awake (Wake Lock).
 **Press and hold the small gear** at the camera's top-right for 1.2 s to open
@@ -34,7 +36,8 @@ controls" for the adult-label rules.
 Settings (one sheet): a status strip (printer · paper · upload queue, red when
 something needs attention) with Nudge printer / Upload now / Print test strip;
 then Booth (icon style, live print preview, sounds, screen flash), Camera
-(start with front/back, mirror preview, countdown, photos per strip), Strip &
+(start with front/back, mirror preview, countdown: Instant (default) to 10 s,
+photos per strip), Strip &
 copies (copies to start with — a floor under one-per-face —, most copies a kid
 can pick, default 3, hard cap 6, footer), Party & sharing, Printer
 (anti-ghost A–E, darkness, speed, calibration), Archive, Lock.
@@ -45,8 +48,20 @@ detector on-device (self-hosted WASM in `public/vendor/`, lazy-loaded after
 the camera starts; falls back to 1 copy if it's missing or slow) and takes the
 most faces in any frame. The face boxes are also passed to `compose()` as
 `faces`. `POST /api/print` takes `copies` and enqueues one job (and one R2
-object, since the printer worker deletes it on ack) per copy; the printing
-screen ticks off a 🧾 per copy, and every copy counts toward the cooldown.
+object, since the printer worker deletes it on ack) per copy; every copy counts
+toward the cooldown.
+
+The printing screen doesn't wait for the printer. Once `POST /api/print` says
+201 the job is safely queued (the printer takes it when it next polls; the booth
+nudges it over MQTT), so the screen plays the printer animation for a beat
+(1.5 s at least, 4 s at most after the 201: sooner if the job reports
+completed; the 🧾 per copy tick off on an estimate if it starts printing, all
+fill if it finishes), then confetti (2.4 s) and back to the camera, about 7 s
+from the tap. The job is followed in the background (`/api/jobs/:id` every 3 s
+for up to 60 s + 30 s per copy: MQTT re-nudges if the first poke seems lost,
+and the printer badge for paper out etc.) without blocking the next shot. A
+failed request (network, non-2xx) shows 😕 + retry; a 401 locks the booth.
+Timings: `public/timing.js` (iOS: `BoothCore/Timing.swift`).
 
 The camera stage is the photo slot's shape (4:3 for landscape frames, 4:5 for
 portrait ones, `frames.js` slotAspect), as big as fits and centred, so the live
@@ -167,9 +182,18 @@ the album index).
   its ink frame, tucked up under the ticket stub. `tools/qr-size/` renders
   strips at other sizes through the real dither + a simulated thermal print and
   decodes them with Apple Vision (4 dots fails once dot spread + blur are added).
-- **Sign**: 🪧 on the party page → letter-size poster (browser print) or a
-  576px sign on the receipt printer; optional "be the booth" QR that unlocks
-  the booth on a guest's phone (`/#pin=…`, contains the PIN).
+- **Signs** (`public/sign.js`, Thermal Arcade like the app's TestFlight sign:
+  cream card + confetti, drawn art, QR ≥ 3.5 in pure black on a white sticker
+  card, everything 0.4 in inside the page): 🪧 on a party → its album poster;
+  📱 **Booth sign** (header, or "instead" on the album sign) → "use the booth on
+  your own phone, no app needed": QR → `<origin>/#pin=<PIN>` (opens the web
+  booth unlocked; the PIN is only in the QR, never printed as text), three steps
+  (scan, allow the camera, tap the camera then print). Each prints on Letter
+  (browser print) or as a 576px sign on the receipt printer.
+  `BOOTH_PIN=… node scripts/web-sign.mjs sign.pdf [preview.png]` renders the
+  booth sign to a PDF without a running booth (PIN from the env, never printed;
+  `BOOTH_ORIGIN` defaults to https://booth.receiptd.sh). `party.html#sign=web`
+  opens it directly.
 - 📥 adds every session from a day (e.g. shot before the party was set up);
   ♻️ rotates the album link (old sign + strip QRs stop working).
 

@@ -186,16 +186,28 @@ const xssName = `<img src=x onerror="window.__xss=1"> ${RUN}`;
     await p.locator(`.ev[data-slug="${slug}"] button[data-act=attach]`).click();
     await p.locator("#status", { hasText: "Failed" }).waitFor();
   });
-  await check("party: sign view + thermal print enqueues; booth-QR toggle", async () => {
+  await check("party: album sign + 'use your own phone' sign; thermal prints enqueue", async () => {
     await p.locator(`.ev[data-slug="${slug}"] button[data-act=sign]`).click();
-    await p.locator("#poster .qr svg").waitFor();
+    await p.locator("#poster .sg-album .qr svg").waitFor();
     ok((await p.locator("#poster h1").textContent()).includes("<img"), "sign title as text");
-    eq(await p.locator("#poster .booth").count(), 0);
-    await p.check("#signBooth"); eq(await p.locator("#poster .booth").count(), 1);
+    eq(await p.locator("#poster .sg-qrcard svg").count(), 1);
+    eq(await p.locator("#poster .sg-page").evaluate((el) => /\p{Extended_Pictographic}/u.test(el.textContent)), false, "no emoji on the sign");
     await p.screenshot({ path: OUT + "sign.png", fullPage: true });
-    await p.uncheck("#signBooth");
     await p.click("#signThermal");
     await p.locator("#status", { hasText: "Sign sent" }).waitFor({ timeout: 15000 });
+    // Switch to the web-booth sign: its QR is the unlocked booth link; the PIN is not printed as text.
+    await p.click("#signSwitch");
+    await p.locator("#poster .sg-web .qr svg").waitFor();
+    ok(!(await p.locator("#poster .sg-page").textContent()).includes(PIN), "PIN only inside the QR");
+    await p.screenshot({ path: OUT + "sign-web.png", fullPage: true });
+    await p.evaluate(() => { document.getElementById("status").textContent = ""; });
+    await p.click("#signThermal");
+    await p.locator("#status", { hasText: "Sign sent" }).waitFor({ timeout: 15000 });
+    await p.click("#signBack");
+    // Header button opens the web sign without a party.
+    await p.click("#boothSign");
+    await p.locator("#poster .sg-web .qr svg").waitFor();
+    ok(await p.locator("#signSwitch").isHidden(), "no album to switch to");
     await p.click("#signBack");
   });
   await check("party: rotate link -> old /a/<token> 404 + 'Album not found'", async () => {

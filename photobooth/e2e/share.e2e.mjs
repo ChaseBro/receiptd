@@ -22,7 +22,6 @@ async function booth(opts) {
     if (sessionStorage.getItem("seeded")) return;
     sessionStorage.setItem("seeded", "1");
     localStorage.setItem("booth.pin", JSON.stringify(pin));
-    localStorage.setItem("booth.count", "1");
     localStorage.setItem("booth.sound", "false");
     localStorage.setItem("booth.shots", "3");
   }, [PIN]);

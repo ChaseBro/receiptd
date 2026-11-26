@@ -16,9 +16,10 @@ final class BoothFlowUITests: XCTestCase {
     override func setUp() {
         continueAfterFailure = false
         // The first-run coach is off unless a test turns it on (its dimming would skew screenshots).
-        app.launchArguments += ["-booth.server", server, "-booth.count", "1", "-booth.sound", "NO", "-booth.coachDone", "YES"]
+        // No countdown argument: capture is instant by default (strips get a 1 s posing ring between shots).
+        app.launchArguments += ["-booth.server", server, "-booth.sound", "NO", "-booth.coachDone", "YES"]
     }
-    var base: [String] { ["-booth.server", server, "-booth.count", "1", "-booth.sound", "NO"] }
+    var base: [String] { ["-booth.server", server, "-booth.sound", "NO"] }
 
     /// No saved PIN and no bundled one (a Booth.local.xcconfig PIN is ignored): the lock screen.
     func launchLocked() {
@@ -51,7 +52,7 @@ final class BoothFlowUITests: XCTestCase {
         app.buttons["feast theme"].tap()
         shot("2-camera")
 
-        // three shots (asked for: the default is one), countdown 1 s each
+        // three shots (asked for: the default is one): the first instant, a 1 s posing ring before each of the others
         shutter.tap()
         let printBtn = app.buttons["Print"]
         XCTAssert(printBtn.waitForExistence(timeout: 30))
@@ -70,10 +71,61 @@ final class BoothFlowUITests: XCTestCase {
         XCTAssert(app.descendants(matching: .any)["QR code: Your photos"].waitForExistence(timeout: 10))
         shot("4b-printing-your-photos")
         app.buttons["Close"].tap()
-        // Local dev: no printer polls, so the job stays queued and the screen keeps
-        // waiting. Give the request + the strip.png archive upload time to go out.
-        sleep(12)
-        shot("5-printing-later")
+        // Local dev: no printer polls, so the job stays queued; the screen doesn't wait for it.
+        XCTAssert(shutter.waitForExistence(timeout: 10), "back to the camera while the job is still queued")
+        shot("5-camera-after-print")
+    }
+
+    /// Instant capture (the default) and a printing screen that doesn't wait for the printer: one tap
+    /// → review with no countdown; Print → back on the camera within 10 s although the local booth's
+    /// job stays queued (no printer polls locally); the shutter works again after the cooldown.
+    func testInstantShotAndQuickPrint() {
+        // "-booth.count 0": the Simulator may keep an explicit countdown saved by earlier runs (a saved
+        // choice wins, by design); the instant default itself is covered by TimingTests + the web e2e.
+        app.launchArguments += ["-booth.pin", "1234", "-booth.shots", "1", "-booth.count", "0"]
+        app.launch()
+        let shutter = app.buttons["Take photo"]
+        XCTAssert(shutter.waitForExistence(timeout: 10))
+        sleep(2)
+        let countdown = app.staticTexts["countdown"]
+        let t0 = Date()
+        shutter.tap()
+        let printBtn = app.buttons["Print"]
+        var sawCountdown = false
+        while !printBtn.exists, Date().timeIntervalSince(t0) < 30 { if countdown.exists { sawCountdown = true } }
+        XCTAssert(printBtn.exists, "reached review")
+        XCTAssertFalse(sawCountdown, "instant: no countdown ring for a single shot")
+        print("instant shot → review in \(String(format: "%.1f", Date().timeIntervalSince(t0))) s")
+        shot("instant-review")
+        let t1 = Date()
+        printBtn.tap()
+        XCTAssert(app.buttons["Retake"].waitForNonExistence(timeout: 5))
+        XCTAssert(shutter.waitForExistence(timeout: 10), "printing screen → camera within 10 s, job still queued")
+        let back = Date().timeIntervalSince(t1)
+        print("printing screen → camera in \(String(format: "%.1f", back)) s")
+        XCTAssertLessThan(back, 10)
+        XCTAssertFalse(app.buttons["Try again"].exists, "print accepted (no 😕 + retry)")
+        shot("instant-back-on-camera")
+        // After the cooldown the shutter shoots again, not blocked by the queued job.
+        sleep(3)
+        shutter.tap()
+        XCTAssert(printBtn.waitForExistence(timeout: 30), "the next shot isn't blocked by the queued job")
+    }
+
+    /// A strip of 3 with the instant default: a 1 s posing ring between shots (the countdown numeral shows).
+    func testStripPosesBetweenShots() {
+        app.launchArguments += ["-booth.pin", "1234", "-booth.shots", "3", "-booth.count", "0"]
+        app.launch()
+        let shutter = app.buttons["Take photo"]
+        XCTAssert(shutter.waitForExistence(timeout: 10))
+        sleep(2)
+        let t0 = Date()
+        shutter.tap()
+        XCTAssert(app.staticTexts["countdown"].waitForExistence(timeout: 5), "a posing ring between shots")
+        XCTAssert(app.buttons["Print"].waitForExistence(timeout: 30))
+        let took = Date().timeIntervalSince(t0)
+        print("3-shot strip → review in \(String(format: "%.1f", took)) s")
+        XCTAssertGreaterThan(took, 2 * Double(1) + 1.4, "two 1 s rings + the 0.7 s gaps")
     }
 
     /// A saved PIN opens straight to the camera; "share the booth" (beside the themes + settings) shows the PIN, both links + QR codes.

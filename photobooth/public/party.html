@@ -73,27 +73,63 @@
   label.check { display:flex; gap:10px; align-items:center; }
   label.check input { width:22px; height:22px; }
 
-  /* ---------- sign (screen + paper) ---------- */
+  /* ---------- signs (markup from sign.js): one Letter page, everything 0.4in in (home printers can't print to the edge) ---------- */
   #sign { position:fixed; inset:0; z-index:20; overflow:auto; background:var(--paper); padding:20px 16px 60px; }
-  #sign .tools { max-width:760px; margin:0 auto 16px; }
-  #poster { max-width:760px; margin:0 auto; padding:40px 32px; text-align:center; display:flex; flex-direction:column; align-items:center; gap:14px;
-    background:var(--white); border:var(--line-fat) solid var(--ink); border-radius:32px; box-shadow:var(--shadow-lg); }
-  #poster .stickers { font-size:64px; display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
-  #poster .stickers span:nth-child(odd) { rotate:-10deg; } #poster .stickers span:nth-child(even) { rotate:8deg; }
-  #poster h1 { font-size:clamp(40px, 8vw, 72px); flex:none; line-height:1.02; }
-  #poster .date { font-family:var(--font-display); font-size:26px; opacity:.8; }
-  #poster .qr { width:min(70vw, 380px); padding:14px; background:var(--white); border:var(--line-fat) solid var(--ink); border-radius:22px; box-shadow:var(--shadow); }
-  #poster .qr svg { display:block; width:100%; height:auto; }
-  #poster .cta { font-family:var(--font-display); font-size:34px; line-height:1.1; }
-  #poster .small { font-size:16px; font-weight:700; opacity:.8; max-width:520px; }
-  #poster .booth { display:flex; gap:18px; align-items:center; text-align:left; margin-top:10px; padding-top:18px; border-top:4px dashed var(--ink); }
-  #poster .booth .qr { width:150px; padding:8px; border-width:4px; box-shadow:var(--shadow-sm); }
+  #sign .tools { max-width:8.5in; margin:0 auto 16px; }
+  #sign .tools .muted { flex-basis:100%; }
+  #poster { width:8.5in; margin:0 auto; }
+  .sg-page { position:relative; width:8.5in; height:11in; overflow:hidden; background:var(--white); color:var(--ink); text-align:left;
+    font:600 17px/1.32 var(--font-body); -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .sg-page * { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .sg-card { position:absolute; inset:0.4in; border:5px solid var(--ink); border-radius:30px; overflow:hidden; background-color:var(--paper);
+    background-image:radial-gradient(circle, color-mix(in srgb, var(--sun) 55%, var(--paper)) 2.6px, transparent 3px);
+    background-size:0.36in 0.36in; background-position:0.08in 0.08in; }
+  .sg-burst { position:absolute; left:50%; top:1.15in; width:9in; height:9in; transform:translate(-50%, -50%); }
+  .sg-bit { position:absolute; width:0.46in; height:0.42in; }
+  .sg-page svg text { font-family:var(--font-display); }
+  .sg-head { position:relative; text-align:center; padding-top:0.16in; }
+  h1.sg-title { margin:0 auto; font-size:inherit; min-width:0; }
+  .sg-title svg { display:block; width:6.3in; height:1in; margin:0 auto; transform:rotate(-3deg); }
+  .sg-title.two svg { height:1.75in; }
+  .sg-pill { display:inline-block; margin-top:0.04in; padding:0.06in 0.26in; background:var(--white); border:4px solid var(--ink);
+    border-radius:999px; box-shadow:var(--shadow); font:25px/1.1 var(--font-display); transform:rotate(1.5deg); }
+  .sg-pill b { background:var(--mint); border:3px solid var(--ink); border-radius:999px; padding:0 0.12in; margin-left:0.06in; font-weight:400; }
+  .sg-mid { position:relative; display:flex; gap:0.26in; align-items:flex-start; padding:0.46in 0.34in 0; }
+  .sg-qrwrap { position:relative; flex:none; }
+  .sg-qrwrap::before { content:""; position:absolute; inset:0; background:var(--pink); border:5px solid var(--ink); border-radius:26px;
+    transform:rotate(-4deg) translate(-4px, 6px); }
+  .sg-album .sg-qrwrap::before { background:var(--sky); }
+  /* the QR: black on white, quiet zone inside the svg + the card's white padding, nothing drawn over it */
+  .sg-qrcard { position:relative; background:var(--white); border:6px solid var(--ink); border-radius:22px; padding:0.12in; box-shadow:var(--shadow-lg); }
+  .sg-qrcard svg { display:block; width:4.3in; height:4.3in; }
+  .sg-scanme { position:absolute; top:-0.4in; left:50%; transform:translateX(-50%) rotate(-3deg); white-space:nowrap; background:var(--sun);
+    border:4px solid var(--ink); border-radius:999px; box-shadow:var(--shadow); font:24px/1 var(--font-display); padding:0.07in 0.22in 0.05in; }
+  .sg-side { flex:1; min-width:0; text-align:center; display:flex; flex-direction:column; align-items:center; }
+  .sg-side-art { display:block; width:1.45in; height:1.45in; }
+  .sg-say { margin:0.02in 0 0; font:21px/1.08 var(--font-display); }
+  .sg-arrow { display:block; width:0.6in; height:0.62in; margin:0.04in 0 -0.04in 0.5in; }
+  .sg-steps { position:relative; list-style:none; margin:0.36in 0.34in 0; padding:0; display:grid; grid-template-columns:repeat(3, 1fr); gap:0.22in; }
+  .sg-step { position:relative; display:grid; grid-template-columns:0.9in 1fr; align-items:center; column-gap:0.06in; background:var(--white);
+    border:4px solid var(--ink); border-radius:20px; box-shadow:var(--shadow); padding:0.08in 0.14in 0.12in 0.12in; }
+  .sg-step:nth-child(odd) { transform:rotate(-1.2deg); } .sg-step:nth-child(even) { transform:rotate(1deg); }
+  .sg-num { position:absolute; left:-0.18in; top:-0.18in; width:0.52in; height:0.52in; border-radius:50%; background:var(--pink);
+    border:4px solid var(--ink); box-shadow:var(--shadow-sm); font:29px/0.46in var(--font-display); text-align:center; }
+  .sg-step:nth-child(2) .sg-num { background:var(--sun); } .sg-step:nth-child(3) .sg-num { background:var(--mint); }
+  .sg-step-art { width:0.9in; height:0.9in; }
+  .sg-step h3 { margin:0; font:26px/1 var(--font-display); font-weight:400; }
+  .sg-step p { grid-column:1 / -1; margin:0.03in 0 0; font-size:16.5px; line-height:1.25; font-weight:500; }
+  .sg-step b { font-weight:800; }
+  .sg-foot { position:absolute; left:0.3in; right:0.3in; bottom:0.24in; display:flex; gap:0.14in; align-items:center; justify-content:center; flex-wrap:wrap; }
+  .sg-tip { background:var(--white); border:3px solid var(--ink); border-radius:999px; box-shadow:var(--shadow-sm); padding:0.03in 0.14in; font-size:13.5px; font-weight:500; }
+  .sg-tip b { font-weight:800; }
+  .sg-url { font:600 12px/1 var(--font-mono); color:color-mix(in srgb, var(--ink) 75%, var(--white)); }
   @media print {
-    @page { size:letter portrait; margin:0.4in; }
+    @page { size:letter portrait; margin:0; }
     body { background:var(--white); padding:0; }
-    main, header, #status, #lock, #sign .tools { display:none !important; }
-    #sign { position:static; padding:0; background:var(--white); overflow:visible; }
-    #poster { box-shadow:none; max-width:none; min-height:9.6in; justify-content:center; break-inside:avoid; }
+    body > main, #status, #lock, #sign .tools, dialog { display:none !important; }
+    #sign { position:static; padding:0; background:none; overflow:visible; }
+    #poster { zoom:1 !important; width:8.5in; margin:0; }
+    .sg-page { break-inside:avoid; }
   }
 </style>
 </head>
@@ -111,6 +147,7 @@
     <div id="logo" class="sticker emoji" aria-hidden="true">🎉</div>
     <h1>Parties &amp; albums</h1>
     <button class="sticker pill go" id="new">➕ New party</button>
+    <button class="sticker pill hot" id="boothSign">📱 Booth sign</button>
     <a class="sticker pill" href="./gallery.html">🗂️ Archive</a>
     <a class="sticker pill" href="./">📸 Booth</a>
   </header>
@@ -141,7 +178,8 @@
     <button class="sticker pill" id="signBack">← Back</button>
     <button class="sticker pill go" id="signPrint">🖨️ Print poster</button>
     <button class="sticker pill hot" id="signThermal">🧾 Print on the receipt printer</button>
-    <label class="check"><input type="checkbox" id="signBooth"> Add “use the booth on your phone” QR (contains the PIN)</label>
+    <button class="sticker pill" id="signSwitch"></button>
+    <div class="muted" id="signNote"></div>
   </div>
   <div id="poster"></div>
 </section>
@@ -150,6 +188,7 @@
 import { THEMES } from "./frames.js";
 import { qrSVG, drawQR, qrSide } from "./qr.js";
 import { webBoothLink } from "./share.js";
+import { webSignHTML, albumSignHTML, fitSignTitles } from "./sign.js";
 import { PRINT_WIDTH as W, luminance, packBits, toBase64 } from "./raster.js";
 
 const $ = (id) => document.getElementById(id);
@@ -214,7 +253,7 @@ $("list").addEventListener("click", async (ev) => {
     switch (b.dataset.act) {
       case "activate": await api("/api/events/active", { method: "POST", body: JSON.stringify({ slug: e.slug }) }); active = e.slug; render(); setStatus(`The booth now shoots for “${e.name}” (kiosks pick it up within a minute).`); break;
       case "stop": await api("/api/events/active", { method: "POST", body: JSON.stringify({ slug: null }) }); active = null; render(); setStatus("No active party: photos go to the archive only."); break;
-      case "sign": openSign(e); break;
+      case "sign": openSign("album", e); break;
       case "copy": await navigator.clipboard.writeText(albumURL(e)); setStatus("Album link copied."); break;
       case "edit": openEditor(e); break;
       case "attach": {
@@ -274,33 +313,39 @@ $("editForm").addEventListener("submit", async (ev) => {
   } catch (err) { $("edErr").textContent = "Couldn't save: " + err.message; }
 });
 
-// ---------- sign ----------
-let signing = null;
+// ---------- signs (sign.js: Letter poster, Thermal Arcade; or 576px on the receipt printer) ----------
+// "album": the party's album QR. "web": use the booth on your own phone (QR → /#pin=<this page's PIN>).
+let signing = null;   // { kind: "album" | "web", e?: event }
 const fmtDate = (d) => d ? new Date(d + "T12:00:00").toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" }) : "";
-function signIcons(e) { return (e.themes.length ? e.themes : ["stars", "party", "hearts"]).slice(0, 5).map((k) => THEMES[k]?.icon ?? "📸"); }
-function openSign(e) {
-  signing = e;
+function openSign(kind, e = null) {
+  signing = { kind, e };
   $("sign").hidden = false; renderSign(); scrollTo(0, 0);
 }
-function renderSign() {
-  const e = signing, withBooth = $("signBooth").checked;
-  $("poster").innerHTML = `
-    <div class="stickers emoji" aria-hidden="true">${signIcons(e).map((i) => `<span>${i}</span>`).join("")}</div>
-    <h1>${esc(e.name)}</h1>
-    ${e.date ? `<div class="date">${esc(fmtDate(e.date))}</div>` : ""}
-    <div class="cta">📸 Photo booth! Strike a pose,<br>then scan for your photos</div>
-    <div class="qr">${qrSVG(albumURL(e))}</div>
-    <div class="small">Point your phone camera here to see, save and share every photo from the party. Each printed strip has its own code too.</div>
-    ${withBooth ? `<div class="booth"><div class="qr">${qrSVG(webBoothLink(location.origin, pin()))}</div>
-      <div><div class="cta" style="font-size:26px">📱 Be the booth</div><div class="small">Scan to use your own phone as a camera — strips print on the party printer.</div></div></div>` : ""}`;
+async function renderSign() {
+  const { kind, e } = signing;
+  $("poster").innerHTML = kind === "web"
+    ? webSignHTML({ server: location.origin, pin: pin() })
+    : albumSignHTML({ name: e.name, date: fmtDate(e.date), url: albumURL(e) });
+  $("signSwitch").hidden = !e;
+  $("signSwitch").textContent = kind === "web" ? "🖼️ Album sign instead" : "📱 “Use your own phone” sign instead";
+  $("signNote").textContent = kind === "web"
+    ? "This QR opens the booth already unlocked (it carries the booth PIN): put it up where guests can see it, not online. Changing the PIN retires it."
+    : "Anyone with the album link can view & download the photos. ♻️ New link retires this sign.";
+  fitPoster();
+  await document.fonts.load("40px Lilita").catch(() => {});
+  fitSignTitles($("poster"));
 }
-$("signBooth").onchange = renderSign;
-$("signBack").onclick = () => { $("sign").hidden = true; };
+/** Show the whole Letter page on screen (print resets the zoom). */
+function fitPoster() { $("poster").style.zoom = Math.min(1, (innerWidth - 32) / 816).toFixed(3); }
+addEventListener("resize", () => { if (!$("sign").hidden) fitPoster(); });
+$("boothSign").onclick = () => openSign("web");
+$("signSwitch").onclick = () => openSign(signing.kind === "web" ? "album" : "web", signing.e);
+$("signBack").onclick = () => { $("sign").hidden = true; if (location.hash) history.replaceState(null, "", location.pathname); };
 $("signPrint").onclick = () => print();
 $("signThermal").onclick = async () => {
   const b = $("signThermal"); b.disabled = true;
   try {
-    const { bits, h } = await thermalSign(signing, $("signBooth").checked);
+    const { bits, h } = signing.kind === "web" ? await thermalWebSign() : await thermalSign(signing.e);
     await api("/api/print", { method: "POST", body: JSON.stringify({ width: W, height: h, bits: toBase64(packBits(bits, W, h)), density: S.get("density", 3), speed: S.get("speed", 2), copies: 1 }) });
     setStatus("Sign sent to the receipt printer.");
     b.textContent = "✅ Sent — print another?";
@@ -308,41 +353,68 @@ $("signThermal").onclick = async () => {
   finally { b.disabled = false; }
 };
 
-/** 576px-wide black & white sign for the receipt printer (pure ink → threshold, no dither). */
-async function thermalSign(e, withBooth) {
+const DISPLAY = `"Lilita", "Arial Rounded MT Bold", sans-serif`;
+/** Canvas → 1-bit rows for the receipt printer (pure ink → threshold, no dither). */
+function inkBits(ctx, h) {
+  const g = luminance(ctx.getImageData(0, 0, W, h).data, W, h);
+  const bits = new Uint8Array(W * h);
+  for (let i = 0; i < bits.length; i++) bits[i] = g[i] < 140 ? 1 : 0;
+  return { bits, h };
+}
+function fitText(ctx, text, size, maxW) {
+  let s = size; ctx.font = `${s}px ${DISPLAY}`;
+  while (s > 18 && ctx.measureText(text).width > maxW) { s -= 2; ctx.font = `${s}px ${DISPLAY}`; }
+  return s;
+}
+
+/** 576px-wide black & white album sign for the receipt printer. */
+async function thermalSign(e) {
   await document.fonts.load("40px Lilita");
-  const DISPLAY = `"Lilita", "Arial Rounded MT Bold", sans-serif`, EMOJI = `"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
   const url = albumURL(e), mod = 11, side = qrSide(url, mod);
-  const boothURL = webBoothLink(location.origin, pin()), bMod = 6, bSide = withBooth ? qrSide(boothURL, bMod) : 0;
-  const H = 120 + 190 + 30 + side + 150 + (withBooth ? bSide + 90 : 0) + 60;
+  const H = 120 + 190 + 30 + side + 150 + 60;
   const c = new OffscreenCanvas(W, H), ctx = c.getContext("2d");
   ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = "#000"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.font = `76px ${EMOJI}`; ctx.fillText(signIcons(e).slice(0, 4).join(" "), W / 2, 64);
+  ctx.font = `46px ${DISPLAY}`; ctx.fillText("PHOTO BOOTH!", W / 2, 50, W - 30);
   // Title, wrapped to two lines.
   let size = 70; ctx.font = `${size}px ${DISPLAY}`;
   const words = e.name.split(/\s+/), lines = [""];
   for (const w of words) { const t = (lines.at(-1) + " " + w).trim(); if (ctx.measureText(t).width > W - 40 && lines.at(-1)) lines.push(w); else lines[lines.length - 1] = t; }
   if (lines.length > 2) { size = 52; ctx.font = `${size}px ${DISPLAY}`; }
-  lines.slice(0, 3).forEach((l, i) => ctx.fillText(l, W / 2, 160 + i * (size + 6), W - 30));
-  let y = 160 + Math.min(3, lines.length) * (size + 6);
+  lines.slice(0, 3).forEach((l, i) => ctx.fillText(l, W / 2, 130 + i * (size + 6), W - 30));
+  let y = 130 + Math.min(3, lines.length) * (size + 6);
   if (e.date) { ctx.font = `30px ${DISPLAY}`; ctx.fillText(fmtDate(e.date), W / 2, y, W - 30); y += 44; }
   ctx.font = `38px ${DISPLAY}`; ctx.fillText("SCAN FOR YOUR PHOTOS", W / 2, y + 10, W - 30); y += 40;
   ctx.fillRect((W - side) / 2 + 10, y + 10, side, side);
   drawQR(ctx, url, (W - side) / 2, y, mod);
   ctx.lineWidth = 6; ctx.strokeRect((W - side) / 2 - 3, y - 3, side + 6, side + 6);
   y += side + 40;
-  ctx.font = `28px ${DISPLAY}`; ctx.fillText("see · save · share 📸", W / 2, y, W - 30); y += 50;
-  if (withBooth) {
-    ctx.setLineDash([12, 10]); ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(20, y); ctx.lineTo(W - 20, y); ctx.stroke(); ctx.setLineDash([]);
-    y += 30; ctx.font = `34px ${DISPLAY}`; ctx.fillText("BE THE BOOTH 📱", W / 2, y); y += 30;
-    drawQR(ctx, boothURL, (W - bSide) / 2, y, bMod); y += bSide + 20;
-  }
-  const h = Math.min(H, Math.ceil(y + 30));
-  const g = luminance(ctx.getImageData(0, 0, W, h).data, W, h);
-  const bits = new Uint8Array(W * h);
-  for (let i = 0; i < bits.length; i++) bits[i] = g[i] < 140 ? 1 : 0;
-  return { bits, h };
+  ctx.font = `30px ${DISPLAY}`; ctx.fillText("see · save · share", W / 2, y, W - 30); y += 50;
+  return inkBits(ctx, Math.min(H, Math.ceil(y + 30)));
+}
+
+/** 576px-wide "use your own phone" sign for the receipt printer: title, QR, three steps. */
+async function thermalWebSign() {
+  await document.fonts.load("40px Lilita");
+  const url = webBoothLink(location.origin, pin());
+  let mod = 12; while (mod > 6 && qrSide(url, mod) > W - 60) mod--;
+  const side = qrSide(url, mod);
+  const steps = ["1  Scan with your Camera", "2  Allow the camera", "3  Tap the camera, then print"];
+  const H = 250 + side + 60 + steps.length * 56 + 60;
+  const c = new OffscreenCanvas(W, H), ctx = c.getContext("2d");
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#000"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.font = `84px ${DISPLAY}`; ctx.fillText("PHOTO BOOTH", W / 2, 70, W - 30);
+  fitText(ctx, "on your own phone!", 46, W - 40); ctx.fillText("on your own phone!", W / 2, 150);
+  ctx.font = `28px ${DISPLAY}`; ctx.fillText("no app needed", W / 2, 200);
+  let y = 240;
+  ctx.fillRect((W - side) / 2 + 10, y + 10, side, side);
+  drawQR(ctx, url, (W - side) / 2, y, mod);
+  ctx.lineWidth = 6; ctx.strokeRect((W - side) / 2 - 3, y - 3, side + 6, side + 6);
+  y += side + 60;
+  ctx.textAlign = "left";
+  for (const s of steps) { fitText(ctx, s, 36, W - 70); ctx.fillText(s, 40, y); y += 56; }
+  return inkBits(ctx, Math.min(H, Math.ceil(y + 20)));
 }
 
 $("lockForm").onsubmit = (e) => {
@@ -353,7 +425,8 @@ $("lockForm").onsubmit = (e) => {
 async function start() {
   if (!pin()) return lock();
   $("lock").hidden = true; $("app").hidden = false;
-  try { await load(); } catch (e) { if (e.message !== "locked") setStatus("Couldn't load: " + e.message); }
+  try { await load(); } catch (e) { if (e.message !== "locked") setStatus("Couldn't load: " + e.message); return; }
+  if (location.hash === "#sign=web") openSign("web");   // party.html#sign=web: straight to the booth sign (scripts/web-sign.mjs)
 }
 start();
 </script>

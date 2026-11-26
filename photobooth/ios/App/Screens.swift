@@ -353,6 +353,7 @@ struct RingView: View {
                     Text("\(n)").font(Fonts.display(130)).foregroundStyle(.white)
                         .shadow(color: .ink, radius: 0, x: 6, y: 6).id(n)
                         .transition(.scale(scale: 1.8).combined(with: .opacity))
+                        .accessibilityIdentifier("countdown")
                 } else if booth.ringMode == .cooldown { Emoji("🎉", size: 90) }
             }
             .animation(.spring(response: 0.25, dampingFraction: 0.5), value: booth.countdown)
@@ -596,7 +597,9 @@ struct SettingsScreen: View {
                         }.pickerStyle(.segmented).labelsHidden().fixedSize()
                     }
                     Toggle(isOn: bind({ s.mirror }, { s.mirror = $0 })) { sub("Mirror preview", "Selfie camera only; prints are never mirrored") }
-                    Stepper("Countdown: \(s.count) s", value: bind({ s.count }, { s.count = $0 }), in: 1...10)
+                    Stepper(value: bind({ s.count }, { s.count = $0 }), in: 0...COUNTDOWN_MAX) {
+                        sub(s.count == 0 ? "Countdown: Instant" : "Countdown: \(s.count) s", "Strips always give at least 1 s to pose between photos")
+                    }
                     LabeledContent { 
                         Picker("Photos per strip", selection: bind({ booth.shots }, { booth.shots = $0; s.shots = $0 })) { Text("1").tag(1); Text("3").tag(3) }
                             .pickerStyle(.segmented).labelsHidden().fixedSize()

@@ -21,7 +21,6 @@ const browser = await chromium.launch({ args: ["--use-fake-device-for-media-stre
 const ctx = await browser.newContext({ viewport: { width: 820, height: 1180 }, permissions: ["camera"], acceptDownloads: true });
 await ctx.addInitScript(([pin]) => {
   if (!localStorage.getItem("booth.pin")) localStorage.setItem("booth.pin", JSON.stringify(pin));
-  localStorage.setItem("booth.count", "1");
   localStorage.setItem("booth.sound", "false");
 }, [PIN]);
 const page = await ctx.newPage();

@@ -522,7 +522,7 @@
   <div class="grp"><div class="gh"><span data-ic="flip"></span>Camera</div><div class="list">
     <div class="it">Start with<span class="r"><span class="seg" id="sCamera"></span></span></div>
     <div class="it"><span>Mirror preview<span class="sub">selfie camera only; prints are never mirrored</span></span><button class="tog" role="switch" id="sMirror" aria-label="Mirror preview"></button></div>
-    <div class="it">Countdown<span class="r"><span class="stp" id="sCount"></span></span></div>
+    <div class="it"><span>Countdown<span class="sub">strips always give at least 1 s to pose between photos</span></span><span class="r"><span class="stp" id="sCount"></span></span></div>
     <div class="it"><span>Photos per strip<span class="sub">kids can switch</span></span><span class="r"><span class="seg" id="sShots"></span></span></div>
   </div></div>
 
@@ -569,6 +569,7 @@ import { THEMES, compose, calibrationGray, layout as stripLayout, coverCrop } fr
 import { PRINT_WIDTH as W, luminance, packBits, toBase64 } from "./raster.js";
 import { play as playSound, unlockSounds } from "./sound.js";
 import { uprightRotation as orient } from "./orient.js";
+import { clampCountdown, shotCountdown, COUNTDOWN_MAX, CELEBRATE_MS, printScreenDone, followMs, perCopyMs, nudgeDue } from "./timing.js";
 import { clampCopies, maxFaces, kidMax, startCopies, MAX_COPIES, START_COPIES, KID_MAX_COPIES } from "./copies.js";
 import { detectFaces, loadFaceDetector, rotateBoxes } from "./faces.js";
 import { archiveOriginals, archiveStrip, encodeOriginals, newSessionId, pause as pauseArchive, prioritize as prioritizeArchive, queueStats, resume as resumeArchive, startArchive, uploadNow } from "./archive.js";
@@ -600,7 +601,7 @@ const S = {
 };
 const cfg = () => ({
   pin: S.get("pin", ""), theme: S.get("theme", "stars"), shots: S.get("shots", 1),
-  footer: S.get("footer", ""), count: Math.min(10, Math.max(1, S.get("count", 3))),
+  footer: S.get("footer", ""), count: clampCountdown(S.get("count")),   // 0 = instant (default); stored only on an explicit choice
   gain: S.get("gain", 0.15), density: S.get("density", 3), speed: S.get("speed", 2), sound: S.get("sound", true),
   ticket: S.get("ticket", 0), live: S.get("live", true),
   icons: S.get("icons", "drawn") === "classic" ? "classic" : "drawn",   // Icon style: Drawn (icons.js) / Classic (emoji)
@@ -1032,7 +1033,9 @@ $("shutter").onclick = async () => {
   try {
     renderDots(0);
     for (let i = 0; i < c.shots; i++) {
-      await ring("countdown", c.count * 1000);
+      // Instant by default (no ring at all); strips get a short posing beat between shots.
+      const wait = shotCountdown(c.count, i);
+      if (wait) await ring("countdown", wait * 1000);
       const g = grab();
       frames.push(g.frame); full.push(g.full); rotations.push(0);
       if (i === 0) session = { id: newSessionId(), capturedAt: new Date().toISOString(), mirrored: false, full, sentRot: null, event: party?.slug ?? null };
@@ -1168,6 +1171,41 @@ function renderTicks(n, done) {
   [...el.children].forEach((t, i) => { t.classList.toggle("done", i < done); t.classList.toggle("now", i === done); });
 }
 
+/**
+ * Follow a queued job in the background until the printer acks it (or followMs): re-send the
+ * MQTT "poll now" if the first one seems lost, and keep the printer badge current. Polls every
+ * 1 s while the printing screen shows it (`view.on`), then every 3 s; `onStatus` gets each reply.
+ */
+async function followJob(id, n, h, view, onStatus) {
+  const sentAt = Date.now(), until = sentAt + followMs(n);
+  let nudges = 0;
+  while (Date.now() < until) {
+    if (nudgeDue(Date.now() - sentAt, nudges, n, h)) { nudges++; api("/api/nudge", { method: "POST" }).catch(() => {}); }
+    let s = {};
+    try { s = await api("/api/jobs/" + encodeURIComponent(id)); } catch (e) { if (e.message === "locked") return; }
+    if (s.printer) showPrinter(s.printer);
+    view.status = s.status ?? view.status;
+    if (view.on) onStatus(s);
+    if (s.status === "completed") return;
+    await sleep(view.on ? 1000 : 3000);
+  }
+}
+/** The printing screen while it's up: ticks on the estimate, the place in line. */
+function showJobProgress(view, s, n, h) {
+  if (s.status === "printing" && n > 1) {
+    view.printingSince ||= Date.now();
+    const est = Math.min(n - 1, Math.floor((Date.now() - view.printingSince) / perCopyMs(h)));
+    if (est > view.shown) { view.shown = est; renderTicks(n, est); sfx.whirr(); buzz(30); restart($("printing"), "go"); }
+  }
+  // In line: Drawn = one hourglass with the place-in-line number; Classic = ⏳ + a 🧾 per job ahead.
+  const ahead = s.position > 1 ? s.position - 1 : 0, qKey = ahead ? `${cfg().icons}:${ahead}` : "";
+  if ($("queue").dataset.k !== qKey) {
+    $("queue").dataset.k = qKey;
+    $("queue").innerHTML = !ahead ? "" : cfg().icons === "drawn" ? `<div class="sticker emoji q" role="img" aria-label="${ahead} ahead in line">${ic("queue", ahead)}</div>`
+      : `<div class="sticker emoji">⏳</div>` + `<div class="sticker emoji">🧾</div>`.repeat(Math.min(4, ahead));
+  }
+}
+
 async function printFlow() {
   clearTimeout(idleT);
   show("printing"); $("printErr").classList.remove("on");
@@ -1194,42 +1232,24 @@ async function printFlow() {
       syncOriginals();
     }
     S.set("head", { sink: r.sink, t: Date.now() });
-    // All copies print as one job (back to back, each cut). The 🧾 ticks
-    // advance on an estimate while it prints, and all fill on completion.
+    // The job is safely queued (201): the printer takes it when it next polls (nudged over MQTT),
+    // so don't wait for the printer. The animation runs for a beat (the 🧾 ticks advance on an
+    // estimate if it starts printing, all fill if it finishes), then confetti and back to the
+    // camera, PRINT_HOLD_MS after the 201 at most. followJob keeps watching in the background
+    // (re-nudges, the printer badge for paper out etc.) and never blocks the next shot.
     const id = job.id;
     S.set("ticket", cfg().ticket + 1);
     for (let i = 0; i < n; i++) printTimes.push(Date.now());   // copies count toward anti-mash
-    const until = Date.now() + 60000 + 30000 * n;
-    const perCopyMs = 1500 + lastBits.h * 2;   // rough print time per strip
-    let printingSince = 0, shown = 0, nudges = 0;
-    const sentAt = Date.now();
-    while (Date.now() < until) {
-      // If the printer hasn't finished after ~6 s (+ print time), re-send the
-      // MQTT "poll now" in case the first trigger got lost. Up to 5 nudges.
-      if (nudges < 5 && Date.now() - sentAt > 6000 * (nudges + 1) + perCopyMs * (n - 1)) {
-        nudges++; api("/api/nudge", { method: "POST" }).catch(() => {});
-      }
-      const s = await api("/api/jobs/" + encodeURIComponent(id)).catch(() => ({}));
-      showPrinter(s.printer);
-      if (s.status === "completed") { renderTicks(n, n); break; }
-      if (s.status === "printing" && n > 1) {
-        printingSince ||= Date.now();
-        const est = Math.min(n - 1, Math.floor((Date.now() - printingSince) / perCopyMs));
-        if (est > shown) { shown = est; renderTicks(n, shown); sfx.whirr(); buzz(30); restart($("printing"), "go"); }
-      }
-      // In line: Drawn = one hourglass with the place-in-line number; Classic = ⏳ + a 🧾 per job ahead.
-      const ahead = s.position > 1 ? s.position - 1 : 0, qKey = ahead ? `${cfg().icons}:${ahead}` : "";
-      if ($("queue").dataset.k !== qKey) {
-        $("queue").dataset.k = qKey;
-        $("queue").innerHTML = !ahead ? "" : cfg().icons === "drawn" ? `<div class="sticker emoji q" role="img" aria-label="${ahead} ahead in line">${ic("queue", ahead)}</div>`
-          : `<div class="sticker emoji">⏳</div>` + `<div class="sticker emoji">🧾</div>`.repeat(Math.min(4, ahead));
-      }
-      await sleep(1000);
-    }
+    const view = { on: true, status: "", printingSince: 0, shown: 0 }, h = lastBits.h;
+    followJob(id, n, h, view, (s) => showJobProgress(view, s, n, h));
+    const t0 = Date.now();
+    while (!printScreenDone(Date.now() - t0, view.status)) await sleep(250);
+    view.on = false;
+    if (view.status === "completed") renderTicks(n, n);
     printingNow = false; if (!$("mine").hidden) armMineClose();   // "your photos" stays ~30 s after the print
     refreshPrinter({ force: true });
     celebrate();
-    await sleep(2400);
+    await sleep(CELEBRATE_MS);
     show("cam");
     $("shutter").disabled = true;
     await ring("cooldown", cooldownMs(), "🎉");
@@ -1398,7 +1418,7 @@ function renderSettings() {
   tog($("sLive"), "live"); tog($("sSound"), "sound"); tog($("sFlash"), "flash");
   seg($("sCamera"), [["user", "Front"], ["environment", "Back"]], "camera", () => { facing = cfg().camera; });
   tog($("sMirror"), "mirror");
-  stepper($("sCount"), "count", () => 1, () => 10, (v) => `${v} s`);
+  stepper($("sCount"), "count", () => 0, () => COUNTDOWN_MAX, (v) => (v ? `${v} s` : "Instant"));
   seg($("sShots"), [[1, "1"], [3, "3"]], "shots");
   stepper($("sKidMax"), "copiesMax", () => 1, () => MAX_COPIES, String, () => renderSettings());
   stepper($("sCopies"), "copiesStart", () => 1, () => cfg().copiesMax);

@@ -4,10 +4,14 @@ A native (SwiftUI) version of the booth. It uses the same Worker and printer
 queue as the web booth, and prints the same strips. Registered in
 `~/src/microapps` as `booth`, so `micro` builds and ships it.
 
-It does what the web booth does: camera capture (1 or 3 shots, countdown ring,
+It does what the web booth does: camera capture (1 or 3 shots, instant by
+default, optional 1–10 s countdown ring, a 1 s posing ring between strip shots,
 flash), the theme picker, ↻ per photo, copies picker (defaults to one copy per
 face, found with Vision), and printing via `POST /api/print` + `/api/jobs/:id`
-(`x-booth-pin`), with MQTT nudges and the anti-mash cooldown. It also follows
+(`x-booth-pin`), with MQTT nudges and the anti-mash cooldown. The printing
+screen doesn't wait for the printer: after the 201 it animates for 1.5–4 s,
+celebrates and returns to the camera, while the job is followed in the
+background (`BoothCore/Timing.swift`, same numbers as `public/timing.js`). It also follows
 the active party (`/api/events/active`: its frames, its footer, a QR on each
 strip that links to that guest's album page) and runs the background archive
 upload (`POST /api/archive`: originals, then the printed `strip.png`). The kid
