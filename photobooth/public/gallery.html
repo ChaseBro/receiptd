@@ -23,6 +23,12 @@
     --font-emoji:"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
     --ease-pop:cubic-bezier(.34,1.56,.64,1);
     --dots:radial-gradient(color-mix(in srgb, var(--ink) 14%, transparent) 1.6px, transparent 1.8px);
+    --receipt:color-mix(in srgb, var(--white) 72%, var(--paper));
+    --zz:12px;
+    --zigzag:
+      conic-gradient(from -45deg at bottom, transparent, var(--ink) 1deg 89deg, transparent 90deg) bottom / var(--zz) 51% repeat-x,
+      conic-gradient(from 135deg at top, transparent, var(--ink) 1deg 89deg, transparent 90deg) top / var(--zz) 51% repeat-x;
+    --zzfill:linear-gradient(var(--ink), var(--ink)) center / 100% calc(100% - var(--zz)) no-repeat;
   }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   [hidden] { display:none !important; }
@@ -61,11 +67,14 @@
   .badge { padding:3px 9px; border-radius:999px; border:3px solid var(--ink); font-size:13px; font-weight:800; background:var(--paper); }
   .badge.printed { background:var(--mint); }
   .pics { display:flex; gap:10px; align-items:flex-start; }
-  .strip { flex:0 0 34%; }
+  /* Receipt first: the printed strip leads (dot for dot, on receipt paper with torn edges); originals beside it. */
+  .strip { flex:0 0 58%; }
+  .strip:has(.none) { flex-basis:auto; }
   .origs { flex:1; display:grid; grid-template-columns:1fr; gap:8px; }
+  .strip .thumb { border:0; border-radius:0; padding:var(--zz) 0; background:var(--receipt); rotate:-1deg; mask:var(--zigzag), var(--zzfill); }
   .thumb { display:block; width:100%; padding:0; border:3px solid var(--ink); border-radius:12px; overflow:hidden; background:var(--paper); min-height:60px; }
   .thumb img { display:block; width:100%; height:auto; }
-  .strip .thumb img { image-rendering:pixelated; }
+  .strip .thumb img { image-rendering:crisp-edges; image-rendering:pixelated; mix-blend-mode:multiply; }
   .none { opacity:.6; font-size:13px; font-weight:700; padding:6px; }
 
   #view { position:fixed; inset:0; z-index:10; display:none; flex-direction:column; align-items:center; justify-content:center; gap:14px;

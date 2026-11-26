@@ -158,7 +158,8 @@ final class BoothFlowUITests: XCTestCase {
         shot("r5-settings-bottom")
     }
 
-    /// The local booth has no printer polling it, so it is offline: the drawn badge shows; a tap
+    /// The local booth has no printer polling it: first it naps (quiet badge) while the booth nudges
+    /// it; nobody answers, so after the wake-up window it is offline: the drawn badge shows; a tap
     /// gives the adult label, any other touch dismisses it.
     func testPrinterOfflineBadgeAndLabel() {
         app.launchArguments += ["-booth.pin", "1234", "-booth.icons", "drawn"]
@@ -166,6 +167,7 @@ final class BoothFlowUITests: XCTestCase {
         XCTAssert(app.buttons["Take photo"].waitForExistence(timeout: 10))
         let badge = app.buttons["printerBadge"]
         XCTAssert(badge.waitForExistence(timeout: 10))
+        XCTAssert(waitFor(badge, value: "offline", timeout: 45), "offline after an unanswered nudge")
         XCTAssertEqual(badge.value as? String, "offline")
         XCTAssertEqual(badge.label, "Printer offline")
         XCTAssertFalse(app.staticTexts["adultHint"].exists, "no label until tapped")
@@ -179,6 +181,41 @@ final class BoothFlowUITests: XCTestCase {
         shot("r7-printer-offline-label")
         app.buttons["Switch camera"].tap()   // any other touch
         XCTAssert(hint.waitForNonExistence(timeout: 2), "another touch dismisses the label")
+    }
+
+    /// Napping printer (stale check-in, no error; stubbed with -booth.fakePrinter): a quiet badge
+    /// ("Printer napping"), the booth nudges it, and an unanswered nudge turns it offline.
+    func testPrinterNappingThenOffline() {
+        app.launchArguments += ["-booth.pin", "1234", "-booth.icons", "drawn", "-booth.fakePrinter", "napping"]
+        app.launch()
+        XCTAssert(app.buttons["Take photo"].waitForExistence(timeout: 10))
+        let badge = app.buttons["printerBadge"]
+        XCTAssert(badge.waitForExistence(timeout: 10))
+        XCTAssertEqual(badge.value as? String, "asleep")
+        XCTAssertEqual(badge.label, "Printer napping")
+        badge.tap()
+        let hint = app.staticTexts["adultHint"]
+        XCTAssert(hint.waitForExistence(timeout: 2))
+        XCTAssertEqual(hint.label, "Printer napping · waking it up…", "the booth nudged it")
+        shot("r8-printer-napping-label")
+        XCTAssert(waitFor(badge, value: "offline", timeout: 45), "no check-in after the nudge → offline")
+        XCTAssertEqual(badge.label, "Printer offline")
+    }
+
+    /// A napping printer that answers the nudge: the quiet badge goes away by itself.
+    func testPrinterNappingWakes() {
+        app.launchArguments += ["-booth.pin", "1234", "-booth.icons", "drawn", "-booth.fakePrinter", "nappingWakes"]
+        app.launch()
+        XCTAssert(app.buttons["Take photo"].waitForExistence(timeout: 10))
+        let badge = app.buttons["printerBadge"]
+        XCTAssert(badge.waitForExistence(timeout: 10))
+        XCTAssertEqual(badge.value as? String, "asleep")
+        XCTAssert(badge.waitForNonExistence(timeout: 20), "checked in after the nudge: no badge")
+    }
+
+    private func waitFor(_ el: XCUIElement, value: String, timeout: TimeInterval) -> Bool {
+        let exp = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", value), object: el)
+        return XCTWaiter().wait(for: [exp], timeout: timeout) == .completed
     }
 
     /// Icon style Classic: today's emoji. (Drawn is the default.) Screenshots for both.

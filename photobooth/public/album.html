@@ -26,6 +26,12 @@
     --font-emoji:"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
     --ease-pop:cubic-bezier(.34,1.56,.64,1);
     --dots:radial-gradient(color-mix(in srgb, var(--ink) 14%, transparent) 1.6px, transparent 1.8px);
+    --receipt:color-mix(in srgb, var(--white) 72%, var(--paper));
+    --zz:14px;
+    --zigzag:
+      conic-gradient(from -45deg at bottom, transparent, var(--ink) 1deg 89deg, transparent 90deg) bottom / var(--zz) 51% repeat-x,
+      conic-gradient(from 135deg at top, transparent, var(--ink) 1deg 89deg, transparent 90deg) top / var(--zz) 51% repeat-x;
+    --zzfill:linear-gradient(var(--ink), var(--ink)) center / 100% calc(100% - var(--zz)) no-repeat;
   }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   [hidden] { display:none !important; }
@@ -51,40 +57,79 @@
   .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
   #status { max-width:1100px; margin:0 auto 14px; font-weight:700; min-height:1.3em; }
 
+  /* The printed receipt is the hero everywhere: the exact 1-bit strip, dot for dot (never smoothed), on receipt
+     paper with torn edges, a hard ink shadow and a slight tilt. Paper tint = multiply; ink tint = lighten. */
+  .receipt { position:relative; width:min(100%, 440px); margin:0 auto; rotate:-1.5deg; }
+  .receipt::before { content:""; position:absolute; inset:0; translate:10px 10px; background:var(--ink); mask:var(--zigzag), var(--zzfill); }
+  .paper { position:relative; isolation:isolate; padding:var(--zz) 0; background:var(--receipt); mask:var(--zigzag), var(--zzfill); }
+  .paper::after { content:""; position:absolute; inset:0; background:var(--ink); mix-blend-mode:lighten; pointer-events:none; }
+  .paper img.bits { display:block; width:100%; height:auto; image-rendering:crisp-edges; image-rendering:pixelated; mix-blend-mode:multiply; }
+  .receipt.pending .paper::after { display:none; }
+  .receipt.pending .paper { padding:calc(var(--zz) + 22px) 22px calc(var(--zz) + 26px); display:flex; flex-direction:column; gap:14px; align-items:center; text-align:center; font-weight:800; font-size:18px; }
+  .receipt.pending .bob { font-size:50px; animation:bob 1.2s infinite; }
+  .receipt.pending .photo { width:100%; border:var(--line) solid var(--ink); border-radius:6px; rotate:1.2deg; }
+  .receipt.pending .dash { width:100%; border-top:3px dashed var(--ink); opacity:.5; }
+
   #mine { max-width:1100px; margin:0 auto 26px; padding:16px; background:color-mix(in srgb, var(--accent) 35%, var(--white)); }
-  #mine h2 { font-family:var(--font-display); font-weight:400; font-size:28px; margin:0 0 10px; }
+  #mine h2, #mine h3 { font-family:var(--font-display); font-weight:400; font-size:28px; margin:0 0 14px; }
+  #mine h3 { font-size:20px; margin:0 0 8px; }
   #mine .wait { font-weight:800; font-size:18px; display:flex; gap:12px; align-items:center; }
   #mine .wait .emoji { font-size:40px; animation:bob 1.2s infinite; }
+  .stage { display:grid; gap:24px; grid-template-columns:minmax(0, 1fr); align-items:start; }
+  @media (min-width:820px) { .stage { grid-template-columns:minmax(0, 440px) minmax(0, 1fr); } }
+  .stage aside { display:flex; flex-direction:column; gap:16px; }
+  .colours { display:grid; grid-template-columns:repeat(auto-fill, minmax(96px, 1fr)); gap:10px; }
 
-  #grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:20px; max-width:1100px; margin:0 auto; }
-  .card { padding:10px; display:flex; flex-direction:column; gap:8px; animation:pop-in .35s var(--ease-pop) backwards; }
+  #grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:18px; max-width:1100px; margin:0 auto; }
+  .card { padding:10px; display:flex; flex-direction:column; gap:10px; animation:pop-in .35s var(--ease-pop) backwards; }
   .card:nth-child(3n+1) { --tilt:-.7deg; } .card:nth-child(3n+2) { --tilt:.5deg; }
   .card.me { outline:6px solid var(--accent); }
   .card .top { display:flex; align-items:center; gap:8px; font-weight:800; }
   .card .top .t { font-family:var(--font-display); font-weight:400; font-size:20px; flex:1; }
-  .pics { display:grid; grid-template-columns:repeat(2, 1fr); gap:8px; }
-  .pics .thumb:first-child:nth-last-child(odd) { grid-column:1 / -1; }
-  #mine .pics { grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); }
-  .thumb { display:block; width:100%; padding:0; border:3px solid var(--ink); border-radius:12px; overflow:hidden; background:var(--paper); aspect-ratio:4 / 3; }
-  .thumb.strip { aspect-ratio:auto; }
+  /* Grid tile: the top of the receipt (first photo + header art), torn off at the bottom. */
+  .tile { display:block; width:100%; padding:0 10px 10px 0; border:0; background:none; }
+  .tile .receipt { width:100%; rotate:-1deg; }
+  .tile .paper { aspect-ratio:4 / 5; overflow:hidden; }
+  .tile .paper img.bits { height:100%; object-fit:cover; object-position:top; }
+  .tile.colour .paper::after { display:none; }
+  .tile.colour .paper img { display:block; width:100%; height:100%; object-fit:cover; }
+  .chip { position:absolute; left:10px; bottom:calc(var(--zz) + 8px); z-index:1; padding:4px 10px; border-radius:999px; background:var(--sun); border:3px solid var(--ink); font-weight:800; font-size:13px; }
+  .mini { display:flex; gap:6px; flex-wrap:wrap; }
+  .mini .thumb { width:44px; }
+  .thumb { display:block; width:100%; padding:0; border:3px solid var(--ink); border-radius:10px; overflow:hidden; background:var(--paper); aspect-ratio:4 / 3; }
   .thumb img { display:block; width:100%; height:100%; object-fit:cover; }
-  .thumb.strip img { height:auto; image-rendering:pixelated; }
   .none { opacity:.6; font-size:13px; font-weight:700; padding:6px; }
   .tiny { font-size:13px; padding:6px 10px; }
 
-  #view { position:fixed; inset:0; z-index:10; display:none; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+  #view { position:fixed; inset:0; z-index:10; display:none; flex-direction:column; align-items:center; gap:12px;
     padding:16px; background:color-mix(in srgb, var(--ink) 90%, transparent); }
   #view.on { display:flex; }
-  #view img { max-width:100%; max-height:calc(100dvh - 130px); border:var(--line) solid var(--white); border-radius:12px; background:var(--white); }
-  #view.bw img { image-rendering:pixelated; }
-  #view .nav { position:absolute; top:50%; translate:0 -50%; width:56px; height:56px; border-radius:50%; font-size:26px; }
+  #viewPane { flex:1; min-height:0; width:100%; overflow:auto; display:flex; justify-content:center; align-items:center; overscroll-behavior:contain; }
+  #view img { display:block; max-width:100%; max-height:calc(100dvh - 130px); border:var(--line) solid var(--white); border-radius:12px; background:var(--white); }
+  #view:not(.bw) .receipt, #view:not(.bw) .paper { display:contents; }
+  #view:not(.bw) .receipt::before, #view:not(.bw) .paper::after { display:none; }
+  #view.bw #viewPane { align-items:flex-start; padding:6px 12px 22px; }
+  #view.bw .receipt { width:min(100%, 520px); }
+  #view.bw img { max-height:none; border:0; border-radius:0; background:none; }
+  #view .nav { position:absolute; top:50%; translate:0 -50%; width:56px; height:56px; border-radius:50%; font-size:26px; z-index:2; }
   #view .prev { left:10px; } #view .next { right:10px; }
 
-  /* ---------- slideshow (?show=1): for a TV / tablet at the party ---------- */
-  #show { position:fixed; inset:0; z-index:30; background:var(--ink); display:none; align-items:center; justify-content:center; }
+  /* ---------- slideshow (?show=1): for a TV / tablet at the party. The receipt feeds up through the screen. ---------- */
+  #show { position:fixed; inset:0; z-index:30; background:var(--ink); display:none; align-items:center; justify-content:center; overflow:hidden; }
   #show.on { display:flex; }
-  #show img { max-width:96vw; max-height:94vh; border:var(--line-fat) solid var(--white); border-radius:18px; box-shadow:var(--shadow-lg); transition:opacity .5s; }
-  #show img.fade { opacity:0; }
+  /* receipt dead centre (clear of the QR corner); the colour photo in the left column */
+  #slide { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; column-gap:4vw; width:100%; height:100%; transition:opacity .5s; }
+  #slide .slot { grid-column:2; grid-row:1; }
+  #slide.fade { opacity:0; }
+  #slide .slot { height:100%; overflow:hidden; display:flex; align-items:flex-start; padding:4vh 0; }
+  #slide .slot .receipt { width:var(--rw, 576px); margin:0; animation:feed var(--feed-ms, 0s) ease-in-out 1.4s forwards; }
+  @keyframes feed { to { translate:0 calc(-1 * var(--feed-dist, 0px)); } }
+  @media (prefers-reduced-motion: reduce) { #slide .slot .receipt { animation:none; } }
+  #slide .side { grid-column:1; grid-row:1; justify-self:end; width:min(24vw, 440px); padding:10px; --tilt:3deg; }
+  #slide .side img { display:block; width:100%; border-radius:12px; }
+  #slide .solo { grid-column:2; max-width:80vw; max-height:84vh; border:var(--line-fat) solid var(--white); border-radius:18px; box-shadow:var(--shadow-lg); }
+  #slide .wait { position:absolute; left:50%; top:5vh; translate:-50% 0; font-size:clamp(16px, 2.4vmin, 28px); padding:8px 16px; }
+  @media (max-aspect-ratio:1/1) { #slide .side { display:none; } }
   #show .corner { position:absolute; right:22px; bottom:22px; display:flex; gap:14px; align-items:center; padding:12px 16px; }
   #show .corner .qr { width:clamp(90px, 14vmin, 170px); }
   #show .corner .qr svg { display:block; width:100%; height:auto; }
@@ -107,7 +152,7 @@
 
 <div id="view" role="dialog" aria-label="Photo">
   <button class="sticker nav prev emoji" id="prev" aria-label="Previous">◀</button>
-  <img id="viewImg" alt="">
+  <div id="viewPane"><div class="receipt"><div class="paper"><img id="viewImg" alt=""></div></div></div>
   <button class="sticker nav next emoji" id="next" aria-label="Next">▶</button>
   <div class="row">
     <a class="sticker pill go" id="viewSave">⬇️ Save</a>
@@ -117,7 +162,7 @@
 </div>
 
 <div id="show" aria-label="Slideshow">
-  <img id="showImg" alt="">
+  <div id="slide"></div>
   <div class="corner sticker"><div class="qr" id="showQR"></div><b>Scan for your photos 📲</b></div>
   <button class="sticker pill x" id="showX" aria-label="Exit slideshow">✖️</button>
 </div>
@@ -139,8 +184,10 @@ const UI = { turkey: "--tomato", feast: "--sun", leaves: "--tomato", starry: "--
 let event = null, sessions = [], seen = new Set();
 const time = (s) => new Date(s.meta?.capturedAt ?? 0).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 const origs = (s) => Object.keys(s.files).filter((n) => n.startsWith("orig-")).sort();
-/** Every viewable picture in album order: [{ s, name, key }] — originals first, then the strip. */
-const pictures = () => sessions.flatMap((s) => [...origs(s), ...(s.files["strip.png"] ? ["strip.png"] : [])].map((name) => ({ s, name, key: s.files[name] })));
+const stripOf = (s) => s.files["strip.png"] ?? null;
+/** Every viewable picture in album order: [{ s, name, key }] — the printed receipt first, then the colour originals. */
+const pictures = () => sessions.flatMap((s) => [...(stripOf(s) ? ["strip.png"] : []), ...origs(s)].map((name) => ({ s, name, key: s.files[name] })));
+const receiptHTML = (key, alt, cls = "") => `<div class="receipt ${cls}"><div class="paper"><img class="bits" src="${esc(fileURL(key))}" alt="${alt}"></div></div>`;
 
 async function load() {
   const res = await fetch(`/api/album/${token}`, { cache: "no-store" });
@@ -159,42 +206,67 @@ async function load() {
   render();
 }
 
-function card(s, big) {
-  const m = s.meta ?? {};
-  const pics = origs(s).map((n) => thumb(s.files[n], `Photo ${n.match(/\d/)[0]}`)).join("") || `<div class="none">📤 uploading…</div>`;
+function card(s) {
+  const m = s.meta ?? {}, o = origs(s), st = stripOf(s);
+  // The tile is the receipt (its top: header art + first photo); no strip yet → the colour photo, marked "printing…".
+  const tile = st ? `<button class="tile" data-key="${esc(st)}" aria-label="Printed receipt">${receiptHTML(st, "Printed receipt")}</button>`
+    : o.length ? `<button class="tile colour" data-key="${esc(s.files[o[0]])}" aria-label="Photo 1"><div class="receipt"><div class="paper">
+        <img loading="lazy" src="${esc(fileURL(s.files[o[0]]))}" alt="Photo 1"><span class="chip">🖨️ printing…</span></div></div></button>`
+    : `<div class="none">📤 uploading…</div>`;
   return `<article class="card sticker ${s.id === mineId ? "me" : ""}" data-id="${s.id}" id="s-${s.id}">
     <div class="top"><span class="emoji">${THEMES[m.theme]?.icon ?? "📸"}</span><span class="t">${time(s)}</span>
-      ${pin && !big ? `<button class="sticker pill tiny" data-hide="${s.id}" data-day="${s.day}" title="Hide from album (host only)">🙈</button>` : ""}</div>
-    <div class="pics">${pics}</div>
-    ${s.files["strip.png"] ? `<div class="row"><button class="sticker pill tiny" data-key="${s.files["strip.png"]}">🧾 Printed strip</button></div>` : ""}
+      ${pin ? `<button class="sticker pill tiny" data-hide="${s.id}" data-day="${s.day}" title="Hide from album (host only)">🙈</button>` : ""}</div>
+    ${tile}
+    ${st && o.length ? `<div class="mini" aria-label="Colour photos">${o.map((n) => thumb(s.files[n], `Photo ${n.match(/\d/)[0]}`)).join("")}</div>` : ""}
   </article>`;
 }
 function thumb(key, label) {
   return `<button class="thumb" data-key="${esc(key)}" aria-label="${label}"><img loading="lazy" src="${fileURL(key)}" alt="${label}"></button>`;
 }
 
-let waitT = null, waitUntil = Date.now() + 4 * 60000;
+let waitT = null, waitUntil = Date.now() + 10 * 60000, mineSig = "";
+const sig = (s) => s.id + origs(s).length + (stripOf(s) ? "r" : "");
 function render() {
-  const fresh = sessions.filter((s) => !seen.has(s.id + origs(s).length));
+  const fresh = sessions.filter((s) => !seen.has(sig(s)));
   if (fresh.length || !$("grid").children.length) $("grid").innerHTML = sessions.map((s) => card(s)).join("");
-  sessions.forEach((s) => seen.add(s.id + origs(s).length));
-  if (mineId) {
-    const me = sessions.find((s) => s.id === mineId);
-    $("mine").hidden = false;
-    if (me && origs(me).length) {
-      $("mine").innerHTML = `<h2>Your photos ✨</h2><div class="pics">${origs(me).map((n) => thumb(me.files[n], "Your photo")).join("")}</div>
-        <div class="row" style="margin-top:12px"><button class="sticker pill go" id="saveMine">⬇️ Save mine</button>
-        ${navigator.canShare ? `<button class="sticker pill hot" id="shareMine">📤 Share</button>` : ""}</div>`;
-      $("saveMine").onclick = () => saveAll(origs(me).map((n) => ({ s: me, name: n, key: me.files[n] })), `${event.slug}-mine`);
-      $("shareMine")?.addEventListener("click", () => share(origs(me).map((n) => me.files[n])));
-      clearTimeout(waitT);
-    } else if (Date.now() < waitUntil) {
-      $("mine").innerHTML = `<div class="wait"><span class="emoji">📤</span>Your photos are on their way from the booth — this page updates by itself.</div>`;
-      clearTimeout(waitT); waitT = setTimeout(() => load().catch(() => {}), 4000);
-    } else {
-      $("mine").innerHTML = `<div class="wait"><span class="emoji">🤔</span>Your photos haven't arrived yet. They'll appear below once the booth is back online.</div>`;
-    }
+  sessions.forEach((s) => seen.add(sig(s)));
+  if (mineId) renderMine();
+}
+
+/** /a/<token>/<session>: that guest's receipt at the top, big; the colour photos below/beside it. */
+function renderMine() {
+  const me = sessions.find((s) => s.id === mineId);
+  const o = me ? origs(me) : [], st = me && stripOf(me);
+  const done = st && o.length >= (me.meta?.shots ?? 1);
+  const late = Date.now() >= waitUntil;
+  $("mine").hidden = false;
+  clearTimeout(waitT);
+  if (!done && !late) waitT = setTimeout(() => load().catch(() => {}), 4000);   // keep polling until the receipt lands
+  const key = [st, o.length, late].join();
+  if (key === mineSig) return;
+  mineSig = key;
+  if (!st && !o.length) {
+    $("mine").innerHTML = late
+      ? `<div class="wait"><span class="emoji">🤔</span>Your photos haven't arrived yet. They'll appear below once the booth is back online.</div>`
+      : `<div class="wait"><span class="emoji">📤</span>Your photos are on their way from the booth — this page updates by itself.</div>`;
+    return;
   }
+  const hero = st ? receiptHTML(st, "Your printed receipt")
+    : `<div class="receipt pending"><div class="paper"><span class="bob emoji" aria-hidden="true">🖨️</span>
+        <span>${late ? "Your receipt hasn't arrived yet — it will once the booth is back online." : "Printing… your receipt shows up here in a moment."}</span>
+        <div class="dash"></div><img class="photo" src="${esc(fileURL(me.files[o[0]]))}" alt="Your photo"></div></div>`;
+  $("mine").innerHTML = `<h2>Your receipt ✨</h2><div class="stage"><div id="mineHero">${hero}</div><aside>
+      <div class="row">
+        ${st ? `<a class="sticker pill go" id="saveReceipt" href="${esc(fileURL(st, true))}">🧾 Save receipt</a>` : ""}
+        ${o.length ? `<button class="sticker pill go" id="saveMine">⬇️ Save photos</button>` : ""}
+        ${navigator.canShare ? `<button class="sticker pill hot" id="shareMine">📤 Share all</button>` : ""}
+      </div>
+      ${o.length ? `<div><h3>Also: the colour photos</h3><div class="colours">${o.map((n, i) => thumb(me.files[n], `Your colour photo ${i + 1}`)).join("")}</div></div>` : ""}
+    </aside></div>`;
+  const mineOrigs = o.map((n) => ({ s: me, name: n, key: me.files[n] }));
+  $("saveMine")?.addEventListener("click", () => saveAll(mineOrigs, `${event.slug}-mine`));
+  $("shareMine")?.addEventListener("click", () => share([...(st ? [st] : []), ...mineOrigs.map((f) => f.key)]));
+  $("mineHero").querySelector(".receipt:not(.pending)")?.addEventListener("click", () => openView(st));
 }
 
 // ---------- viewer ----------
@@ -207,8 +279,12 @@ function openView(key) {
 function showView() {
   const list = pictures(), p = list[viewIdx];
   if (!p) return;
-  $("view").classList.toggle("bw", p.name.endsWith(".png"));
+  const bw = p.name.endsWith(".png");
+  $("view").classList.toggle("bw", bw);
+  $("viewImg").className = bw ? "bits" : "";
+  $("viewImg").alt = bw ? "Printed receipt" : "Photo";
   $("viewImg").src = fileURL(p.key);
+  $("viewPane").scrollTop = 0;
   $("viewSave").href = fileURL(p.key, true);
   $("viewShare").hidden = !navigator.canShare;
   $("view").classList.add("on");
@@ -217,7 +293,7 @@ const step = (d) => { const n = pictures().length; if (!n) return; viewIdx = (vi
 $("prev").onclick = () => step(-1); $("next").onclick = () => step(1);
 $("viewShare").onclick = () => share([pictures()[viewIdx].key]);
 $("viewClose").onclick = () => $("view").classList.remove("on");
-$("view").addEventListener("click", (e) => { if (e.target === $("view")) $("view").classList.remove("on"); });
+$("view").addEventListener("click", (e) => { if (e.target === $("view") || e.target === $("viewPane")) $("view").classList.remove("on"); });
 document.addEventListener("keydown", (e) => {
   if (!$("view").classList.contains("on")) return;
   if (e.key === "Escape") $("view").classList.remove("on");
@@ -272,6 +348,9 @@ $("zip").onclick = async () => {
 };
 
 // ---------- slideshow ----------
+// One slide per session: the receipt big in the middle, shown dot for dot (an integer number of screen
+// pixels per printer dot where it fits), feeding up slowly when it's taller than the screen; the colour
+// photo small alongside. Sessions that haven't printed yet show their colour photo.
 let showT = null, showIdx = 0;
 function startShow() {
   $("show").classList.add("on");
@@ -280,16 +359,43 @@ function startShow() {
   navigator.wakeLock?.request("screen").catch(() => {});
   showIdx = 0; nextSlide();
 }
-function nextSlide() {
+/** CSS width for the 576-dot strip: ~42% of a landscape screen (90% portrait). On a 1× screen (a TV) it snaps
+ *  to whole screen pixels per dot so the dots stay even; dense screens have pixels to spare. */
+function receiptWidth() {
+  const dpr = devicePixelRatio || 1, max = innerWidth * (innerWidth > innerHeight ? 0.42 : 0.9);
+  const k = Math.floor((max * dpr) / 576);
+  return dpr < 2 && k >= 1 ? (576 * k) / dpr : max;
+}
+const loadImg = (src) => new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = src; });
+async function nextSlide() {
   clearTimeout(showT);
-  const list = pictures().filter((p) => p.name.startsWith("orig-"));
+  // Printed sessions (receipt + photo); ones still printing show up once their receipt lands,
+  // unless nothing has printed yet (then the colour photos stand in).
+  const printed = sessions.filter(stripOf), list = printed.length ? printed : sessions.filter((s) => origs(s).length);
+  let hold = 6000;
   if (list.length) {
-    const p = list[showIdx % list.length]; showIdx++;
-    const img = new Image();
-    img.onload = () => { $("showImg").classList.add("fade"); setTimeout(() => { $("showImg").src = img.src; $("showImg").classList.remove("fade"); }, 450); };
-    img.src = fileURL(p.key);
+    const s = list[showIdx % list.length]; showIdx++;
+    const st = stripOf(s), o = origs(s);
+    try {
+      const [strip, photo] = await Promise.all([st && loadImg(fileURL(st)), o.length && loadImg(fileURL(s.files[o[0]]))]);
+      const w = receiptWidth();
+      let html, dist = 0;
+      if (strip) {
+        const h = (strip.naturalHeight / strip.naturalWidth) * w + 28, room = innerHeight * 0.92;
+        dist = Math.max(0, h - room + 24);
+        html = `<div class="slot">${receiptHTML(st, "Printed receipt").replace('class="receipt "', `class="receipt" style="--rw:${w}px;--feed-dist:${dist}px;--feed-ms:${Math.round(dist / 0.06)}ms"`)}</div>
+          ${photo ? `<div class="side sticker"><img src="${esc(photo.src)}" alt="Colour photo"></div>` : ""}`;
+        hold = Math.max(7000, 1400 + dist / 0.06 + 3500);
+      } else {
+        html = `<img class="solo" src="${esc(photo.src)}" alt="Photo"><div class="wait sticker">🖨️ printing…</div>`;
+      }
+      $("slide").classList.add("fade");
+      await new Promise((r) => setTimeout(r, 450));
+      $("slide").innerHTML = html;
+      $("slide").classList.remove("fade");
+    } catch { /* image failed: skip to the next one */ hold = 500; }
   }
-  showT = setTimeout(nextSlide, 6000);
+  showT = setTimeout(nextSlide, hold);
 }
 $("showBtn").onclick = startShow;
 $("showX").onclick = () => { $("show").classList.remove("on"); clearTimeout(showT); document.exitFullscreen?.().catch(() => {}); };

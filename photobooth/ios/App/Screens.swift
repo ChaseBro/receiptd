@@ -175,7 +175,7 @@ struct CameraScreen: View {
                 }
             }
             .padding(.horizontal, 20).padding(.top, 20)
-            if let h = booth.printer, h.state.needsAdult {
+            if let h = booth.printer, let st = booth.printerState, st.needsAdult || st.soft {
                 PrinterBadge(health: h, id: "printer", size: gear < 50 ? 76 : 96)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading).padding(18)
             }
@@ -315,18 +315,21 @@ extension View {
 
 /// What the printer needs, drawn (one drawing per problem) on a sun sticker with a slow wiggle.
 /// A tap shows the adult label ("Printer offline · last seen 2:14 pm · Check its power & Wi-Fi").
+/// A napping printer (stale check-in, being woken) gets the quiet version: smaller, still, see-through.
 struct PrinterBadge: View {
     @EnvironmentObject var booth: Booth
     let health: PrinterHealth
     let id: String
     var size: CGFloat = 84
     var body: some View {
-        let state = health.state
-        Button { booth.showHint(id, health.hint()) } label: { IconView(name: state.icon).frame(width: size * 0.84, height: size * 0.84).frame(width: size, height: size) }
+        let state = health.state(wake: booth.wake), soft = state.soft
+        Button { booth.showHint(id, health.hint(wake: booth.wake)) } label: { IconView(name: state.icon).frame(width: size * 0.84, height: size * 0.84).frame(width: size, height: size) }
             .buttonStyle(StickerStyle(fill: .sun, corner: size * 0.28, line: LINE_FAT, shadow: 8, tilt: -8))
-            .keyframeAnimator(initialValue: 0.0, repeating: true) { v, a in v.rotationEffect(.degrees(a)) } keyframes: { _ in
+            .keyframeAnimator(initialValue: 0.0, repeating: true) { v, a in v.rotationEffect(.degrees(soft ? 0 : a)) } keyframes: { _ in
                 KeyframeTrack { LinearKeyframe(0, duration: 3.4); CubicKeyframe(-9, duration: 0.12); CubicKeyframe(8, duration: 0.16); CubicKeyframe(-4, duration: 0.16); CubicKeyframe(0, duration: 0.12) }
             }
+            .scaleEffect(soft ? 0.78 : 1, anchor: .bottomLeading)
+            .opacity(soft ? 0.72 : 1)
             .accessibilityLabel(state.label)
             .accessibilityIdentifier("printerBadge")
             .accessibilityValue(state.rawValue)
@@ -496,7 +499,7 @@ struct PrintingScreen: View {
                     HStack(spacing: 8) { Emoji("⏳", size: 30); ForEach(0..<min(4, st.position - 1), id: \.self) { _ in Emoji("🧾", size: 26) } }
                 }
             }
-            if let h = booth.printer, h.state.needsAdult { PrinterBadge(health: h, id: "printerWait", size: 110) }
+            if let h = booth.printer, booth.printerState?.needsAdult == true { PrinterBadge(health: h, id: "printerWait", size: 110) }
             if !st.error { ShareThisPhotoButton(size: 88) }
             if st.error {
                 HStack(spacing: 30) {
@@ -694,22 +697,25 @@ struct SettingsScreen: View {
 
     var printerLine: String {
         guard let h = booth.printer else { return "Checking…" }
-        if h.state == .offline { return h.hint() }
+        let st = h.state(wake: booth.wake)
+        if st == .offline || st == .asleep { return h.hint(wake: booth.wake) }
         let paper = h.paperOut ? "out of paper" : h.coverOpen ? "cover open" : h.paperLow == true ? "paper low" : "paper OK"
-        return "\(h.state == .offline ? "Offline" : h.state == .error ? "Error" : "Ready") · \(paper)\(h.text.map { $0.isEmpty ? "" : " · \($0)" } ?? "")"
+        return "\(st == .error ? "Error" : "Ready") · \(paper)\(h.text.map { $0.isEmpty ? "" : " · \($0)" } ?? "")"
     }
 
     /// Printer · paper · uploads, drawn, with words. Red tint when it needs attention.
     var statusTiles: some View {
-        let h = booth.printer, state = h?.state
+        let h = booth.printer, state = booth.printerState, stale = h != nil && h?.online != true
         let printer: (String, String, String, Bool) = state == nil ? ("pReady", "Printer", "checking…", false)
             : state == .offline ? ("pOffline", "Printer offline", h?.lastSeenSec.map { "since \(PrinterHealth.clock(Date().addingTimeInterval(-Double($0))))" } ?? "never seen", true)
+            : state == .asleep ? ("pAsleep", "Printer napping", booth.wake.phase == .waking ? "waking it up…" : "last check-in \(PrinterHealth.ago(h?.lastSeenSec))", false)
             : state == .error ? ("pError", "Printer error", "turn it off and on", true) : ("pReady", "Printer ready", "online", false)
         let paper: (String, String, String, Bool) = h == nil ? ("paperOk", "Paper", "—", false)
-            : state == .offline ? ("paperOk", "Paper", "unknown while offline", false)
             : h!.paperOut ? ("pPaperOut", "Out of paper", "load a roll", true)
             : h!.coverOpen ? ("pCover", "Cover open", "close the lid", true)
-            : h!.paperLow == true ? ("pPaperLow", "Paper low", "cover closed", false) : ("paperOk", "Paper OK", "cover closed", false)
+            : state == .offline ? ("paperOk", "Paper", "unknown while offline", false)
+            : h!.paperLow == true ? ("pPaperLow", "Paper low", "cover closed", false)
+            : stale ? ("paperOk", "Paper OK", "as of its last check-in", false) : ("paperOk", "Paper OK", "cover closed", false)
         let up: (String, String, String, Bool) = pending.0 == 0 ? ("upload", "All uploaded", "archive", false)
             : uploadFailure.map { ("upload", "Uploads failing", "\(pending.0) waiting · \($0)", true) }
             ?? ("upload", "\(pending.0) waiting", retrying ? "retrying" : "to upload", retrying)

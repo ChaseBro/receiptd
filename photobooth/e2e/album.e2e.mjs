@@ -5,6 +5,7 @@
 import { chromium, webkit, devices } from "playwright";
 import { mkdirSync } from "node:fs";
 import { newSessionId } from "../public/archive.js";
+import { makeSession } from "./strip-fixture.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:8788";
 const PIN = process.env.PIN ?? "1234";
@@ -33,6 +34,7 @@ const origActive = (await api("/api/events")).body.active;
 // ---- real images, drawn in a throwaway browser page ----
 const cb = await chromium.launch();
 const imgPage = await cb.newPage();
+await imgPage.goto(BASE + "/api/version");   // booth origin: the strip fixture imports /frames.js
 async function image(type, label, color) {
   const b64 = await imgPage.evaluate(async ([type, label, color]) => {
     const c = document.createElement("canvas"); c.width = type === "png" ? 576 : 640; c.height = type === "png" ? 900 : 480;
@@ -50,7 +52,7 @@ async function upload(slug, id, { shots = 2, strip = true, theme = "turkey" } = 
   const f = new FormData();
   f.append("meta", JSON.stringify({ id, event: slug, theme, shots, capturedAt: new Date(parseInt(id.split("-")[0], 36)).toISOString(), ua: "secret-ua" }));
   for (let i = 1; i <= shots; i++) f.append(`orig-${i}.jpg`, new Blob([await image("jpeg", `${id.slice(-4)}#${i}`, COLORS[i % 6])], { type: "image/jpeg" }), `orig-${i}.jpg`);
-  if (strip) f.append("strip.png", new Blob([await image("png", "STRIP", "#fff")], { type: "image/png" }), "strip.png");
+  if (strip) f.append("strip.png", new Blob([(await makeSession(imgPage, { theme, shots: Math.min(shots, 4), seed: seq, ticket: seq })).strip], { type: "image/png" }), "strip.png");
   const r = await fetch(BASE + "/api/archive", { method: "POST", headers: { "x-booth-pin": PIN }, body: f });
   if (r.status !== 201 && r.status !== 200) throw new Error("upload " + r.status + " " + (await r.text()));
 }
@@ -239,9 +241,13 @@ for (const [bname, bt] of [["chromium", chromium], ["webkit", webkit]]) {
   await p.goto(`${BASE}/a/${ev.share}`);
   await p.locator("#grid .card").first().waitFor();
 
-  await check(T("grid: 4 cards, no horizontal overflow, header"), async () => {
+  await check(T("grid: 4 cards, receipt tiles, no horizontal overflow, header"), async () => {
     eq(await p.locator("#grid .card").count(), 4);
-    eq(await p.locator("#grid .thumb").count(), 7, "thumbs"); eq(await p.locator("#grid .row button[data-key]").count(), 3, "strip buttons");
+    eq(await p.locator("#grid .tile").count(), 4, "tiles"); eq(await p.locator("#grid .tile:not(.colour) img.bits").count(), 3, "receipt tiles");
+    eq(await p.locator("#grid .tile.colour .chip").count(), 1, "not printed yet: colour photo + printing chip");
+    eq(await p.locator("#grid .mini .thumb").count(), 6, "small colour thumbs");
+    const firsts = await p.$$eval("#grid .card", (cs) => cs.map((c) => c.querySelector("img")?.getAttribute("src") ?? ""));
+    eq(firsts.filter((f) => f.includes("strip.png")).length, 3, "each printed card leads with its receipt");
     const o = await p.evaluate(() => document.documentElement.scrollWidth - innerWidth);
     ok(o <= 0, "horizontal overflow " + o + "px");
     ok((await p.locator("#sub").textContent()).includes("4 photo sessions"));
@@ -249,8 +255,9 @@ for (const [bname, bt] of [["chromium", chromium], ["webkit", webkit]]) {
   });
   await check(T("viewer: open, next/prev wrap, keyboard, close"), async () => {
     const pics = 10;
-    await p.locator("#grid .thumb").first().click();
-    await p.locator("#view.on").waitFor();
+    await p.locator("#grid .tile").first().click();
+    await p.locator("#view.on.bw").waitFor();
+    ok((await p.getAttribute("#viewImg", "src")).includes("strip.png"), "viewer opens on the receipt");
     const src0 = await p.getAttribute("#viewImg", "src");
     await p.click("#next"); ok((await p.getAttribute("#viewImg", "src")) !== src0, "next");
     await p.click("#prev"); eq(await p.getAttribute("#viewImg", "src"), src0);
@@ -287,15 +294,16 @@ for (const [bname, bt] of [["chromium", chromium], ["webkit", webkit]]) {
     let n = 0; for (let i = 0; i < buf.length - 4; i++) if (buf.readUInt32LE(i) === 0x02014b50) n++;
     eq(n, 10, "zip entries");
   });
-  await check(T("slideshow ?show=1: auto-starts, shows photo + QR, exits"), async () => {
+  await check(T("slideshow ?show=1: auto-starts, receipt is the hero + QR, advances, exits"), async () => {
     const s = await ctx.newPage(); await s.goto(`${BASE}/a/${ev.share}?show=1`);
     await s.locator("#show.on").waitFor();
-    await s.waitForFunction(() => document.getElementById("showImg").getAttribute("src"), null, { timeout: 8000 });
+    const heroSrc = () => s.evaluate(() => document.querySelector("#slide img.bits")?.getAttribute("src") ?? document.querySelector("#slide img")?.getAttribute("src") ?? null);
+    await s.waitForFunction(() => document.querySelector("#slide .slot img.bits")?.naturalWidth > 0, null, { timeout: 10000 });
     ok(await s.locator("#showQR svg").count(), "QR");
-    await s.waitForFunction(() => document.getElementById("showImg").naturalWidth > 0);
+    ok((await heroSrc()).includes("strip.png"), "slide hero is the receipt");
     await s.screenshot({ path: OUT + `${bname}-slideshow.png` });
-    const first = await s.getAttribute("#showImg", "src");
-    await s.waitForFunction((f) => document.getElementById("showImg").src !== f && document.getElementById("showImg").getAttribute("src"), first, { timeout: 12000 });
+    const first = await heroSrc();
+    await s.waitForFunction((f) => { const i = document.querySelector("#slide img.bits") ?? document.querySelector("#slide img"); return i && i.getAttribute("src") !== f; }, first, { timeout: 45000 });
     await s.click("#showX"); await s.locator("#show:not(.on)").waitFor({ state: "attached" }); await s.close();
   });
   await check(T("deep link before upload: waiting state, then appears"), async () => {
@@ -304,12 +312,25 @@ for (const [bname, bt] of [["chromium", chromium], ["webkit", webkit]]) {
     await d.locator("#mine .wait", { hasText: "on their way" }).waitFor();
     await d.screenshot({ path: OUT + `${bname}-waiting.png` });
     await upload(ev.slug, late, { shots: 3 });
-    await d.locator("#mine h2", { hasText: "Your photos" }).waitFor({ timeout: 15000 });
+    await d.locator("#mine h2", { hasText: "Your receipt" }).waitFor({ timeout: 15000 });
+    await d.locator("#mineHero img.bits").waitFor({ timeout: 15000 });
     eq(await d.locator("#mine .thumb").count(), 3);
+    ok((await d.$eval("#mine img", (i) => i.getAttribute("src"))).includes("strip.png"), "first image in 'yours' is the receipt");
     ok(await d.locator(`#s-${late}.me`).count(), "own card highlighted");
     await d.screenshot({ path: OUT + `${bname}-mine.png` });
     const [dl] = await Promise.all([d.waitForEvent("download", { timeout: 20000 }), d.click("#saveMine")]);
     ok(dl.suggestedFilename().endsWith("-mine.zip"));
+    await d.close();
+  });
+  await check(T("deep link, printed later: printing… placeholder with the colour photo, then the receipt"), async () => {
+    const late = newId(1000);
+    await upload(ev.slug, late, { shots: 1, strip: false });
+    const d = await ctx.newPage(); await d.goto(`${BASE}/a/${ev.share}/${late}`);
+    await d.locator("#mine .receipt.pending img.photo").waitFor({ timeout: 10000 });
+    ok((await d.locator("#mine .receipt.pending").textContent()).includes("Printing"), "printing… text");
+    await d.screenshot({ path: OUT + `${bname}-mine-pending.png` });
+    await upload(ev.slug, late, { shots: 1, strip: true });
+    await d.locator("#mineHero img.bits").waitFor({ timeout: 15000 });
     await d.close();
   });
   await check(T("deep link to a session from another event never resolves (stays waiting, no leak)"), async () => {

@@ -6,11 +6,11 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#FFF4DC">
-<title>Your photos 📸</title>
+<title>Your receipt 🧾</title>
 <link rel="icon" href="/icons/icon-180.png">
 <link rel="apple-touch-icon" href="/icons/icon-180.png">
 <style>
-  /* Guest page for ONE session (served at /s/<token>, expires after a day): words allowed.
+  /* Guest page for ONE session (served at /s/<token>, expires after a day): words allowed. The printed receipt is the hero.
      Tokens + stickers per ../DESIGN.md (same look as album.html); `npm run lint` checks it. */
   @font-face { font-family:"Lilita"; src:url("/fonts/lilita-one.woff2") format("woff2"); font-display:swap; }
   :root {
@@ -25,6 +25,12 @@
     --font-emoji:"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
     --ease-pop:cubic-bezier(.34,1.56,.64,1);
     --dots:radial-gradient(color-mix(in srgb, var(--ink) 14%, transparent) 1.6px, transparent 1.8px);
+    --receipt:color-mix(in srgb, var(--white) 72%, var(--paper));
+    --zz:14px;
+    --zigzag:
+      conic-gradient(from -45deg at bottom, transparent, var(--ink) 1deg 89deg, transparent 90deg) bottom / var(--zz) 51% repeat-x,
+      conic-gradient(from 135deg at top, transparent, var(--ink) 1deg 89deg, transparent 90deg) top / var(--zz) 51% repeat-x;
+    --zzfill:linear-gradient(var(--ink), var(--ink)) center / 100% calc(100% - var(--zz)) no-repeat;
   }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   [hidden] { display:none !important; }
@@ -39,41 +45,74 @@
   @keyframes pop-in { 0% { transform:scale(.6) rotate(-8deg); opacity:0 } 100% { transform:scale(1) rotate(var(--tilt,0deg)); opacity:1 } }
   @keyframes bob { 0%,100% { translate:0 0 } 50% { translate:0 -6px } }
 
-  main { max-width:900px; margin:0 auto; }
+  main { max-width:1000px; margin:0 auto; }
   header { display:flex; gap:14px; align-items:center; margin-bottom:16px; }
   #logo { width:64px; height:64px; display:flex; align-items:center; justify-content:center; font-size:36px; background:var(--accent); border-radius:50%; --tilt:-8deg; }
   h1 { font-family:var(--font-display); font-weight:400; font-size:clamp(28px, 7vw, 40px); margin:0; line-height:1.05; }
+  h2 { font-family:var(--font-display); font-weight:400; font-size:22px; margin:0 0 10px; }
   .sub { font-weight:700; opacity:.75; }
   .pill { display:inline-block; padding:10px 16px; border-radius:999px; font-weight:800; text-decoration:none; font-size:15px; }
   .pill.go { background:var(--mint); } .pill.hot { background:var(--sun); }
   .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
   #status { font-weight:700; min-height:1.3em; margin:0 0 14px; }
-  #wait { padding:16px; margin-bottom:18px; font-weight:800; font-size:18px; display:flex; gap:12px; align-items:center;
-    background:color-mix(in srgb, var(--accent) 35%, var(--white)); }
-  #wait .emoji { font-size:40px; animation:bob 1.2s infinite; }
-  #all { margin-bottom:18px; }
-  #pics { display:grid; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); gap:20px; align-items:start; }
-  .card { padding:10px; display:flex; flex-direction:column; gap:10px; animation:pop-in .35s var(--ease-pop) backwards; }
-  .card:nth-child(odd) { --tilt:-.6deg; } .card:nth-child(even) { --tilt:.5deg; }
-  .card img { display:block; width:100%; border:3px solid var(--ink); border-radius:12px; background:var(--paper); }
-  .card.strip img { image-rendering:pixelated; background:var(--white); }
   .tiny { font-size:14px; padding:8px 12px; }
+
+  /* The printed receipt is the hero: the exact 1-bit strip, dot for dot (never smoothed), on receipt paper
+     with torn edges, a hard ink shadow and a slight tilt. Paper tint = multiply; ink tint = lighten. */
+  .stage { display:grid; gap:26px; grid-template-columns:minmax(0, 1fr); align-items:start; }
+  @media (min-width:820px) { .stage { grid-template-columns:minmax(0, 440px) minmax(0, 1fr); } }
+  .receipt { position:relative; width:min(100%, 440px); margin:0 auto; rotate:-1.5deg; animation:feed-in .5s var(--ease-pop) backwards; }
+  .receipt::before { content:""; position:absolute; inset:0; translate:10px 10px; background:var(--ink); mask:var(--zigzag), var(--zzfill); }
+  .receipt .paper { position:relative; isolation:isolate; padding:var(--zz) 0; background:var(--receipt); mask:var(--zigzag), var(--zzfill); }
+  .receipt .paper::after { content:""; position:absolute; inset:0; background:var(--ink); mix-blend-mode:lighten; pointer-events:none; }
+  .receipt img { display:block; width:100%; height:auto; image-rendering:crisp-edges; image-rendering:pixelated; mix-blend-mode:multiply; }
+  .receipt.pending .paper::after { display:none; }
+  .receipt.pending .paper { padding:calc(var(--zz) + 22px) 22px calc(var(--zz) + 26px); display:flex; flex-direction:column; gap:16px; align-items:center; text-align:center; font-weight:800; font-size:18px; }
+  .receipt.pending .bob { font-size:54px; animation:bob 1.2s infinite; }
+  .receipt.pending .photo { width:100%; border:var(--line) solid var(--ink); border-radius:6px; rotate:1.2deg; }
+  .receipt.pending .dash { width:100%; border-top:3px dashed var(--ink); opacity:.5; }
+  @keyframes feed-in { from { translate:0 -40px; } }
+  aside { display:flex; flex-direction:column; gap:18px; }
+  #acts .pill { font-size:16px; }
+  #also { padding:14px; --tilt:.6deg; }
+  #thumbs { display:grid; grid-template-columns:repeat(auto-fill, minmax(96px, 1fr)); gap:10px; }
+  .thumb { display:block; width:100%; padding:0; border:3px solid var(--ink); border-radius:12px; overflow:hidden; background:var(--paper); aspect-ratio:4 / 3; }
+  .thumb img { display:block; width:100%; height:100%; object-fit:cover; }
+
+  #view { position:fixed; inset:0; z-index:10; display:none; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+    padding:16px; background:color-mix(in srgb, var(--ink) 90%, transparent); }
+  #view.on { display:flex; }
+  #view img { max-width:100%; max-height:calc(100dvh - 130px); border:var(--line) solid var(--white); border-radius:12px; background:var(--white); }
 </style>
 </head>
 <body>
 <main>
   <header>
-    <div id="logo" class="sticker emoji" aria-hidden="true">📸</div>
-    <div><h1 id="title">Your photos ✨</h1><div class="sub" id="sub"></div></div>
+    <div id="logo" class="sticker emoji" aria-hidden="true">🧾</div>
+    <div><h1 id="title">Your receipt ✨</h1><div class="sub" id="sub"></div></div>
   </header>
   <div id="status" role="status">Loading…</div>
-  <section id="wait" class="sticker" hidden><span class="emoji">📤</span><span id="waitText">Your photos are on their way from the booth — this page updates by itself.</span></section>
-  <div class="row" id="all" hidden>
-    <button class="sticker pill go" id="saveAll">⬇️ Save all</button>
-    <button class="sticker pill hot" id="shareAll" hidden>📤 Share all</button>
+  <div class="stage" id="stage" hidden>
+    <section id="hero" aria-label="Your printed receipt"></section>
+    <aside>
+      <div class="row" id="acts">
+        <a class="sticker pill go" id="saveStrip" hidden>🧾 Save receipt</a>
+        <button class="sticker pill go" id="savePhotos" hidden>⬇️ Save photos</button>
+        <button class="sticker pill hot" id="shareAll" hidden>📤 Share all</button>
+      </div>
+      <section id="also" class="sticker" hidden><h2>Also: the colour photos</h2><div id="thumbs"></div></section>
+    </aside>
   </div>
-  <div id="pics"></div>
 </main>
+
+<div id="view" role="dialog" aria-label="Photo">
+  <img id="viewImg" alt="">
+  <div class="row">
+    <a class="sticker pill go" id="viewSave">⬇️ Save</a>
+    <button class="sticker pill hot" id="viewShare" hidden>📤 Share</button>
+    <button class="sticker pill" id="viewClose">✖️ Close</button>
+  </div>
+</div>
 
 <script type="module">
 const $ = (id) => document.getElementById(id);
@@ -84,23 +123,19 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const canShareFiles = (() => { try { return !!navigator.canShare?.({ files: [new File([""], "x.jpg", { type: "image/jpeg" })] }); } catch { return false; } })();
 
 let session = null, shownSig = "", t0 = Date.now(), pollT = null;
-/** Strip first (it's what printed), then the originals. */
-const pictures = () => {
-  const f = session?.files ?? {};
-  const origs = Object.keys(f).filter((n) => n.startsWith("orig-")).sort();
-  return [...(f["strip.png"] ? ["strip.png"] : []), ...origs].map((name) => ({ name, key: f[name] }));
-};
-const complete = () => {
-  const p = pictures(), origs = p.filter((x) => x.name.startsWith("orig-")).length;
-  return !!session?.files["strip.png"] && origs >= (session.meta?.shots ?? 1);
-};
+const files = () => session?.files ?? {};
+const strip = () => files()["strip.png"] ?? null;
+const origs = () => Object.keys(files()).filter((n) => n.startsWith("orig-")).sort().map((name) => ({ name, key: files()[name] }));
+/** Everything, receipt first (it's what printed), then the colour originals. */
+const pictures = () => [...(strip() ? [{ name: "strip.png", key: strip() }] : []), ...origs()];
+const complete = () => !!strip() && origs().length >= (session?.meta?.shots ?? 1);
 
 async function load() {
   const res = await fetch(`/api/s/${token}`, { cache: "no-store" });
   if (res.status === 404) {
     $("title").textContent = "Link expired";
     $("logo").textContent = "⌛";
-    $("wait").hidden = true; $("all").hidden = true; $("pics").innerHTML = "";
+    $("stage").hidden = true; $("hero").innerHTML = "";
     setStatus("This photo link has expired (they last a day) or doesn't exist. Ask at the booth for a new one.");
     throw new Error("gone");
   }
@@ -115,24 +150,29 @@ async function load() {
 }
 
 function render() {
-  const list = pictures(), sig = list.map((p) => p.key).join();
-  const waiting = !complete();
-  $("wait").hidden = !waiting;
-  if (waiting && Date.now() - t0 > 10 * 60000) $("waitText").textContent = list.length
-    ? "The rest hasn't arrived yet — it will once the booth is back online."
-    : "Your photos haven't arrived yet. They'll appear here once the booth is back online.";
-  $("all").hidden = list.length < 2;
-  $("shareAll").hidden = !canShareFiles;
+  $("stage").hidden = false;
+  const o = origs(), st = strip();
+  const late = Date.now() - t0 > 10 * 60000;
+  const sig = [st, ...o.map((p) => p.key), !complete() && late].join();
+  $("saveStrip").hidden = !st;
+  if (st) { $("saveStrip").href = fileURL(st, true); $("saveStrip").download = nameOf(st); }
+  $("savePhotos").hidden = !o.length;
+  $("shareAll").hidden = !canShareFiles || !pictures().length;
   if (sig === shownSig) return;
   shownSig = sig;
-  $("pics").innerHTML = list.map((p, i) => {
-    const strip = p.name === "strip.png", label = strip ? "Printed strip" : `Photo ${p.name.match(/\d/)[0]}`;
-    return `<article class="card sticker ${strip ? "strip" : ""}" style="animation-delay:${i * 60}ms">
-      <img src="${esc(fileURL(p.key))}" alt="${label}">
-      <div class="row"><a class="sticker pill go tiny" href="${esc(fileURL(p.key, true))}">⬇️ Save</a>
-        ${canShareFiles ? `<button class="sticker pill hot tiny" data-share="${esc(p.key)}">📤 Share</button>` : ""}</div>
-    </article>`;
-  }).join("");
+  if (st) {
+    $("hero").innerHTML = `<div class="receipt" id="receipt"><div class="paper"><img id="stripImg" src="${esc(fileURL(st))}" alt="Your printed receipt strip"></div></div>`;
+  } else {
+    // Not printed / uploaded yet: a paper placeholder, with the colour photo meanwhile.
+    const msg = late ? (o.length ? "Your receipt hasn't arrived yet — it will once the booth is back online."
+                                 : "Your photos haven't arrived yet. They'll appear here once the booth is back online.")
+      : o.length ? "Printing… your receipt shows up here in a moment." : "On its way from the booth… this page updates by itself.";
+    $("hero").innerHTML = `<div class="receipt pending" id="receipt"><div class="paper">
+      <span class="bob emoji" aria-hidden="true">${o.length ? "🖨️" : "📤"}</span><span id="waitText">${msg}</span>
+      ${o.length ? `<div class="dash"></div><img class="photo" src="${esc(fileURL(o[0].key))}" alt="Your photo">` : ""}</div></div>`;
+  }
+  $("also").hidden = !o.length;
+  $("thumbs").innerHTML = o.map((p, i) => `<button class="thumb" data-key="${esc(p.key)}" aria-label="Colour photo ${i + 1}"><img src="${esc(fileURL(p.key))}" alt="Colour photo ${i + 1}"></button>`).join("");
 }
 
 function poll() {
@@ -142,6 +182,20 @@ function poll() {
   if (age > 30 * 60000) return;
   pollT = setTimeout(() => load().then(poll, (e) => { if (e.message !== "gone") poll(); }), age < 3 * 60000 ? 4000 : 15000);
 }
+
+// ---------- colour photo viewer ----------
+let viewKey = null;
+$("thumbs").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-key]"); if (!b) return;
+  viewKey = b.dataset.key;
+  $("viewImg").src = fileURL(viewKey); $("viewSave").href = fileURL(viewKey, true);
+  $("viewShare").hidden = !canShareFiles;
+  $("view").classList.add("on");
+});
+$("viewShare").onclick = () => share([viewKey]);
+$("viewClose").onclick = () => $("view").classList.remove("on");
+$("view").addEventListener("click", (e) => { if (e.target === $("view")) $("view").classList.remove("on"); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("view").classList.remove("on"); });
 
 // ---------- save / share ----------
 const nameOf = (key) => `photobooth-${key.split("/").pop()}`;
@@ -156,11 +210,10 @@ async function share(keys) {
     else for (const k of keys) location.href = fileURL(k, true);
   } catch (e) { if (e.name !== "AbortError") setStatus("Couldn't share: " + e.message); }
 }
-$("pics").addEventListener("click", (e) => { const b = e.target.closest("button[data-share]"); if (b) share([b.dataset.share]); });
 $("shareAll").onclick = () => share(pictures().map((p) => p.key));
-$("saveAll").onclick = async () => {
-  // One download per picture (no zip: a session is 2–4 files).
-  for (const p of pictures()) {
+$("savePhotos").onclick = async () => {
+  // One download per photo (no zip: a session is 1–4 files).
+  for (const p of origs()) {
     const a = document.createElement("a"); a.href = fileURL(p.key, true); a.download = nameOf(p.key);
     document.body.appendChild(a); a.click(); a.remove();
     await new Promise((r) => setTimeout(r, 400));

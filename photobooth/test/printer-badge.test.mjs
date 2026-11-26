@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { printerHealth } from "../src/printer-status.ts";
-import { needsAdult, printerHint, printerState, STATE_ICON, statusWords } from "../public/printer-state.js";
+import { needsAdult, newWake, printerHint, printerState, softBadge, STATE_ICON, statusWords, WAKE, wakeStep } from "../public/printer-state.js";
 import { CLASSIC, DRAWN, drawnSVG, iconHTML, ICON_NAMES } from "../public/icons.js";
 
 const now = 1_800_000_000_000;
@@ -10,16 +10,18 @@ const h = (statusCode, ago = 5) => printerHealth(JSON.stringify({ statusCode, la
 
 test("each printer problem maps to its own state (and badge)", () => {
   assert.equal(printerState(h("200 OK")), "ready");
-  assert.equal(printerState(h("200 OK", 600)), "offline", "stale lastSeen = offline");
-  assert.equal(printerState(printerHealth(null, now)), "offline", "never seen = offline");
-  assert.equal(printerState(h("410 Out of paper", 600)), "offline", "offline wins: the paper status is stale");
+  assert.equal(printerState(h("200 OK", 600)), "asleep", "stale lastSeen, no error = napping (MQTT: it only polls when poked)");
+  assert.equal(printerState(printerHealth(null, now)), "asleep", "never seen: napping until a nudge goes unanswered");
+  assert.equal(printerState(h("200 OK", 600), { failed: true }), "offline", "stale after an unanswered nudge = offline");
+  assert.equal(printerState(h("410 Out of paper", 600), { failed: true }), "paperOut", "error codes win, even stale");
+  assert.equal(printerState(h("420 Cover open", 7200)), "cover");
   assert.equal(printerState(h("410%20Out%20of%20paper")), "paperOut");
   assert.equal(printerState(h("420 Cover open")), "cover");
   assert.equal(printerState(h("520 Unknown")), "error");
   assert.equal(printerState(h("411 Paper near end")), "paperLow");
   assert.equal(printerState(null), null, "no answer yet: no badge");
   // Distinct drawings; cover-open and error are no longer the same sticker.
-  const icons = ["offline", "paperOut", "cover", "error", "paperLow", "ready"].map((s) => STATE_ICON[s]);
+  const icons = ["offline", "asleep", "paperOut", "cover", "error", "paperLow", "ready"].map((s) => STATE_ICON[s]);
   assert.equal(new Set(icons).size, icons.length);
   for (const i of icons) assert.ok(DRAWN[i] && CLASSIC[i], i);
   const classic = ["offline", "paperOut", "cover", "error"].map((s) => CLASSIC[STATE_ICON[s]]);
@@ -27,19 +29,57 @@ test("each printer problem maps to its own state (and badge)", () => {
 });
 
 test("the badge shows only when a grown-up is needed", () => {
-  assert.deepEqual(["offline", "paperOut", "cover", "error", "paperLow", "ready", null].map(needsAdult), [true, true, true, true, false, false, false]);
+  assert.deepEqual(["offline", "paperOut", "cover", "error", "asleep", "paperLow", "ready", null].map(needsAdult), [true, true, true, true, false, false, false, false]);
+  assert.deepEqual(["offline", "paperOut", "asleep", "ready", null].map(softBadge), [false, false, true, false, false], "napping: the quiet badge only");
 });
 
 test("adult labels: short, with the last-seen time when offline", () => {
-  const off = printerHint(h("200 OK", 600), now);
+  const off = printerHint(h("200 OK", 600), now, { failed: true });
   assert.match(off, /^Printer offline · last seen \d{1,2}:\d\d (am|pm) · Check its power & Wi-Fi$/);
-  assert.match(printerHint(printerHealth(null, now), now), /not seen yet/);
+  assert.match(printerHint(printerHealth(null, now), now, { failed: true }), /not seen yet/);
+  assert.equal(printerHint(h("200 OK", 600), now, { phase: "waking" }), "Printer napping · waking it up…");
+  assert.equal(printerHint(h("200 OK", 7200), now), "Printer napping · last check-in 2h ago");
   assert.equal(printerHint(h("410 Out of paper"), now), "Out of paper");
   assert.equal(printerHint(h("420 Cover open"), now), "Cover open");
   assert.equal(printerHint(h("500 Boom"), now), "Printer error — turn it off and on");
   const w = statusWords(h("411 Paper near end"), now);
   assert.deepEqual([w.printer[0], w.paper[0]], ["Printer ready", "Paper low"]);
   assert.equal(statusWords(h("200 OK", 900), now).stale, true);
+  assert.deepEqual(statusWords(h("200 OK", 7200), now).printer, ["Printer napping", "last check-in 2h ago"]);
+  assert.deepEqual(statusWords(h("200 OK", 7200), now, { failed: true }).printer[0], "Printer offline");
+  assert.deepEqual(statusWords(h("200 OK"), now).printer, ["Printer ready", "online"]);
+});
+
+test("wake-up: stale → asleep, nudge → online, nudge timeout → offline, error codes win", () => {
+  const stale = h("200 OK", 7200), fresh = h("200 OK");
+  // Stale and in use: nudge once, then re-check; the badge says napping, not offline.
+  let r = wakeStep(newWake(), stale, now, { inUse: true });
+  assert.equal(r.nudge, true); assert.equal(r.recheck, true); assert.equal(r.wake.phase, "waking");
+  assert.equal(printerState(stale, r.wake), "asleep");
+  // Still stale a few seconds later: no second nudge, keep re-checking.
+  r = wakeStep(r.wake, stale, now + WAKE.recheckMs);
+  assert.equal(r.nudge, false); assert.equal(r.recheck, true); assert.equal(printerState(stale, r.wake), "asleep");
+  // It checks in: ready, the machine resets.
+  const ok = wakeStep(r.wake, fresh, now + 2 * WAKE.recheckMs);
+  assert.deepEqual([ok.wake.phase, ok.wake.failed, ok.recheck, printerState(fresh, ok.wake)], ["idle", false, false, "ready"]);
+  // No check-in within the window: offline (sticky), and no nudge until the cooldown passes.
+  const t = wakeStep(r.wake, stale, now + WAKE.windowMs);
+  assert.deepEqual([t.wake.failed, t.recheck, t.nudge, printerState(stale, t.wake)], [true, false, false, "offline"]);
+  const later = wakeStep(t.wake, stale, now + WAKE.windowMs + 1000);
+  assert.equal(later.nudge, false, "cooldown");
+  const retry = wakeStep(t.wake, stale, now + WAKE.cooldownMs);
+  assert.equal(retry.nudge, true, "retries after the cooldown"); assert.equal(printerState(stale, retry.wake), "offline", "stays offline while re-waking");
+  assert.equal(printerState(fresh, wakeStep(retry.wake, fresh, now + WAKE.cooldownMs + 4000).wake), "ready", "a check-in clears offline");
+  // Not in use: no automatic nudge (still napping); a print forces one regardless of the cooldown.
+  assert.equal(wakeStep(newWake(), stale, now, { inUse: false }).nudge, false);
+  assert.equal(wakeStep({ phase: "idle", nudgedAt: now - 1000, failed: false }, stale, now, { inUse: true }).nudge, false, "cooldown");
+  assert.equal(wakeStep({ phase: "idle", nudgedAt: now - 1000, failed: false }, stale, now, { force: true }).nudge, true, "force (print)");
+  // Fresh printer: never nudged.
+  assert.equal(wakeStep(newWake(), fresh, now, { force: true }).nudge, false);
+  // Error codes win over napping / offline.
+  const out = h("410 Out of paper", 7200);
+  assert.equal(printerState(out, wakeStep(newWake(), out, now).wake), "paperOut");
+  assert.equal(printerState(h("520 Boom", 7200), { failed: true }), "error");
 });
 
 test("every icon has a drawing and a Classic fallback; SVG is well formed", () => {

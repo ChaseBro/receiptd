@@ -137,6 +137,8 @@
   #printerBadge { position:absolute; left:var(--gap); bottom:var(--gap); z-index:2; width:calc(var(--tap) * 1.2); height:calc(var(--tap) * 1.2);
     font-size:calc(var(--tap) * .7); border-radius:22px; background:var(--sun); --tilt:-8deg; animation:wiggle 4s infinite; }
   #printerBadge .ic, #paperWait .ic { width:86%; height:86%; }
+  /* Napping (stale check-in, no error; the booth is waking it): the same sun, quieter: smaller, still, half see-through. */
+  #printerBadge.soft { animation:none; scale:.78; opacity:.72; transform-origin:left bottom; }
   #paperWait { position:relative; margin-top:22px; width:clamp(120px, 26vmin, 200px); height:clamp(120px, 26vmin, 200px); border-radius:30px;
     font-size:clamp(48px, 11vmin, 90px); background:var(--sun); --tilt:6deg; animation:wiggle 4s infinite; }
   /* Adult stickers (the gear on the camera window, share-the-booth in the top bar): white (not candy, so they don't invite kids), small.
@@ -574,7 +576,7 @@ import { encodeBitPNG } from "./archive-codecs.js";
 import { qrSVG } from "./qr.js";
 import { appJoinLink, webBoothLink } from "./share.js";
 import { iconHTML, paintIcons } from "./icons.js";
-import { needsAdult, printerHint, printerState, STATE_ICON, statusWords } from "./printer-state.js";
+import { needsAdult, newWake, printerHint, printerState, softBadge, STATE_ICON, statusWords, WAKE, wakeStep } from "./printer-state.js";
 
 const $ = (id) => document.getElementById(id);
 const GAINS = [0, 0.1, 0.15, 0.25, 0.4];               // calibration bands A..E
@@ -700,42 +702,51 @@ async function cameraPermissionHint() {
 }
 cameraPermissionHint();
 
-// ---------- printer health (printer-state.js: offline / out of paper / cover open / error) ----------
-// The camera badge (and the printing screen's wait sticker) shows only when the printer needs a
-// grown-up: one drawing per problem. Tapping it shows the adult label (showHint).
-let lastPrinter = null;
-const STATE_LABEL = { offline: "Printer offline", paperOut: "Printer out of paper", cover: "Printer cover open", error: "Printer error" };
+// ---------- printer health (printer-state.js: offline / out of paper / cover open / error; napping) ----------
+// The camera badge (and the printing screen's wait sticker) shows when the printer needs a
+// grown-up: one drawing per problem. A napping printer (stale check-in, no error: normal with MQTT)
+// gets a quiet camera badge while the booth wakes it. Tapping shows the adult label (showHint).
+let lastPrinter = null, wake = newWake();
+const STATE_LABEL = { offline: "Printer offline", asleep: "Printer napping", paperOut: "Printer out of paper", cover: "Printer cover open", error: "Printer error" };
 function showPrinter(h) {
   if (!h) return;
   lastPrinter = h;
-  const state = printerState(h), on = needsAdult(state);
+  if (h.online && (wake.failed || wake.phase !== "idle")) wake = { ...wake, phase: "idle", failed: false };   // a check-in clears it
+  const state = printerState(h, wake), loud = needsAdult(state), soft = softBadge(state);
   for (const id of ["printerBadge", "paperWait"]) {
-    const el = $(id);
+    const el = $(id), on = loud || (soft && id === "printerBadge");
     el.hidden = !on;
+    el.classList.toggle("soft", !loud);
     if (!on) continue;
     el.querySelector("[data-ic]").dataset.ic = STATE_ICON[state];
     el.setAttribute("aria-label", STATE_LABEL[state]);
   }
-  if (on) paint();
+  if (loud || soft) paint();
   if ($("settings").classList.contains("on")) renderStatus();
 }
-for (const id of ["printerBadge", "paperWait"]) $(id).onclick = () => { if (lastPrinter) showHint($(id), printerHint(lastPrinter)); };
-// With MQTT the printer barely polls on its own, so its status (paper, cover)
-// goes stale. While the booth is actually in use, ask it to check in (an MQTT
-// nudge makes it poll, which refreshes the status) at most every 2 minutes.
-let lastHealthNudge = 0;
-async function refreshPrinter() {
-  try {
-    const h = await api("/api/printer");
-    showPrinter(h);
-    const inUse = Date.now() - lastTouch < 600000;
-    if (inUse && (h.lastSeenSec ?? 1e9) > 120 && Date.now() - lastHealthNudge > 120000) {
-      lastHealthNudge = Date.now();
-      await api("/api/nudge", { method: "POST" }).catch(() => {});
-      await sleep(3000);
-      showPrinter(await api("/api/printer"));
-    }
-  } catch {}
+for (const id of ["printerBadge", "paperWait"]) $(id).onclick = () => { if (lastPrinter) showHint($(id), printerHint(lastPrinter, Date.now(), wake)); };
+// With MQTT the printer barely polls on its own (hourly), so its check-in goes stale and its status
+// (paper, cover) with it. When it's stale and the booth is in use, wake it: an MQTT nudge (at most
+// every WAKE.cooldownMs, or `force` right before / after a print), then re-check for WAKE.windowMs.
+// Only a nudge that goes unanswered makes it "offline".
+let refreshing = null;
+function refreshPrinter({ force = false } = {}) {
+  if (refreshing) return refreshing;
+  refreshing = (async () => {
+    try {
+      let h = await api("/api/printer");
+      let st = wakeStep(wake, h, Date.now(), { inUse: Date.now() - lastTouch < 600000, force });
+      wake = st.wake; showPrinter(h);
+      if (st.nudge) api("/api/nudge", { method: "POST" }).catch(() => {});
+      while (st.recheck) {
+        await sleep(WAKE.recheckMs);
+        h = await api("/api/printer");
+        st = wakeStep(wake, h, Date.now(), { inUse: false });
+        wake = st.wake; showPrinter(h);
+      }
+    } catch {} finally { refreshing = null; }
+  })();
+  return refreshing;
 }
 setInterval(() => { if ($("cam").classList.contains("on") && document.visibilityState === "visible") refreshPrinter(); }, 15000);
 setInterval(() => { if ($("cam").classList.contains("on") && document.visibilityState === "visible" && !busy) refreshEvent(); }, 60000);
@@ -1169,6 +1180,7 @@ async function printFlow() {
   renderTicks(n, 0);
   pauseArchive();   // the print request gets the Wi-Fi to itself
   printingNow = true; clearTimeout(mineT);
+  refreshPrinter({ force: true });   // napping printer: wake it now (no-op if it checked in lately)
   try {
     // Re-render every copy from the head heat right now (time has passed since
     // the preview, and copy k+1 starts as hot as copy k left the head).
@@ -1215,6 +1227,7 @@ async function printFlow() {
       await sleep(1000);
     }
     printingNow = false; if (!$("mine").hidden) armMineClose();   // "your photos" stays ~30 s after the print
+    refreshPrinter({ force: true });
     celebrate();
     await sleep(2400);
     show("cam");
@@ -1365,14 +1378,14 @@ function status(msg) { $("sStatus").hidden = !msg; $("sStatus").textContent = ms
 const kb = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.round(n / 1024)} KB`);
 /** The status strip (printer · paper · uploads) and the printer / queue lines further down. */
 async function renderStatus() {
-  const h = lastPrinter, w = statusWords(h), state = printerState(h);
+  const h = lastPrinter, w = statusWords(h, Date.now(), wake), state = w.state;
   const tile = (id, icon, [t, sub], bad) => {
     const el = $(id); el.classList.toggle("bad", !!bad);
     el.querySelector("[data-ic]").dataset.ic = icon; el.querySelector(".t").textContent = t; el.querySelector(".sub").textContent = sub;
   };
-  tile("tPrinter", state === "offline" ? "pOffline" : state === "error" ? "pError" : "pReady", w.printer, state === "offline" || state === "error");
+  tile("tPrinter", state === "offline" ? "pOffline" : state === "asleep" ? "pAsleep" : state === "error" ? "pError" : "pReady", w.printer, state === "offline" || state === "error");
   tile("tPaper", state === "offline" ? "paperOk" : h?.paperOut ? "pPaperOut" : h?.coverOpen ? "pCover" : h?.paperLow ? "pPaperLow" : "paperOk", w.paper, state !== "offline" && h && (h.paperOut || h.coverOpen));
-  $("sPrinterLine").textContent = !h ? "checking…" : w.stale ? printerHint(h) : `${w.printer[0]} · ${w.paper[0].toLowerCase()}${h.text ? " · " + h.text : ""}`;
+  $("sPrinterLine").textContent = !h ? "checking…" : w.stale ? printerHint(h, Date.now(), wake) : `${w.printer[0]} · ${w.paper[0].toLowerCase()}${h.text ? " · " + h.text : ""}`;
   const q = await queueStats();
   tile("tUpload", "upload", q.sessions ? [`${q.sessions} waiting`, q.retrying ? "retrying" : "to upload"] : ["All uploaded", "archive"], q.retrying);
   $("sQueue").textContent = q.sessions ? `${q.sessions} session${q.sessions === 1 ? "" : "s"} · ${kb(q.bytes)}${q.retrying ? " · retrying" : ""}` : "nothing waiting";
@@ -1409,10 +1422,10 @@ $("sFooter").oninput = () => S.set("footer", $("sFooter").value.trim());
 async function nudgePrinter(btn) {
   btn.disabled = true; status("Asking the printer to check in…");
   try {
-    await api("/api/nudge", { method: "POST" });
-    await sleep(3000);
-    showPrinter(await api("/api/printer"));
-    status(printerState(lastPrinter) === "offline" ? "No answer yet. Check the printer's power and Wi-Fi." : "The printer checked in.");
+    await refreshing;   // let an automatic wake-up finish first
+    if (lastPrinter?.online) { await api("/api/nudge", { method: "POST" }); await sleep(3000); showPrinter(await api("/api/printer")); }
+    else await refreshPrinter({ force: true });
+    status(lastPrinter?.online ? "The printer checked in." : "No answer yet. Check the printer's power and Wi-Fi.");
   } catch (e) { status("Failed: " + e.message); }
   btn.disabled = false;
 }

@@ -93,24 +93,55 @@ final class CoreTests: XCTestCase {
         func h(_ json: String) throws -> PrinterHealth { try JSONDecoder().decode(PrinterHealth.self, from: Data(json.utf8)) }
         let ok = #""code":200,"text":"200 OK","paperOut":false,"paperLow":false,"coverOpen":false,"error":false"#
         XCTAssertEqual(try h("{\(ok),\"online\":true,\"lastSeenSec\":5}").state, .ready)
-        XCTAssertEqual(try h("{\(ok),\"online\":false,\"lastSeenSec\":600}").state, .offline, "stale lastSeen = offline")
-        XCTAssertEqual(try h(#"{"code":null,"text":"","paperOut":false,"paperLow":false,"coverOpen":false,"error":false,"online":false,"lastSeenSec":null}"#).state, .offline, "never seen")
-        XCTAssertEqual(try h(#"{"paperOut":true,"coverOpen":false,"error":false}"#).state, .offline, "no online field (old server): offline")
-        XCTAssertEqual(PrinterHealth(paperOut: true, online: false).state, .offline, "offline wins: paper info is stale")
+        XCTAssertEqual(try h("{\(ok),\"online\":false,\"lastSeenSec\":600}").state, .asleep, "stale lastSeen, no error = napping")
+        XCTAssertEqual(try h(#"{"code":null,"text":"","paperOut":false,"paperLow":false,"coverOpen":false,"error":false,"online":false,"lastSeenSec":null}"#).state, .asleep, "never seen: napping until a nudge goes unanswered")
+        XCTAssertEqual(try h("{\(ok),\"online\":false,\"lastSeenSec\":600}").state(wake: PrinterWake(failed: true)), .offline, "unanswered nudge = offline")
+        XCTAssertEqual(try h(#"{"paperOut":true,"coverOpen":false,"error":false}"#).state, .paperOut, "no online field (old server): the code still wins")
+        XCTAssertEqual(PrinterHealth(paperOut: true, online: false).state(wake: PrinterWake(failed: true)), .paperOut, "error codes win, even stale")
         XCTAssertEqual(PrinterHealth(code: 410, paperOut: true, online: true).state, .paperOut)
         XCTAssertEqual(PrinterHealth(code: 420, coverOpen: true, online: true).state, .coverOpen)
         XCTAssertEqual(PrinterHealth(code: 520, error: true, online: true).state, .error)
         XCTAssertEqual(PrinterHealth(code: 411, paperLow: true, online: true).state, .paperLow)
-        XCTAssertEqual(PrinterState.allCases.filter(\.needsAdult), [.offline, .paperOut, .coverOpen, .error])
+        XCTAssertEqual(Set(PrinterState.allCases.filter(\.needsAdult)), [.offline, .paperOut, .coverOpen, .error])
+        XCTAssertEqual(PrinterState.allCases.filter(\.soft), [.asleep])
         XCTAssertEqual(Set(PrinterState.allCases.map(\.icon)).count, PrinterState.allCases.count, "one drawing per state")
         XCTAssertEqual(Set([PrinterState.offline, .paperOut, .coverOpen, .error].map(\.emoji)).count, 4, "Classic emoji distinct")
         // Adult labels.
         var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(identifier: "America/New_York")!
         let now = ISO8601DateFormatter().date(from: "2026-11-24T19:30:00Z")!   // 2:30 pm New York
-        XCTAssertEqual(PrinterHealth(online: false, lastSeenSec: 960).hint(now: now, calendar: cal), "Printer offline · last seen 2:14 pm · Check its power & Wi-Fi")
-        XCTAssertEqual(PrinterHealth(online: false).hint(now: now, calendar: cal), "Printer offline · not seen yet · Check its power & Wi-Fi")
+        let failed = PrinterWake(failed: true)
+        XCTAssertEqual(PrinterHealth(online: false, lastSeenSec: 960).hint(now: now, calendar: cal, wake: failed), "Printer offline · last seen 2:14 pm · Check its power & Wi-Fi")
+        XCTAssertEqual(PrinterHealth(online: false).hint(now: now, calendar: cal, wake: failed), "Printer offline · not seen yet · Check its power & Wi-Fi")
+        XCTAssertEqual(PrinterHealth(online: false, lastSeenSec: 7200).hint(), "Printer napping · last check-in 2h ago")
+        XCTAssertEqual(PrinterHealth(online: false, lastSeenSec: 7200).hint(wake: PrinterWake(phase: .waking)), "Printer napping · waking it up…")
         XCTAssertEqual(PrinterHealth(paperOut: true, online: true).hint(), "Out of paper")
         XCTAssertEqual(PrinterHealth(coverOpen: true, online: true).hint(), "Cover open")
         XCTAssertEqual(PrinterHealth(error: true, online: true).hint(), "Printer error — turn it off and on")
+    }
+
+    /// printer-state.js wakeStep, same cases as test/printer-badge.test.mjs.
+    func testPrinterWake() {
+        let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+        let stale = PrinterHealth(online: false, lastSeenSec: 7200), fresh = PrinterHealth(online: true, lastSeenSec: 5)
+        var w = PrinterWake()
+        var r = w.step(stale, now: t0, inUse: true)
+        XCTAssertTrue(r.nudge); XCTAssertTrue(r.recheck); XCTAssertEqual(stale.state(wake: w), .asleep)
+        r = w.step(stale, now: t0 + PrinterWake.recheck)
+        XCTAssertFalse(r.nudge); XCTAssertTrue(r.recheck); XCTAssertEqual(stale.state(wake: w), .asleep)
+        var ok = w; r = ok.step(fresh, now: t0 + 8)
+        XCTAssertEqual(ok.phase, .idle); XCTAssertFalse(ok.failed); XCTAssertFalse(r.recheck); XCTAssertEqual(fresh.state(wake: ok), .ready)
+        r = w.step(stale, now: t0 + PrinterWake.window)
+        XCTAssertTrue(w.failed); XCTAssertFalse(r.recheck); XCTAssertFalse(r.nudge); XCTAssertEqual(stale.state(wake: w), .offline)
+        XCTAssertFalse(w.step(stale, now: t0 + PrinterWake.window + 1).nudge, "cooldown")
+        XCTAssertTrue(w.step(stale, now: t0 + PrinterWake.cooldown).nudge, "retries after the cooldown")
+        XCTAssertEqual(stale.state(wake: w), .offline, "stays offline while re-waking")
+        _ = w.step(fresh, now: t0 + PrinterWake.cooldown + 4); XCTAssertEqual(fresh.state(wake: w), .ready, "a check-in clears offline")
+        var idle = PrinterWake(); XCTAssertFalse(idle.step(stale, now: t0, inUse: false).nudge, "not in use: no automatic nudge")
+        var recent = PrinterWake(nudgedAt: t0 - 1); XCTAssertFalse(recent.step(stale, now: t0, inUse: true).nudge, "cooldown")
+        recent = PrinterWake(nudgedAt: t0 - 1); XCTAssertTrue(recent.step(stale, now: t0, force: true).nudge, "force (print)")
+        var f = PrinterWake(); XCTAssertFalse(f.step(fresh, now: t0, force: true).nudge, "fresh: never nudged")
+        var e = PrinterWake(); _ = e.step(PrinterHealth(paperOut: true, online: false), now: t0)
+        XCTAssertEqual(PrinterHealth(paperOut: true, online: false).state(wake: e), .paperOut)
+        XCTAssertEqual(PrinterHealth(error: true, online: false).state(wake: PrinterWake(failed: true)), .error)
     }
 }

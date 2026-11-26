@@ -119,8 +119,9 @@ const PROBLEMS = {
 };
 for (const [state, [h, label, icon]] of Object.entries(PROBLEMS)) {
   const { ctx, page } = await booth(devices["iPad Pro 11"], {}, h);
-  await page.locator("#printerBadge:not([hidden])").waitFor({ timeout: 5000 });
-  assert.equal(await page.locator("#printerBadge [data-ic]").getAttribute("data-ic"), icon);
+  // offline = stale AND a wake-up nudge went unanswered for ~25 s (the stub never checks in).
+  await page.locator(`#printerBadge:not([hidden]) [data-ic="${icon}"]`).waitFor({ timeout: state === "offline" ? 45000 : 5000 });
+  assert.ok(!(await page.locator("#printerBadge").evaluate((b) => b.classList.contains("soft"))), "loud badge");
   assert.equal(await hintText(page), "", "no label until tapped");
   await page.click("#printerBadge");
   await page.waitForTimeout(250);
@@ -129,6 +130,51 @@ for (const [state, [h, label, icon]] of Object.entries(PROBLEMS)) {
   if (state === "offline") { await page.mouse.click(5, 5); await page.waitForTimeout(300); assert.equal(await hintText(page), "", "another touch dismisses it"); await shot(page, "ipad-printer-offline-badge"); }
   await page.locator("#printerBadge").screenshot({ path: OUT + `web-badge-${state}.png` });
   log(`badge ${state}: ${icon}, label ${label}`);
+  await ctx.close();
+}
+
+// Napping printer (stale check-in, no error — normal with MQTT): a quiet badge, the booth nudges it,
+// and a check-in clears it. Stubbed /api/printer: stale until the booth POSTs /api/nudge.
+{
+  const ctx = await browser.newContext({ permissions: ["camera"], ...devices["iPad Pro 11"] });
+  await ctx.addInitScript(([pin]) => { localStorage.setItem("booth.pin", JSON.stringify(pin)); localStorage.setItem("booth.sound", "false"); }, [PIN]);
+  let nudges = 0, wakeAfter = Infinity;
+  await ctx.route("**/api/nudge", (r) => { nudges++; r.fulfill({ json: { ok: true } }); });
+  await ctx.route("**/api/printer", (r) => r.fulfill({ json: nudges && Date.now() >= wakeAfter ? READY : { ...READY, online: false, lastSeenSec: 7200 } }));
+  const page = await ctx.newPage();
+  page.on("pageerror", (e) => { throw e; });
+  await page.goto(BASE + "/");
+  await page.locator("#cam.on").waitFor({ timeout: 15000 });
+  await page.locator('#printerBadge.soft:not([hidden]) [data-ic="pAsleep"]').waitFor({ timeout: 5000 });
+  assert.equal(await page.locator("#printerBadge").evaluate((b) => getComputedStyle(b).animationName), "none", "no wiggle");
+  assert.ok(nudges >= 1, "the booth nudged the napping printer");
+  await page.click("#printerBadge"); await page.waitForTimeout(250);
+  assert.equal(await hintText(page), "Printer napping · waking it up…");
+  await shot(page, "ipad-printer-napping");
+  await page.locator("#printerBadge").screenshot({ path: OUT + "web-badge-asleep.png" });
+  wakeAfter = Date.now();   // the printer answers the nudge: the next re-check sees it
+  await page.locator("#printerBadge").waitFor({ state: "hidden", timeout: 10000 });
+  assert.equal(nudges, 1, "one nudge (cooldown)");
+  // Settings tile while it was napping → now ready.
+  log(`napping: quiet badge, ${nudges} nudge, check-in clears it`);
+  await ctx.close();
+}
+{ // Settings status tile says "napping (last check-in 2h ago)" with the Nudge button.
+  const ctx = await browser.newContext({ permissions: ["camera"], ...devices["iPad Pro 11"] });
+  await ctx.addInitScript(([pin]) => { localStorage.setItem("booth.pin", JSON.stringify(pin)); localStorage.setItem("booth.sound", "false"); }, [PIN]);
+  await ctx.route("**/api/nudge", (r) => r.fulfill({ json: { ok: true } }));
+  await ctx.route("**/api/printer", (r) => r.fulfill({ json: { ...READY, online: false, lastSeenSec: 7200 } }));
+  const page = await ctx.newPage();
+  await page.goto(BASE + "/");
+  await page.locator("#cam.on").waitFor({ timeout: 15000 });
+  const [x, y] = await centre(page, "#gearBtn");
+  await page.mouse.move(x, y); await page.mouse.down(); await page.waitForTimeout(1500); await page.mouse.up();
+  await page.locator("#settings.on").waitFor();
+  await page.waitForFunction(() => document.querySelector("#tPrinter .t").textContent === "Printer napping");
+  assert.match(await page.textContent("#tPrinter .sub"), /waking it up…|last check-in 2h ago/);
+  assert.ok(!(await page.locator("#tPrinter").evaluate((t) => t.classList.contains("bad"))), "napping is not red");
+  await shot(page, "ipad-settings-napping");
+  log("settings: Printer napping tile");
   await ctx.close();
 }
 

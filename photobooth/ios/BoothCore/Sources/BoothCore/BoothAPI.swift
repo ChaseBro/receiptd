@@ -36,29 +36,41 @@ public struct PrinterHealth: Codable, Equatable, Sendable {
         self.error = error; self.online = online; self.lastSeenSec = lastSeenSec
     }
 
-    /// What the printer needs (public/printer-state.js printerState). Offline first: with no poll
-    /// in 3 minutes the paper / cover info is stale.
-    public var state: PrinterState {
-        if online != true { return .offline }
+    /// What the printer needs (public/printer-state.js printerState). Status codes (paper out, cover
+    /// open, error) win even when stale. A stale check-in with no error is `.asleep` (with MQTT the
+    /// printer only polls when poked) until a wake-up nudge goes unanswered (`wake.failed`): `.offline`.
+    public func state(wake: PrinterWake? = nil) -> PrinterState {
         if paperOut { return .paperOut }
         if coverOpen { return .coverOpen }
         if error { return .error }
+        if online != true { return wake?.failed == true ? .offline : .asleep }
         if paperLow == true { return .paperLow }
         return .ready
     }
+    public var state: PrinterState { state(wake: nil) }
 
     /// The one-line adult label for a tap on the printer badge (printer-state.js printerHint).
-    public func hint(now: Date = Date(), calendar: Calendar = .current) -> String {
-        switch state {
+    public func hint(now: Date = Date(), calendar: Calendar = .current, wake: PrinterWake? = nil) -> String {
+        switch state(wake: wake) {
         case .offline:
             let seen = lastSeenSec.map { "last seen \(PrinterHealth.clock(now.addingTimeInterval(-Double($0)), calendar))" } ?? "not seen yet"
             return "Printer offline · \(seen) · Check its power & Wi-Fi"
+        case .asleep: return wake?.phase == .waking ? "Printer napping · waking it up…" : "Printer napping · last check-in \(PrinterHealth.ago(lastSeenSec))"
         case .paperOut: return "Out of paper"
         case .coverOpen: return "Cover open"
         case .error: return "Printer error — turn it off and on"
         case .paperLow: return "Paper low"
         case .ready: return "Printer ready"
         }
+    }
+
+    /// "just now" / "5 min ago" / "2h ago" / "3 days ago" (printer-state.js ago).
+    public static func ago(_ sec: Int?) -> String {
+        guard let s = sec else { return "never" }
+        if s < 90 { return "just now" }
+        if s < 3600 { return "\(Int((Double(s) / 60).rounded())) min ago" }
+        if s < 172_800 { return "\(Int((Double(s) / 3600).rounded()))h ago" }
+        return "\(Int((Double(s) / 86400).rounded())) days ago"
     }
 
     /// "2:14 pm".
@@ -68,27 +80,54 @@ public struct PrinterHealth: Codable, Equatable, Sendable {
     }
 }
 
-/// One printer state, in priority order. The camera badge shows only those that need a grown-up.
+/// Waking a napping printer (printer-state.js wakeStep): with MQTT it only polls when poked, so a
+/// stale check-in gets an automatic nudge (at most every `cooldown` s while the booth is in use, or
+/// `force`d right before / after a print), then re-checks every `recheck` s; no check-in within
+/// `window` s → `failed` (offline), sticky until it checks in.
+public struct PrinterWake: Equatable, Sendable {
+    public enum Phase: String, Sendable { case idle, waking }
+    public static let cooldown: TimeInterval = 120, window: TimeInterval = 25, recheck: TimeInterval = 4
+    public var phase: Phase = .idle
+    public var nudgedAt: Date = .distantPast
+    public var failed = false
+    public init(phase: Phase = .idle, nudgedAt: Date = .distantPast, failed: Bool = false) { self.phase = phase; self.nudgedAt = nudgedAt; self.failed = failed }
+
+    /// Advance with a fresh /api/printer answer. Returns whether to POST /api/nudge now, and whether to re-check.
+    public mutating func step(_ h: PrinterHealth?, now: Date = Date(), inUse: Bool = true, force: Bool = false) -> (nudge: Bool, recheck: Bool) {
+        guard let h else { return (false, false) }
+        if h.online == true { phase = .idle; failed = false; return (false, false) }
+        if phase == .waking, now.timeIntervalSince(nudgedAt) >= Self.window { phase = .idle; failed = true }
+        var nudge = false
+        if phase != .waking, force || (inUse && now.timeIntervalSince(nudgedAt) >= Self.cooldown) {
+            nudge = true; phase = .waking; nudgedAt = now
+        }
+        return (nudge, phase == .waking)
+    }
+}
+
+/// One printer state, in priority order. The camera badge shows those that need a grown-up (loud)
+/// and, quietly, a napping printer (`soft`: no "!", no wiggle, no red).
 public enum PrinterState: String, CaseIterable, Sendable {
-    case offline, paperOut, coverOpen, error, paperLow, ready
+    case paperOut, coverOpen, error, offline, asleep, paperLow, ready
     public var needsAdult: Bool { self == .offline || self == .paperOut || self == .coverOpen || self == .error }
+    public var soft: Bool { self == .asleep }
     /// The drawn icon (App/Icons.swift, public/icons.js).
     public var icon: String {
         switch self {
-        case .offline: "pOffline"; case .paperOut: "pPaperOut"; case .coverOpen: "pCover"
+        case .offline: "pOffline"; case .asleep: "pAsleep"; case .paperOut: "pPaperOut"; case .coverOpen: "pCover"
         case .error: "pError"; case .paperLow: "pPaperLow"; case .ready: "pReady"
         }
     }
     /// Classic (emoji) icon style: distinct per problem too.
     public var emoji: String {
         switch self {
-        case .offline: "🔌"; case .paperOut: "🧻"; case .coverOpen: "🖨️"; case .error: "💥"; case .paperLow: "🧻"; case .ready: "😺"
+        case .offline: "🔌"; case .asleep: "💤"; case .paperOut: "🧻"; case .coverOpen: "🖨️"; case .error: "💥"; case .paperLow: "🧻"; case .ready: "😺"
         }
     }
     /// VoiceOver label for the badge.
     public var label: String {
         switch self {
-        case .offline: "Printer offline"; case .paperOut: "Printer out of paper"; case .coverOpen: "Printer cover open"
+        case .offline: "Printer offline"; case .asleep: "Printer napping"; case .paperOut: "Printer out of paper"; case .coverOpen: "Printer cover open"
         case .error: "Printer error"; case .paperLow: "Printer paper low"; case .ready: "Printer ready"
         }
     }

@@ -105,13 +105,14 @@ await album.goto(`${BASE}/a/${ev.share}${sid ? "/" + sid : ""}`);
 await album.locator("h1", { hasText: name }).waitFor();
 await album.waitForFunction(() => document.querySelectorAll("#grid .card").length >= 1, null, { timeout: 30000 });
 if (sid) {
-  await album.locator("#mine h2", { hasText: "Your photos" }).waitFor({ timeout: 30000 });
-  log("album deep link shows 'Your photos'");
+  await album.locator("#mine h2", { hasText: "Your receipt" }).waitFor({ timeout: 30000 });
+  await album.locator("#mineHero img.bits").waitFor({ timeout: 30000 });   // the printed strip, once its upload lands
+  log("album deep link shows 'Your receipt' (the printed strip)");
 }
 const n = await album.locator("#grid .card").count();
 log(`album lists ${n} session(s)`);
 // open the viewer, check save link + image loads
-await album.locator("#grid .thumb").first().click();
+await album.locator("#grid .tile").first().click();
 await album.locator("#view.on").waitFor();
 await album.waitForFunction(() => document.getElementById("viewImg").naturalWidth > 0);
 const href = await album.getAttribute("#viewSave", "href");

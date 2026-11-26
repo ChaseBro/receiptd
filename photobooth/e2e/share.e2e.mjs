@@ -144,11 +144,22 @@ for (let i = 0; i < 60; i++) {   // the background upload: originals first, stri
 const guest = await browser.newContext(devices["iPhone 13"]);
 const g = await guest.newPage();
 await g.goto(url);
-await g.locator(".card.strip img").waitFor({ timeout: 30000 });
-await g.waitForFunction(() => [...document.querySelectorAll("#pics img")].every((i) => i.complete && i.naturalWidth > 0) && document.querySelectorAll("#pics img").length === 4, null, { timeout: 30000 });
-assert.ok(await g.locator("#wait").isHidden(), "nothing left on its way");
+await g.locator("#receipt:not(.pending) #stripImg").waitFor({ timeout: 30000 });
+await g.waitForFunction(() => [...document.querySelectorAll("main img")].every((i) => i.complete && i.naturalWidth > 0) && document.querySelectorAll("#thumbs img").length === 3, null, { timeout: 30000 });
+// The receipt is the hero: the first (and biggest) image on the page is the printed strip, drawn dot for dot.
+const hero = await g.evaluate(() => {
+  const imgs = [...document.querySelectorAll("main img")], first = imgs[0], area = (i) => i.getBoundingClientRect().width * i.getBoundingClientRect().height;
+  return { firstSrc: first.getAttribute("src"), biggest: imgs.every((i) => area(i) <= area(first)), rendering: getComputedStyle(first).imageRendering, nat: first.naturalWidth };
+});
+assert.match(hero.firstSrc, /strip\.png/, "first image is the receipt");
+assert.ok(hero.biggest, "the receipt is the biggest image");
+assert.equal(hero.rendering, "pixelated");
+assert.equal(hero.nat, 576, "the 576-dot printed bitmap");
+assert.ok(await g.locator("#saveStrip").isVisible() && await g.locator("#savePhotos").isVisible(), "save receipt / save photos");
 await g.screenshot({ path: OUT + "guest-page.png", fullPage: true });
-log("guest page: strip + 3 originals");
+mkdirSync(new URL("./out/receipt-hero/", import.meta.url).pathname, { recursive: true });
+await g.screenshot({ path: new URL("./out/receipt-hero/s-token-iphone-booth-print.png", import.meta.url).pathname, fullPage: true });
+log("guest page: receipt hero + 3 colour originals");
 
 // Expired link → 404 (page and API).
 const sid = (await (await fetch(url.replace("/s/", "/api/s/"))).json()).session.id;

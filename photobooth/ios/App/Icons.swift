@@ -25,7 +25,7 @@ struct ClassicIcon: View {
     static let emoji: [String: String] = [
         "shutter": "📸", "flip": "🔄", "nocam": "🙈", "gear": "⚙️", "wait": "⏳", "retake": "✖️", "print": "🖨️", "rotate": "↻",
         "receipt": "🧾", "minus": "➖", "plus": "➕", "again": "🔁", "back": "✖️", "queue": "⏳", "done": "🎉", "upload": "☁️",
-        "party": "🎉", "paperOk": "🧻", "pReady": "😺", "pPrinting": "😺", "pOffline": "🔌", "pPaperOut": "🧻", "pPaperLow": "🧻",
+        "party": "🎉", "paperOk": "🧻", "pReady": "😺", "pPrinting": "😺", "pOffline": "🔌", "pAsleep": "💤", "pPaperOut": "🧻", "pPaperLow": "🧻",
         "pCover": "🖨️", "pError": "💥", "point": "👆",
     ]
     var body: some View {
@@ -202,7 +202,7 @@ enum Icons {
         return m
     }()
     static let names = ["shutter", "flip", "one", "three", "nocam", "gear", "shareBooth", "sharePhoto", "wait", "queue", "retake", "print",
-                        "rotate", "receipt", "minus", "plus", "again", "back", "done", "pReady", "pPrinting", "pOffline", "pPaperOut",
+                        "rotate", "receipt", "minus", "plus", "again", "back", "done", "pReady", "pPrinting", "pOffline", "pAsleep", "pPaperOut",
                         "pPaperLow", "pCover", "pError", "paperOk", "upload", "party", "point"]
 
     static func rad(_ a: Double) -> Double { a * .pi / 180 }
@@ -388,6 +388,9 @@ enum Icons {
             p.scaled(0.8, -2, 14) { printer($0, face: .worried, led: .sun) }
             p.circle(74, 24, 18, fill: .white, stroke: Stroke(width: 4, cap: .butt, join: .miter, dash: [6, 5]))
             p.circle(74, 24, 8, fill: .sun, stroke: st(4.5)); p.circle(74, 24, 3, fill: .ink); bang(p, 88, 84)
+        case "pAsleep":   // napping: sleeping printer, plugged in (no cable, no "!"), two zZ
+            p.scaled(0.8, -2, 14) { printer($0, face: .sleep, led: .paper) }
+            zz(p, 62, 4, 1.05); zz(p, 80, 18, 0.8)
         case "pPaperLow":
             p.scaled(0.8, -2, 14) { printer($0, face: .oh, led: .sun) }
             p.circle(74, 24, 12, fill: .white, stroke: st(4.5)); p.circle(74, 24, 8, fill: .sun, stroke: st(4)); p.circle(74, 24, 3, fill: .ink)

@@ -16,9 +16,13 @@ screens use drawn sticker icons (`App/Icons.swift`, the same drawings as
 Press and hold the small gear at the camera's top-right for 1.2 s to open the
 adult settings (a filling ring, "Keep holding…", a haptic tick at 50 %; a tap
 only shows "Hold to open settings"). The printer badge (bottom-left of the
-camera, only when the printer needs a grown-up) maps `PrinterHealth.state`
+camera, only when the printer needs a grown-up) maps `PrinterHealth.state(wake:)`
 (BoothCore: offline / out of paper / cover open / error) to one drawing each; a
-tap shows its one-line adult label. See ../DESIGN.md "Grown-up controls".
+tap shows its one-line adult label. A stale check-in with no error is `.asleep`
+(napping: a quiet, still badge) while `PrinterWake` nudges the printer and
+re-checks; only an unanswered nudge makes it `.offline` (same rules as
+`public/printer-state.js`; `-booth.fakePrinter napping|nappingWakes` stubs it for
+the UI tests). See ../DESIGN.md "Grown-up controls".
 
 ```
 App/          SwiftUI screens, camera (AVFoundation), faces (Vision), sounds
@@ -37,7 +41,7 @@ iPad Safari uses. The fixtures cover 24 strips: every theme, 1 and 3 shots,
 portrait and landscape frames, QR, footer, face metering, gains A–E and
 2-copy relief.
 
-- **Printed dots: identical.** All 18.9M dots of the 24 fixture strips match.
+- **Printed dots: identical.** All 18.6M dots of the 24 fixture strips match.
 - **Raster stage: bit-exact.** Given the same grey strip, the dither, relief
   and head heat match exactly (JS float semantics: Double maths, Float32
   stores).

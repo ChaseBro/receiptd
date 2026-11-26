@@ -22,7 +22,13 @@ borrowed from `ChaseBro/photo-receipts`). The screen stays awake (Wake Lock).
 adult settings (a filling ring and "Keep holding…"; a tap only says "Hold to
 open settings"). When the printer needs a grown-up (offline, out of paper,
 cover open, error) a drawn sun sticker wiggles at the camera's bottom-left; tap
-it for one line of words (`public/printer-state.js`). See DESIGN.md "Grown-up
+it for one line of words (`public/printer-state.js`). With MQTT the printer only
+polls when poked (its own poll is hourly), so a stale check-in with no error is
+"napping", not offline: a quieter badge (smaller, still, no "!") while the booth
+nudges it (`POST /api/nudge`, at most every 2 min while in use, and right
+before / after each print) and re-checks for ~25 s. Only a nudge that gets no
+check-in makes it offline; a check-in clears it. Paper out / cover open / error
+codes always win. See DESIGN.md "Grown-up
 controls" for the adult-label rules.
 
 Settings (one sheet): a status strip (printer · paper · upload queue, red when
@@ -94,8 +100,10 @@ photos": a big QR code for another phone to scan, 📲 to send the files themsel
 (strip PNG + originals via `navigator.share({ files })`, else downloads — peer to
 peer, works offline) and ✖️. It stays until tapped away, or ~30 s after the print
 finishes. The QR is a per-session link, `/s/<token>` (`public/mine.html`): that
-session's strip + originals with save / share buttons, "on its way…" (polling)
-until the background upload lands, and a 404 / "Link expired" after 24 h. It
+session's printed receipt as the hero (the exact 1-bit `strip.png`, dot for dot on
+receipt paper with torn edges), the colour originals as small thumbnails, Save
+receipt / Save photos / Share all; "on its way…" / "Printing…" (with the colour
+photo) on a paper placeholder (polling) until the background upload lands, and a 404 / "Link expired" after 24 h. It
 works with or without a party (a party's strip QR still links the album). Opening
 it makes that session's archive upload jump the queue (`archive.js`
 `prioritize` / `orderDue`).
@@ -143,14 +151,22 @@ open booths pick it up within a minute (theme picker narrows, footer +
 QR switch on, every session's archive upload carries `event`, which adds it to
 the album index).
 
-- **Album** (public, unguessable token): `/a/<token>` — every session, tap to
-  view, ⬇️ save (or 📤 share on phones), ⬇️ download all (.zip built in the
-  browser), 📺 slideshow (`?show=1`, for a TV: auto-advances, picks up new
+- **Album** (public, unguessable token): `/a/<token>` — every session as its
+  printed receipt (tile = the top of the strip; not printed yet = the colour
+  photo marked "printing…") with small colour thumbnails, tap to view, ⬇️ save
+  (or 📤 share on phones), ⬇️ download all (.zip built in the browser), 📺
+  slideshow (`?show=1`, for a TV: one session per slide, the receipt big in the
+  middle — one screen pixel per dot on a 1× TV — feeding slowly up when taller
+  than the screen, the colour photo small beside it; auto-advances, picks up new
   photos, shows the album QR in the corner). Hosts with the PIN saved on that
   device get 🙈 to hide a session from the album (it stays in the archive).
-- **Strip QR**: `/a/<token>/<session id>` → "Your photos" at the top (waits
-  for the background upload). The QR block skips the solid-black relief pass
-  so modules stay whole; module = 5 dots.
+- **Strip QR**: `/a/<token>/<session id>` → "Your receipt" at the top, big, with
+  that guest's colour photos beside it (waits for the background upload: "on its
+  way…", then "Printing…" with the colour photo until `strip.png` lands). The QR block skips the solid-black relief pass
+  so modules stay whole; module = 5 dots (0.6 mm), 2-module quiet zone inside
+  its ink frame, tucked up under the ticket stub. `tools/qr-size/` renders
+  strips at other sizes through the real dither + a simulated thermal print and
+  decodes them with Apple Vision (4 dots fails once dot spread + blur are added).
 - **Sign**: 🪧 on the party page → letter-size poster (browser print) or a
   576px sign on the receipt printer; optional "be the booth" QR that unlocks
   the booth on a guest's phone (`/#pin=…`, contains the PIN).
@@ -168,7 +184,9 @@ npm test                 # unit + API (in-memory R2) + design lint + printer bad
 npm run dev:e2e          # local booth + cprnt DO (PIN from .dev.vars: BOOTH_PIN=1234)
 npm run test:e2e         # Playwright: party → booth (fake camera) → 5 strips, QR decoded → print → album;
                          #   share.e2e: stage shape, share-the-booth placement + PIN, share photo → /s/<token> → expiry
-                         #   redesign.e2e: gear tap/hold, printer badges + labels, Drawn/Classic, new settings
+                         #   receipt-hero.e2e: real strips → /s/, /a/, /a/<session>, slideshow lead with the receipt
+                         #     (iPhone / iPad / 1920×1080 TV screenshots → e2e/out/receipt-hero/)
+                         #   redesign.e2e: gear tap/hold, printer badges + labels (napping → nudge → offline / check-in), Drawn/Classic, new settings
                          #   (screenshots → ios/build/shots/redesign/web-*.png; e2e/icon-sheet.mjs renders all icons)
 ```
 

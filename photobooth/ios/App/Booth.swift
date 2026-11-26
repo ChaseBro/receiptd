@@ -96,7 +96,13 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
     @Published var theme: String
     @Published var shots: Int
     @Published var party: BoothEvent?
-    @Published var printer: PrinterHealth?
+    @Published var printer: PrinterHealth? {
+        didSet { if printer?.online == true, wake.failed || wake.phase != .idle { wake = PrinterWake(nudgedAt: wake.nudgedAt) } }   // a check-in clears it
+    }
+    /// Waking a napping printer (BoothCore PrinterWake): drives asleep vs offline.
+    @Published var wake = PrinterWake()
+    /// What the printer needs now (asleep until a wake-up nudge goes unanswered).
+    var printerState: PrinterState? { printer?.state(wake: wake) }
     @Published var busy = false
     /// First-run coach (DESIGN.md): done for good after the first print; skipped for this visit by a
     /// tap anywhere but the highlighted control. In memory too (a launch-argument default can't be overwritten).
@@ -323,18 +329,41 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
         } catch { handle(error, pin: pin) }
     }
 
-    private var lastHealthNudge = Date.distantPast
-    func refreshPrinter() async {
-        guard let h = try? await api.printer() else { return }
-        printer = h
-        // With MQTT the printer barely polls on its own; while the booth is in use,
-        // ask it to check in (refreshes paper/cover status) at most every 2 min.
-        if Date().timeIntervalSince(lastTouch) < 600, (h.lastSeenSec ?? 1_000_000) > 120, Date().timeIntervalSince(lastHealthNudge) > 120 {
-            lastHealthNudge = Date()
-            await api.nudge()
-            try? await Task.sleep(for: .seconds(3))
-            if let h2 = try? await api.printer() { printer = h2 }
+    // With MQTT the printer barely polls on its own (hourly), so its check-in goes stale and its status
+    // (paper, cover) with it. When it's stale and the booth is in use, wake it: a nudge (at most every
+    // PrinterWake.cooldown s, or `force`d right before / after a print), then re-check for
+    // PrinterWake.window s. Only an unanswered nudge makes it "offline" (printer-state.js, same rules).
+    private var refreshing: Task<Void, Never>?
+    func refreshPrinter(force: Bool = false) async {
+        if let t = refreshing { return await t.value }
+        let t = Task { @MainActor in
+            guard var h = await fetchPrinter() else { return }
+            var w = wake, r = w.step(h, inUse: Date().timeIntervalSince(lastTouch) < 600, force: force)
+            wake = w; printer = h
+            if r.nudge { Task { await sendNudge() } }
+            while r.recheck {
+                try? await Task.sleep(for: .seconds(PrinterWake.recheck))
+                guard let h2 = await fetchPrinter() else { break }
+                h = h2; w = wake; r = w.step(h, inUse: false); wake = w; printer = h
+            }
         }
+        refreshing = t
+        await t.value
+        refreshing = nil
+    }
+
+    /// UI tests: `-booth.fakePrinter napping` (stale check-in, never answers a nudge) or
+    /// `nappingWakes` (checks in ~3 s after a nudge) stand in for /api/printer + /api/nudge.
+    private let fakePrinter = UserDefaults.standard.string(forKey: "booth.fakePrinter")
+    private var fakeNudgedAt: Date?
+    private func fetchPrinter() async -> PrinterHealth? {
+        guard let f = fakePrinter else { return try? await api.printer() }
+        if f == "nappingWakes", let n = fakeNudgedAt, Date().timeIntervalSince(n) > 3 { return PrinterHealth(code: 200, text: "200 OK", online: true, lastSeenSec: 2) }
+        return PrinterHealth(code: 200, text: "200 OK", online: false, lastSeenSec: 7200)
+    }
+    private func sendNudge() async {
+        if fakePrinter != nil { fakeNudgedAt = Date(); return }
+        await api.nudge()
     }
 
     // MARK: capture
@@ -547,6 +576,7 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
         printingNow = true; mineCloseTask?.cancel()
         defer { printingNow = false; if mine != nil { armMineClose() } }   // "your photos" stays ~30 s after the print
         await archive.pause()   // the print request gets the Wi-Fi to itself
+        Task { await refreshPrinter(force: true) }   // napping printer: wake it now (no-op if it checked in lately)
         let pin = api.pin
         do {
             // Re-render every copy from the head heat right now.
@@ -564,6 +594,7 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
             settings.ticket += 1
             for _ in 0..<n { printTimes.append(Date()) }
             await waitForJob(job.id, copies: n, height: H)
+            Task { await refreshPrinter(force: true) }
             printingNow = false; if mine != nil { armMineClose() }
             celebrate = ["🎉", "🥳", "🤩", "😻", "🦄"].randomElement()
             Sfx.shared.play("yay")
@@ -628,7 +659,7 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
 
     func openSettings() {
         status = nil; hint = nil; closeMine(); if screen == .camera { camera.rememberOnScreen() }; screen = .settings
-        Task { await refreshEvent(); if let h = try? await api.printer() { printer = h } }
+        Task { await refreshEvent(); await refreshPrinter() }
     }
     func closeSettings() { Sfx.shared.enabled = settings.sound; camera.liveFallback = false; startCamera() }
     func setIconStyle(_ s: IconStyle) { iconStyle = s; settings.iconStyle = s.rawValue }
@@ -636,10 +667,13 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
     /// Settings → Nudge printer: the MQTT "poll now", then re-read its status.
     func nudgePrinter() async {
         status = "Asking the printer to check in…"
-        await api.nudge()
-        try? await Task.sleep(for: .seconds(3))
-        if let h = try? await api.printer() { printer = h }
-        status = printer?.state == .offline ? "No answer yet. Check the printer's power and Wi-Fi." : "The printer checked in."
+        if let t = refreshing { await t.value }   // let an automatic wake-up finish first
+        if printer?.online == true {
+            await sendNudge()
+            try? await Task.sleep(for: .seconds(3))
+            if let h = await fetchPrinter() { printer = h }
+        } else { await refreshPrinter(force: true) }
+        status = printer?.online == true ? "The printer checked in." : "No answer yet. Check the printer's power and Wi-Fi."
     }
     /// Settings → Upload now: clear backoffs, upload everything waiting.
     func uploadNow() async {

@@ -159,6 +159,8 @@ export const DRAWN = {
       `<path d="M60 48 C84 46 88 62 76 74" fill="none" stroke="${K.ink}" stroke-width="9" stroke-linecap="round"/>
        <rect x="58" y="72" width="28" height="22" rx="6" fill="${K.grape}" ${st(5)}/><path d="M58 78 H48 M58 88 H48" ${st(6)}/>
        <rect x="6" y="68" width="30" height="28" rx="7" fill="${K.white}" ${st(5)}/><rect x="14" y="76" width="4.5" height="11" rx="1.5" fill="${K.ink}"/><rect x="24" y="76" width="4.5" height="11" rx="1.5" fill="${K.ink}"/>` + zz(74, 2, 1.25),
+  // Napping (stale check-in, no error): the same sleeping printer, plugged in (no cable, no plug, no "!"), two zZ.
+  pAsleep: () => scaleG(printer({ face: "sleep", led: K.paper }), PRINTER_S, -2, 14) + zz(62, 4, 1.05) + zz(80, 18, 0.8),
   pPaperOut: () => scaleG(printer({ face: "worried", led: K.sun }), PRINTER_S, -2, 14) +
       `<circle cx="74" cy="24" r="18" fill="${K.white}" stroke="${K.ink}" stroke-width="4" stroke-dasharray="6 5"/>
        <circle cx="74" cy="24" r="8" fill="${K.sun}" ${st(4.5)}/><circle cx="74" cy="24" r="3" fill="${K.ink}"/>` + bang(88, 84),
@@ -184,7 +186,7 @@ const OLD_STRIP = `<svg class="ico" viewBox="0 0 48 48" aria-hidden="true"><rect
 export const CLASSIC = {
   shutter: "📸", flip: "🔄", nocam: "🙈", gear: "⚙️", wait: "⏳", retake: "✖️", print: "🖨️", rotate: "↻", receipt: "🧾",
   minus: "➖", plus: "➕", again: "🔁", back: "✖️", queue: "⏳", done: "🎉", upload: "☁️", party: "🎉", paperOk: "🧻",
-  pReady: "😺", pPrinting: "😺", pOffline: "🔌", pPaperOut: "🧻", pPaperLow: "🧻", pCover: "🖨️", pError: "💥", point: "👆",
+  pReady: "😺", pPrinting: "😺", pOffline: "🔌", pAsleep: "💤", pPaperOut: "🧻", pPaperLow: "🧻", pCover: "🖨️", pError: "💥", point: "👆",
 };
 const CLASSIC_HTML = {
   one: `<span class="strip-ico one"><b></b></span>`,

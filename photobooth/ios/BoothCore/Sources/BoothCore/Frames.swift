@@ -107,13 +107,6 @@ private func halftone(_ c: Canvas, _ box: Rect, _ step: Double = 12, _ f: (Doubl
     c.restore()
 }
 
-private func zigzag(_ c: Canvas, _ y: Double, _ dir: Double = 1, _ tooth: Double = 18, _ depth: Double = 12) {
-    c.save(); c.fillStyle(INK); c.beginPath(); c.moveTo(0, y)
-    var x = 0.0
-    while x <= W { c.lineTo(x + tooth / 2, y + dir * depth); c.lineTo(x + tooth, y); x += tooth }
-    c.lineTo(W, y - dir * 4); c.lineTo(0, y - dir * 4); c.closePath(); c.fill(); c.restore()
-}
-
 private func checker(_ c: Canvas, _ y: Double, _ rows: Int = 2, _ sq: Double = 16) {
     c.save(); c.fillStyle(INK)
     for r in 0..<rows {
@@ -486,7 +479,7 @@ public let THEMES: [String: Theme] = [
 // MARK: layout + compose
 
 private func slotAspect(_ w: Double, _ h: Double) -> Double { w >= h ? 4.0 / 3 : 4.0 / 5 }
-private let OFFSET = 10.0, STUB = 150.0, QR_MODULE = 5, QR_PAD = 30
+private let OFFSET = 10.0, STUB = 150.0, QR_MODULE = 5, QR_QUIET = 2, QR_TUCK = 22.0, QR_PAD = 24
 
 public func layout(_ theme: String, frames: [(w: Int, h: Int)], footer: String = "", qr: String = "") -> StripLayout {
     let t = THEMES[theme] ?? THEMES["plain"]!
@@ -499,8 +492,8 @@ public func layout(_ theme: String, frames: [(w: Int, h: Int)], footer: String =
         return r
     }
     let stubY = y - t.gap + 34
-    let qrY = stubY + STUB + (footer.isEmpty ? 0 : 40)
-    let qrSz = qr.isEmpty ? 0 : QR.side(qr, module: QR_MODULE)
+    let qrSz = qr.isEmpty ? 0 : QR.side(qr, module: QR_MODULE, quiet: QR_QUIET)
+    let qrY = stubY + STUB + (footer.isEmpty ? 0 : 40) - (qr.isEmpty ? 0 : QR_TUCK)
     return StripLayout(photos: photos, stubY: stubY, qrY: qrY, qrSide: qrSz, H: Int(qrY) + (qr.isEmpty ? 0 : qrSz + QR_PAD))
 }
 
@@ -610,17 +603,17 @@ private func drawQR(_ c: Canvas, _ text: String, _ x: Double, _ y: Double, _ mod
 }
 
 private func qrBlock(_ c: Canvas, _ L: StripLayout, _ url: String) {
-    let side = Double(L.qrSide), x = W - side - 26, y = L.qrY + 6
+    let side = Double(L.qrSide), x = W - side - 30, y = L.qrY + 4
     c.save()
-    c.fillStyle(INK); c.fillRect(x + 8, y + 8, side, side)
-    drawQR(c, url, x, y, QR_MODULE)
-    c.strokeStyle(INK); c.lineWidth = 5; c.strokeRect(x - 2, y - 2, side + 4, side + 4)
-    let ay = y + side / 2, ax0 = 200.0, ax1 = x - 26
-    c.lineWidth = 10; c.lineCap(.round); c.setLineDash([2, 18])
-    c.beginPath(); c.moveTo(ax0, ay); c.lineTo(ax1 - 16, ay); c.stroke(); c.setLineDash([])
-    c.fillStyle(INK); c.beginPath(); c.moveTo(ax1, ay); c.lineTo(ax1 - 30, ay - 22); c.lineTo(ax1 - 30, ay + 22); c.closePath(); c.fill()
+    c.fillStyle(INK); c.fillRect(x + 6, y + 6, side, side)
+    drawQR(c, url, x, y, QR_MODULE, QR_QUIET)
+    c.strokeStyle(INK); c.lineWidth = 4; c.strokeRect(x - 2, y - 2, side + 4, side + 4)
+    let ay = y + side / 2, ax0 = 150.0, ax1 = x - 18
+    c.lineWidth = 8; c.lineCap(.round); c.setLineDash([2, 15])
+    c.beginPath(); c.moveTo(ax0, ay); c.lineTo(ax1 - 12, ay); c.stroke(); c.setLineDash([])
+    c.fillStyle(INK); c.beginPath(); c.moveTo(ax1, ay); c.lineTo(ax1 - 24, ay - 17); c.lineTo(ax1 - 24, ay + 17); c.closePath(); c.fill()
     c.restore()
-    sticker(c, "📲", 110, ay, 96, -0.12)
+    sticker(c, "📲", 86, ay, 72, -0.12)
 }
 
 public struct ComposeOptions {
@@ -653,8 +646,6 @@ public func compose(_ frames: [CGImage], _ o: ComposeOptions) -> (canvas: Canvas
         c.restore()
     }
     t.fg(c, L, rand)
-    zigzag(c, 0, 1, 18, 10)
-    zigzag(c, Double(L.H), -1, 18, 10)
     ticketStub(c, L, ticket: o.ticket, date: o.date, footer: o.footer)
     if !o.qr.isEmpty { qrBlock(c, L, o.qr) }
     return (c, L)

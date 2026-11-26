@@ -16,7 +16,10 @@ It should feel like a **toy**, not an app. If a screen could ship in a banking a
 4. **Loud and quick motion.** Things pop, wiggle and bounce with
    `--ease-pop`. One-shot animations run ≤ 600 ms; only ambient loops run longer.
 5. **Paper is the hero.** The preview is real receipt paper with torn zig-zag
-   edges, and it feeds out of a printer drawn on screen.
+   edges, and it feeds out of a printer drawn on screen. The guest pages (`/s/`,
+   the album, its slideshow, the archive) lead with the printed receipt too: the
+   exact 1-bit strip, never smoothed, on the same torn paper with an ink shadow
+   and a tilt; the colour photos come second.
 6. **Prints are ink only.** Strip art is pure `#000`/`#fff`: offset blocks,
    sunbursts, halftone dots, zig-zags. Only photos have tones. No titles; the
    ticket stub (number + date) is the only type on paper.
@@ -70,6 +73,10 @@ open (lid up), error (X eyes + smoke), paper low (settings only).
   open, error), one drawing each. A tap shows one line: "Printer offline · last
   seen 2:14 pm · Check its power & Wi-Fi", "Out of paper", "Cover open",
   "Printer error — turn it off and on".
+  A napping printer (stale check-in, no error; the booth is nudging it) gets the
+  quiet version: the same sun, smaller, still, see-through, a sleeping printer
+  with no plug and no "!" ("Printer napping · waking it up…"); it only turns
+  into offline if the nudge goes unanswered.
 
 ### Adult labels (the one way words reach a kid screen)
 
@@ -93,8 +100,9 @@ coach").
 ## Print themes (`public/frames.js`)
 
 Every strip has photos in fat outlined frames with a black offset block behind
-them, zig-zag torn edges at the top and bottom, and a perforated ticket stub
-with `№ 042` and the date. Each theme adds a header band with no text plus
+them and a perforated ticket stub with `№ 042` and the date. The printed paper
+has clean edges: no torn zig-zag rows at the top or bottom (the printer's own
+cut is the edge; torn edges are an on-screen paper treatment only). Each theme adds a header band with no text plus
 scattered decorations: 🎞️ film · ⭐ sunburst · 💖 scallops · 🎉 bunting +
 halftone · 🦖 footprints + grass · 🚀 orbits + starfield · 📷 bold (stub only).
 

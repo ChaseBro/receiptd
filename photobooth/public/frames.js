@@ -94,13 +94,6 @@ function halftone(ctx, box, f, step = 12) {
   ctx.restore();
 }
 
-/** Torn-paper zig-zag: black teeth hanging from y (dir 1) or rising to y (dir -1). */
-function zigzag(ctx, y, dir = 1, tooth = 18, depth = 12) {
-  ctx.save(); ctx.fillStyle = INK; ctx.beginPath(); ctx.moveTo(0, y);
-  for (let x = 0; x <= W; x += tooth) { ctx.lineTo(x + tooth / 2, y + dir * depth); ctx.lineTo(x + tooth, y); }
-  ctx.lineTo(W, y - dir * 4); ctx.lineTo(0, y - dir * 4); ctx.closePath(); ctx.fill(); ctx.restore();
-}
-
 function checker(ctx, y, rows = 2, sq = 16) {
   ctx.save(); ctx.fillStyle = INK;
   for (let r = 0; r < rows; r++) for (let x = 0; x < W; x += sq) if ((x / sq + r) % 2 === 0) ctx.fillRect(x, y + r * sq, sq, sq);
@@ -483,9 +476,10 @@ export const THEMES = {
 const slotAspect = (w, h) => (w >= h ? 4 / 3 : 4 / 5);
 const OFFSET = 10;          // black block behind each photo
 const STUB = 150;           // ticket stub height (+ footer line)
-const QR_MODULE = 5;        // px per QR module: 5 dots ≈ 0.6 mm, scans off thermal paper
-
-const QR_PAD = 30;          // paper above + below the QR block
+const QR_MODULE = 5;        // px per QR module: 5 dots ≈ 0.6 mm. 4 dots decodes off the bitmap but not off simulated thermal paper + blur (tools/qr-size)
+const QR_QUIET = 2;         // white modules inside the frame (the ink frame sits outside this)
+const QR_TUCK = 22;         // the QR band starts this far up into the stub's empty bottom
+const QR_PAD = 24;          // paper below the code
 
 export function layout(theme, frames, footer = "", qr = "") {
   const t = THEMES[theme] ?? THEMES.plain;
@@ -498,8 +492,8 @@ export function layout(theme, frames, footer = "", qr = "") {
     return r;
   });
   const stubY = y - t.gap + 34;
-  const qrY = stubY + STUB + (footer ? 40 : 0);
-  const qrSz = qr ? qrSide(qr, QR_MODULE) : 0;
+  const qrSz = qr ? qrSide(qr, QR_MODULE, QR_QUIET) : 0;
+  const qrY = stubY + STUB + (footer ? 40 : 0) - (qr ? QR_TUCK : 0);
   return { photos, stubY, qrY, qrSide: qrSz, H: qrY + (qr ? qrSz + QR_PAD : 0) };
 }
 
@@ -584,18 +578,18 @@ function ticketStub(ctx, L, { ticket, date, footer }) {
 
 /** "Scan me for your photos": phone sticker → arrow → QR code (no words). */
 function qrBlock(ctx, L, url) {
-  const side = L.qrSide, x = W - side - 26, y = L.qrY + 6;
+  const side = L.qrSide, x = W - side - 30, y = L.qrY + 4;
   ctx.save();
-  ctx.fillStyle = INK; ctx.fillRect(x + 8, y + 8, side, side);              // hard offset block, like the photos
-  drawQR(ctx, url, x, y, QR_MODULE);
-  ctx.strokeStyle = INK; ctx.lineWidth = 5; ctx.strokeRect(x - 2, y - 2, side + 4, side + 4);
+  ctx.fillStyle = INK; ctx.fillRect(x + 6, y + 6, side, side);              // hard offset block, like the photos
+  drawQR(ctx, url, x, y, QR_MODULE, QR_QUIET);
+  ctx.strokeStyle = INK; ctx.lineWidth = 4; ctx.strokeRect(x - 2, y - 2, side + 4, side + 4);
   // arrow from the phone to the code
-  const ay = y + side / 2, ax0 = 200, ax1 = x - 26;
-  ctx.lineWidth = 10; ctx.lineCap = "round"; ctx.setLineDash([2, 18]);
-  ctx.beginPath(); ctx.moveTo(ax0, ay); ctx.lineTo(ax1 - 16, ay); ctx.stroke(); ctx.setLineDash([]);
-  ctx.fillStyle = INK; ctx.beginPath(); ctx.moveTo(ax1, ay); ctx.lineTo(ax1 - 30, ay - 22); ctx.lineTo(ax1 - 30, ay + 22); ctx.closePath(); ctx.fill();
+  const ay = y + side / 2, ax0 = 150, ax1 = x - 18;
+  ctx.lineWidth = 8; ctx.lineCap = "round"; ctx.setLineDash([2, 15]);
+  ctx.beginPath(); ctx.moveTo(ax0, ay); ctx.lineTo(ax1 - 12, ay); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = INK; ctx.beginPath(); ctx.moveTo(ax1, ay); ctx.lineTo(ax1 - 24, ay - 17); ctx.lineTo(ax1 - 24, ay + 17); ctx.closePath(); ctx.fill();
   ctx.restore();
-  sticker(ctx, "📲", 110, ay, 96, -0.12);
+  sticker(ctx, "📲", 86, ay, 72, -0.12);
 }
 
 /**
@@ -627,8 +621,6 @@ export function compose(frames, { theme = "stars", seed = 1, footer = "", ticket
   });
 
   t.fg(ctx, L, rand);
-  zigzag(ctx, 0, 1, 18, 10);
-  zigzag(ctx, L.H, -1, 18, 10);
   ticketStub(ctx, L, { ticket, date, footer });
   if (qr) qrBlock(ctx, L, qr);
   return { canvas: c, layout: L };
