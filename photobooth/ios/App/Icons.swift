@@ -26,7 +26,7 @@ struct ClassicIcon: View {
         "shutter": "📸", "flip": "🔄", "nocam": "🙈", "gear": "⚙️", "wait": "⏳", "retake": "✖️", "print": "🖨️", "rotate": "↻",
         "receipt": "🧾", "minus": "➖", "plus": "➕", "again": "🔁", "back": "✖️", "queue": "⏳", "done": "🎉", "upload": "☁️",
         "party": "🎉", "paperOk": "🧻", "pReady": "😺", "pPrinting": "😺", "pOffline": "🔌", "pPaperOut": "🧻", "pPaperLow": "🧻",
-        "pCover": "🖨️", "pError": "💥",
+        "pCover": "🖨️", "pError": "💥", "point": "👆",
     ]
     var body: some View {
         GeometryReader { g in
@@ -203,7 +203,7 @@ enum Icons {
     }()
     static let names = ["shutter", "flip", "one", "three", "nocam", "gear", "shareBooth", "sharePhoto", "wait", "queue", "retake", "print",
                         "rotate", "receipt", "minus", "plus", "again", "back", "done", "pReady", "pPrinting", "pOffline", "pPaperOut",
-                        "pPaperLow", "pCover", "pError", "paperOk", "upload", "party"]
+                        "pPaperLow", "pCover", "pError", "paperOk", "upload", "party", "point"]
 
     static func rad(_ a: Double) -> Double { a * .pi / 180 }
     static func pt(_ cx: Double, _ cy: Double, _ r: Double, _ a: Double) -> CGPoint { CGPoint(x: cx + r * cos(rad(a)), y: cy + r * sin(rad(a))) }
@@ -343,6 +343,14 @@ enum Icons {
         case "nocam": p.scaled(0.9, 5, 2) { camera($0, star: false, tilt: -6) }; p.ol("M16 16 L84 84", .tomato, 10)
         case "gear":
             p.rotated(10, 50, 50) { p in p.polygon(gearPts(50, 50, 41, 30, 8), fill: .grape, stroke: st()); p.circle(50, 50, 12, fill: .white, stroke: st()) }
+        case "point":   // first-run coach: a pointing hand, finger down
+            p.rotated(-8, 50, 50) { p in
+                p.rect(30, 4, 44, 14, rx: 5, fill: .sky, stroke: st())
+                p.rect(26, 16, 52, 40, rx: 15, fill: .white, stroke: st()); p.path("M60 28 H72 M60 40 H72", stroke: st(4.5))
+                p.path("M28 30 Q14 38 22 50 Q30 58 42 50", fill: .white, stroke: st())
+                p.rect(40, 40, 18, 54, rx: 9, fill: .white, stroke: st())
+            }
+            spark(p, 84, 84, 0.8)
         case "shareBooth":   // share the booth: a phone with a +
             p.rotated(-6, 50, 50) { p in
                 p.rect(22, 8, 44, 80, rx: 10, fill: .white, stroke: st())

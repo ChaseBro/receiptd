@@ -162,6 +162,16 @@
     pointer-events:none; opacity:0; transition:opacity .18s; }
   #adultHint.on { opacity:1; }
   #adultHint[hidden] { display:none; }
+  /* First-run coach (wordless): a soft spotlight on the one control to tap and a pointing hand
+     poking at it: the shutter, then Print. Never blocks a tap (taps go straight through). */
+  #coach { position:fixed; inset:0; z-index:35; pointer-events:none; animation:coach-in .3s ease-out;
+    background:radial-gradient(circle at var(--x) var(--y), transparent var(--r), color-mix(in srgb, var(--ink) 42%, transparent) calc(var(--r) + 28px)); }
+  #coach[hidden] { display:none; }
+  #coachHand { position:absolute; left:calc(var(--x) - 50px); top:calc(var(--y) - var(--r) - 96px); width:100px; height:100px;
+    font-size:80px; line-height:100px; text-align:center; animation:poke .9s ease-in-out infinite; }
+  #coachHand .ic { width:100%; height:100%; }
+  @keyframes poke { 0%,100% { translate:0 0 } 50% { translate:0 16px } }
+  @keyframes coach-in { from { opacity:0 } }
   #video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
   /* Like the iPhone Camera: the selfie *preview* is mirrored; captures, prints and saved photos are not. */
   #video.mirror { transform:scaleX(-1); }
@@ -504,6 +514,7 @@
     <div class="it"><span>Live print preview<span class="sub">camera shows the 1-bit print look (off for this visit if the device is too slow)</span></span><button class="tog" role="switch" id="sLive" aria-label="Live print preview"></button></div>
     <div class="it">Sounds<button class="tog" role="switch" id="sSound" aria-label="Sounds"></button></div>
     <div class="it"><span>Screen flash<span class="sub">white flash on capture</span></span><button class="tog" role="switch" id="sFlash" aria-label="Screen flash"></button></div>
+    <div class="it"><span>How-to<span class="sub">a pointing hand shows the first kid to tap the camera, then print (until a print goes out)</span></span><button class="btn" id="sCoach">Show the how-to again</button></div>
   </div></div>
 
   <div class="grp"><div class="gh"><span data-ic="flip"></span>Camera</div><div class="list">
@@ -548,6 +559,8 @@
 </section>
 <!-- Adult label layer (outside every kid screen, empty at rest): see showHint(). -->
 <div id="adultHint" role="status" aria-live="polite" hidden></div>
+<!-- First-run coach: a pointing hand + spotlight, no words (see coachShow()). -->
+<div id="coach" aria-hidden="true" hidden><div id="coachHand"></div></div>
 
 <script type="module">
 import { THEMES, compose, calibrationGray, layout as stripLayout, coverCrop } from "./frames.js";
@@ -584,7 +597,7 @@ const S = {
   set(k, v) { v === undefined ? localStorage.removeItem("booth." + k) : localStorage.setItem("booth." + k, JSON.stringify(v)); },
 };
 const cfg = () => ({
-  pin: S.get("pin", ""), theme: S.get("theme", "stars"), shots: S.get("shots", 3),
+  pin: S.get("pin", ""), theme: S.get("theme", "stars"), shots: S.get("shots", 1),
   footer: S.get("footer", ""), count: Math.min(10, Math.max(1, S.get("count", 3))),
   gain: S.get("gain", 0.15), density: S.get("density", 3), speed: S.get("speed", 2), sound: S.get("sound", true),
   ticket: S.get("ticket", 0), live: S.get("live", true),
@@ -628,6 +641,7 @@ const qrURL = () => (party?.qr && party.share && session ? `${location.origin}/a
 function show(id) {
   for (const s of document.querySelectorAll(".screen")) s.classList.toggle("on", s.id === id);
   $("share").hidden = true; hideHint(); paint();
+  requestAnimationFrame(() => coachShow(id === "cam" ? "shutter" : id === "review" ? "printBtn" : null));
   if (id === "lock" || id === "settings" || id === "review") closeMine();   // "your photos" may stay up over printing → camera
 }
 async function api(path, opts = {}) {
@@ -1160,6 +1174,7 @@ async function printFlow() {
     // the preview, and copy k+1 starts as hot as copy k left the head).
     const r = await dither(lastBits.gray, lastBits.h, lastBits.segs, n, headHeat());
     const job = await sendBits(r.bits, lastBits.h, n);
+    S.set("coachDone", true);   // a print went out from this device: no more how-to
     resumeArchive();
     if (session) {   // background: the exact printed bitmap (copy 1) + any ↻ fixes
       session.printed = { bits: r.bits[0], h: lastBits.h };
@@ -1213,6 +1228,31 @@ async function printFlow() {
 $("printBtn").onclick = () => { sfx.tap(); printFlow(); };
 $("printRetry").onclick = () => { sfx.tap(); printFlow(); };
 $("printBack").onclick = () => { sfx.boop(); show("cam"); };
+
+// ---------- first-run coach (wordless): the hand pokes the shutter, then Print ----------
+// Once per device: until the first print goes out (a device that printed before never sees it).
+// Taps pass straight through; tapping the highlighted control moves on, any other tap skips it
+// for this visit. Settings → "Show the how-to again" brings it back.
+const coach = { step: null, skipped: false };
+const coachDue = () => !coach.skipped && !S.get("coachDone", cfg().ticket > 0);
+function coachShow(step) {
+  const el = $("coach"), target = step && $(step);
+  coach.step = null; el.hidden = true;
+  if (!target || !coachDue() || !target.offsetParent || target.disabled) return;
+  const r = target.getBoundingClientRect();
+  if (!r.width) return;
+  el.style.setProperty("--x", `${r.left + r.width / 2}px`); el.style.setProperty("--y", `${r.top + r.height / 2}px`);
+  el.style.setProperty("--r", `${Math.max(r.width, r.height) / 2 + 12}px`);
+  $("coachHand").innerHTML = ic("point");
+  el.dataset.step = step; coach.step = step; el.hidden = false;
+}
+document.addEventListener("pointerdown", (e) => {
+  if (!coach.step) return;
+  if (!$(coach.step).contains(e.target)) coach.skipped = true;
+  coachShow(null);
+}, true);
+addEventListener("resize", () => { if (coach.step) coachShow(coach.step); });
+$("sCoach").onclick = () => { S.set("coachDone", false); coach.skipped = false; sfx.tap(); };
 
 function celebrate() {
   sfx.yay(); buzz([60, 40, 60, 40, 120]);

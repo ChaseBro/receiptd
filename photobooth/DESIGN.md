@@ -80,6 +80,16 @@ one replaces the old), a short fade only, gone after ~2.5 s or on any other
 touch. Not on flip / mode or other kid controls. The strings live in one place
 (`HINTS` + `printerHint()`).
 
+### First-run coach (teach "tap the camera, then print")
+
+Once per device, until its first print goes out (a device that has printed before never sees it):
+a soft spotlight on the one control to tap and the drawn pointing hand (`point`; Classic 👆)
+poking at it: the shutter on the camera screen, then Print on review. "Share this photo" is never
+coached. No words, not even the adult label: the hand is enough. Taps go straight through;
+tapping the highlighted control moves on, any other tap skips it for the visit. It is gone during
+the countdown and flash. Settings → Booth → "Show the how-to again" brings it back (lint: "first-run
+coach").
+
 ## Print themes (`public/frames.js`)
 
 Every strip has photos in fat outlined frames with a black offset block behind

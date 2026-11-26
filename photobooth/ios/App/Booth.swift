@@ -36,7 +36,7 @@ struct Settings {
         nonmutating set { d.set(newValue.absoluteString, forKey: "booth.server") }
     }
     var theme: String { get { d.string(forKey: "booth.theme") ?? "stars" } nonmutating set { d.set(newValue, forKey: "booth.theme") } }
-    var shots: Int { get { d.object(forKey: "booth.shots") == nil ? 3 : (d.integer(forKey: "booth.shots") == 1 ? 1 : 3) } nonmutating set { d.set(newValue, forKey: "booth.shots") } }
+    var shots: Int { get { d.object(forKey: "booth.shots") == nil ? 1 : (d.integer(forKey: "booth.shots") == 1 ? 1 : 3) } nonmutating set { d.set(newValue, forKey: "booth.shots") } }
     var footer: String { get { d.string(forKey: "booth.footer") ?? "" } nonmutating set { d.set(newValue, forKey: "booth.footer") } }
     var count: Int { get { min(10, max(1, d.object(forKey: "booth.count") == nil ? 3 : d.integer(forKey: "booth.count"))) } nonmutating set { d.set(newValue, forKey: "booth.count") } }
     var gain: Double { get { d.object(forKey: "booth.gain") as? Double ?? 0.15 } nonmutating set { d.set(newValue, forKey: "booth.gain") } }
@@ -58,6 +58,9 @@ struct Settings {
     /// Most copies a kid can pick (hard cap MAX_COPIES).
     var copiesMax: Int { get { kidMax(d.object(forKey: "booth.copiesMax") as? Int ?? KID_MAX_COPIES) } nonmutating set { d.set(newValue, forKey: "booth.copiesMax") } }
     var ticket: Int { get { d.integer(forKey: "booth.ticket") } nonmutating set { d.set(newValue, forKey: "booth.ticket") } }
+    /// The first-run coach (a pointing hand: shutter, then Print) is done: a print went out from this
+    /// device. A device that printed before this setting existed counts as done.
+    var coachDone: Bool { get { d.object(forKey: "booth.coachDone") == nil ? ticket > 0 : d.bool(forKey: "booth.coachDone") } nonmutating set { d.set(newValue, forKey: "booth.coachDone") } }
     var head: (sink: Double, t: Double)? {
         get { guard let a = d.array(forKey: "booth.head") as? [Double], a.count == 2 else { return nil }; return (a[0], a[1]) }
         nonmutating set { d.set(newValue.map { [$0.sink, $0.t] }, forKey: "booth.head") }
@@ -95,6 +98,27 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
     @Published var party: BoothEvent?
     @Published var printer: PrinterHealth?
     @Published var busy = false
+    /// First-run coach (DESIGN.md): done for good after the first print; skipped for this visit by a
+    /// tap anywhere but the highlighted control. In memory too (a launch-argument default can't be overwritten).
+    @Published private(set) var coachDone = Settings().coachDone
+    @Published private(set) var coachSkipped = false
+    /// What the coach points at now: "shutter" on the camera screen, "print" on review, else nil.
+    var coachStep: String? {
+        guard !coachDone, !coachSkipped else { return nil }
+        if screen == .camera, !busy, !shutterLocked, mine == nil { return "shutter" }
+        if screen == .review, mine == nil, preview != nil { return "print" }
+        return nil
+    }
+    /// A tap somewhere (root gesture): if the coach is still on the same control a moment later, the
+    /// tap wasn't on it (the shutter / Print move the booth on): skip for this visit.
+    func coachTapped() {
+        guard let step = coachStep else { return }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(250))
+            if coachStep == step { coachSkipped = true }
+        }
+    }
+    func showCoachAgain() { settings.coachDone = false; coachDone = false; coachSkipped = false }
     @Published var shot: Shoot?
     @Published var preview: Preview?
     @Published var copies = 1
@@ -142,7 +166,13 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
         iconStyle = IconStyle(rawValue: Settings().iconStyle) ?? .drawn
         camera.facing = Settings().startFront ? .front : .back
         Sfx.shared.enabled = settings.sound
-        Task { await archive.start(api) }
+        Task { [weak self] in
+            guard let self else { return }
+            await archive.start(api)
+            // An upload 401 (PIN rotated since this build / link): re-check the PIN like a print 401 would,
+            // instead of the queue going quiet until the next launch.
+            await archive.setOnLocked { [weak self] in Task { @MainActor in self?.archiveLocked() } }
+        }
         path.pathUpdateHandler = { [weak self] p in if p.status == .satisfied { Task { await self?.archive.kick(after: 2) } } }
         path.start(queue: .main)
         // With a PIN (saved or bundled), open straight to the camera and check the PIN
@@ -234,6 +264,14 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
         api.pin = next
         Task { await archive.setAPI(api) }
         if !next.isEmpty, next != pin { Task { await unlock(next, quiet: true) } } else { showLock() }
+    }
+
+    /// The archive got a 401 for the PIN in use: check it once (a 401 there falls back / locks).
+    private var lockCheck: Task<Void, Never>?
+    private func archiveLocked() {
+        guard lockCheck == nil else { return }
+        let pin = api.pin
+        lockCheck = Task { await unlock(pin, quiet: true); lockCheck = nil }
     }
 
     private func showLock() { camera.stop(); closeMine(); screen = .lock }
@@ -515,6 +553,7 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
             let segs = stripSegments(pv.layout, gain: settings.gain), sink = headHeatNow, gray = pv.gray, H = pv.layout.H
             let r = await Task.detached(priority: .userInitiated) { ditherStrip(gray, w: PRINT_WIDTH, h: H, segments: segs, copies: n, sinkStart: sink) }.value
             let job = try await api.print(bits: r.bits, height: H, density: settings.density, speed: settings.speed)
+            settings.coachDone = true; coachDone = true   // a print went out from this device: no more how-to
             await archive.resume()
             printedStrip = (s.id, r.bits[0], H)
             let png = encodeBitPNG(r.bits[0], PRINT_WIDTH, H)
@@ -588,7 +627,7 @@ struct Preview { var bits: [UInt8]; var gray: [Float]; var layout: StripLayout; 
     // MARK: settings
 
     func openSettings() {
-        status = nil; hint = nil; closeMine(); screen = .settings
+        status = nil; hint = nil; closeMine(); if screen == .camera { camera.rememberOnScreen() }; screen = .settings
         Task { await refreshEvent(); if let h = try? await api.printer() { printer = h } }
     }
     func closeSettings() { Sfx.shared.enabled = settings.sound; camera.liveFallback = false; startCamera() }

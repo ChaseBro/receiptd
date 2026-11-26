@@ -130,24 +130,40 @@ the live dots and the plain preview fill it edge to edge.
 
 ### Which way is up
 
-Sensor frames are landscape. `BoothCamera` keeps two clockwise angles
-(`BoothCore/Orientation.swift`, `Upright`): the rotation coordinator's
-horizon-level **capture** angle (from gravity) turns every grabbed photo and every
-live-preview frame upright before the slot crop + dither, and sets the slot's
-shape; the **preview** angle (from the interface orientation) turns the plain
-video, and the live dots are turned by (preview − capture) to line up with it.
-The coordinator reports 0° for preview while its layer isn't in a window, so it is
-only made once `CameraPreview`'s layer is on screen (`didMoveToWindow`); until then
-both angles come from `Upright.builtInAngle`. A rotation-locked phone held
-sideways gets a landscape photo, upright, with the stage showing that crop turned
-to the screen (3:4).
+Frames arrive in the sensor's native orientation. `BoothCamera` keeps clockwise angles
+(`BoothCore/Orientation.swift`, `Upright`), all relative to that native orientation: the rotation
+coordinator's horizon-level **capture** angle (from gravity) and **preview** angle (from the
+interface orientation), plus the **buffer** angle, the rotation the video data output's connection
+already applied. The booth resets that to 0, but AVCaptureSession.h says its default is 180° on the
+Spring 2024 iPads' front camera and asks apps that rotate frames themselves to allow for it on every
+device, so it is read back: every photo and live frame is turned by `frameTurn` = capture − buffer.
+The slot's shape (4:5 / 4:3) comes from the upright frame's real size (like the print layout), and
+the live dots are turned by (preview − capture) to line up with the plain video. The coordinator
+reports 0° for preview while its layer isn't in a window, so it only gets the layer once
+`CameraPreview` is on screen (`didMoveToWindow`); until then the preview angle (and, with no
+coordinator, the capture angle) is the camera's static one (iOS 27's
+`videoRotationAngleRelative(toDeviceOrientation:)`, else `Upright.builtInAngle`). Data-output
+mirroring is turned off explicitly (setting it with automatic mirroring on throws). A camera with a
+dynamic aspect ratio (iOS 26) is asked for the 4:3 / 3:4 one that stands up portrait. A
+rotation-locked phone held sideways gets a landscape photo, upright, with the stage showing that crop
+turned to the screen (3:4).
 
-In the Simulator, a fake sensor draws an up arrow (plus a block at the right edge
-to show mirroring), turns it the way a real sensor sees it (by −capture angle,
-from the simulated device orientation) and feeds that landscape frame through the
-same path. `testUpIsUpPortrait` reads the screenshots back: arrow up in the plain
-preview, the live dots and the captured photo on the review strip; selfie preview
-mirrored, photo not. `testUpIsUpPhoneHeldSideways` covers the locked phone turned.
+**On a real device:** Settings → About this booth shows the app version + build, device model, camera,
+whether the coordinator is in use (and with the on-screen layer), the capture / preview / buffer
+angles, raw buffer and upright frame sizes, stage aspect, interface and device orientation, active
+format, dynamic aspect ratio and Center Stage, as they were on the camera screen and now. The same
+line is logged once per camera start (os_log, subsystem `com.chasebro.booth`, category `camera`:
+Console.app or a sysdiagnose).
+
+In the Simulator, a fake sensor built from a physical model of the hardware (`SensorMount`: which
+device edge the sensor's top row faces, which way it looks; the unit tests check `builtInAngle`
+against it) sees an up arrow (plus a block at the right edge to show mirroring) the way a real sensor
+would, a fake coordinator reports the model's angles, and the frames go through the same path.
+`-booth.fakeCamera connection180` (the front data output pre-rotates 180° and keeps it) and
+`portraitNative` (a front camera upright with the port at the bottom) stress the other cases.
+`testUpIsUpPortrait` (+ `…ConnectionRotated`, `…PortraitNativeSensor`) reads the screenshots back:
+arrow up in the plain preview, the live dots and the captured photo on the review strip; selfie
+preview mirrored, photo not. `testUpIsUpPhoneHeldSideways` covers the locked phone turned.
 
 End-to-end against a local booth (nothing reaches the real printer):
 
@@ -161,7 +177,7 @@ cd ios && xcodebuild test -project PhotoBooth.xcodeproj -scheme PhotoBoothUITest
 `testGearTapHintsHoldOpens` (tap → hint, settings stay shut; hold → settings),
 `testPrinterOfflineBadgeAndLabel` (the local booth has no printer, so it's offline)
 and `testClassicIcons` write screenshots to `$BOOTH_SHOTS` (pass it as
-`TEST_RUNNER_BOOTH_SHOTS=…` to xcodebuild). `testUnlockShootReviewPrint` ignores any bundled PIN and unlocks the booth. It checks that the party narrows the frames, then
+`TEST_RUNNER_BOOTH_SHOTS=…` to xcodebuild). `testBundledPinShootPrintArchive` covers a fresh install with only a bundled PIN (build with a temporary `Booth.local.xcconfig` `BOOTH_PIN = 1234` for the local booth; skipped otherwise): straight to the camera, shoot, print, and the session reaches `/api/photos` with `orig-1.jpg`, `strip.png`, `printed: true`. `testFirstRunCoach` checks the pointing hand (shutter, then Print, gone after a print). `testUnlockShootReviewPrint` ignores any bundled PIN and unlocks the booth (3 photos, asked for: the default is 1). It checks that the party narrows the frames, then
 shoots 3 photos. It reviews, bumps copies and prints. Then check
 `/api/photos?day=…`: the session should have `orig-1..3.jpg` and `strip.png`,
 with `printed: true`, `copies: 2` and `event: <party>`. The QR on the strip

@@ -207,6 +207,12 @@ public actor ArchiveQueue {
     /// The session being shared ("your photos" on screen): uploaded first. Sticky until another is shared.
     private var priority: String?
     private var again = false
+    /// Why the last upload attempt failed ("401 PIN rejected", "network", "HTTP 503"…); nil after a success.
+    /// Settings shows it on the status strip ("uploads failing").
+    public private(set) var lastFailure: String?
+    /// Called (on the queue's actor) when the server answers 401: the app re-checks its PIN.
+    private var onLocked: (@Sendable () -> Void)?
+    public func setOnLocked(_ f: @escaping @Sendable () -> Void) { onLocked = f }
 
     public init(root: URL? = nil) {
         let base = root ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("archive", isDirectory: true)
@@ -326,7 +332,8 @@ public actor ArchiveQueue {
 
     /// Upload everything due, one request at a time (the shared session first, see `orderDue`).
     public func flush() async {
-        guard !flushing, !paused, let api, !api.pin.isEmpty else { return }
+        guard !flushing, !paused, let api else { return }
+        guard !api.pin.isEmpty else { if !all().isEmpty { lastFailure = "no PIN" }; return }
         flushing = true; again = false
         defer {
             flushing = false
@@ -342,9 +349,10 @@ public actor ArchiveQueue {
             for names in batches {
                 if paused { return }
                 let status = await send(snap, names)
-                if (200..<300).contains(status) { markSent(snap.id, names.reduce(into: [:]) { $0[$1] = snap.files[$1]!.rev }, snap.metaRev); continue }
+                if (200..<300).contains(status) { lastFailure = nil; markSent(snap.id, names.reduce(into: [:]) { $0[$1] = snap.files[$1]!.rev }, snap.metaRev); continue }
                 if paused { return }                       // aborted by pause(): no penalty
-                if status == 401 { return }                // PIN changed: wait for re-unlock
+                lastFailure = ArchiveQueue.describe(status)
+                if status == 401 { onLocked?(); return }   // PIN changed: the app re-checks it, then kicks
                 if status == 0 || status >= 500 || status == 408 || status == 429 {
                     if var rec = load(snap.id), rec.metaRev == snap.metaRev {
                         rec.tries += 1; rec.nextAt = Date().timeIntervalSince1970 + backoffSeconds(rec.tries); save(rec)
@@ -358,6 +366,14 @@ public actor ArchiveQueue {
                 }
                 break
             }
+        }
+    }
+
+    static func describe(_ status: Int) -> String {
+        switch status {
+        case 0: return "network"
+        case 401: return "401 PIN rejected"
+        default: return "HTTP \(status)"
         }
     }
 

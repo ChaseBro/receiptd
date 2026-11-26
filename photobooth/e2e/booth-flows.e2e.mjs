@@ -22,6 +22,7 @@ async function newCtx(browser, opts = {}, { pin = true, seed = {} } = {}) {
       sessionStorage.setItem("seeded", "1");
       if (pin) localStorage.setItem("booth.pin", JSON.stringify(pin));
       localStorage.setItem("booth.sound", "false");
+      localStorage.setItem("booth.coachDone", "true");   // section F turns the first-run coach back on
       for (const [k, v] of Object.entries(seed)) localStorage.setItem("booth." + k, JSON.stringify(v));
     }
   }, [pin ? PIN : null, seed]);
@@ -279,6 +280,50 @@ try {
   check(bad.length === 0, `D: no console/page errors ${bad.join("|")}`);
   await L.ctx.close(); await ctx.close();
 } finally { await setActive(null); await j("/api/events/" + ev.slug, "DELETE").catch(() => {}); }
+
+// ---------- F. first-run coach: the hand on the shutter, then on Print; gone once a print went out ----------
+console.log("F. first-run coach");
+{
+  const { ctx, page } = await newCtx(chromiumB, devices["iPhone 13"], { seed: { coachDone: false, ticket: 0, count: 1 } });
+  await page.goto(BASE + "/");
+  await camReady(page);
+  const coachAt = () => page.evaluate(() => {
+    const c = document.getElementById("coach");
+    if (c.hidden) return null;
+    const h = document.getElementById("coachHand").getBoundingClientRect();
+    return { step: c.dataset.step, x: h.left + h.width / 2, bottom: h.bottom };
+  });
+  const near = async (sel, at) => { const r = await page.locator(sel).boundingBox(); return at && Math.abs(at.x - (r.x + r.width / 2)) < 8 && at.bottom <= r.y + 30; };
+  await page.waitForTimeout(400);
+  let at = await coachAt();
+  check(at?.step === "shutter", `fresh device: the hand is on the shutter (${JSON.stringify(at)})`);
+  check(await near("#shutter", at), "the hand points down at the shutter");
+  check(await page.locator("#coach").evaluate((e) => !e.textContent.trim()), "the coach has no words");
+  await shot(page, "coach-1-shutter");
+  check(await page.evaluate(() => getComputedStyle(document.getElementById("shutter")).pointerEvents !== "none"), "shutter still tappable");
+  await page.click("#shutter");
+  check(await coachAt() === null, "gone once the shutter is tapped (countdown + flash unblocked)");
+  await page.locator("#review.on").waitFor({ timeout: 30000 });
+  await page.waitForTimeout(600);
+  at = await coachAt();
+  check(at?.step === "printBtn", `review: the hand moves to Print (${JSON.stringify(at)})`);
+  check(await near("#printBtn", at), "the hand points down at Print, not share-this-photo");
+  await shot(page, "coach-2-print");
+  await page.click("#printBtn");
+  await page.locator("#printing.on").waitFor({ timeout: 10000 });
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("booth.coachDone") ?? "false") === true, null, { timeout: 15000 });
+  check(true, "a print went out: coach marked done");
+  await page.click("#printBack", { timeout: 1000 }).catch(() => {});
+  await page.goto(BASE + "/"); await camReady(page); await page.waitForTimeout(500);
+  check(await coachAt() === null, "after printing: no hand on the camera screen");
+  // Skipping: any other tap ends it for the visit (not for good).
+  await page.evaluate(() => localStorage.setItem("booth.coachDone", "false"));
+  await page.goto(BASE + "/"); await camReady(page); await page.waitForTimeout(400);
+  check((await coachAt())?.step === "shutter", "Show the how-to again → back");
+  await page.mouse.click(5, 300);
+  check(await coachAt() === null, "a tap elsewhere skips it");
+  await ctx.close();
+}
 
 // ---------- E. WebKit: layout only (no camera) ----------
 console.log("E. webkit layout");

@@ -170,6 +170,11 @@ export const DRAWN = {
       `<polygon points="70,4 62,20 70,20 64,32 80,14 72,14 78,4" fill="${K.sun}" ${st(4)}/>` + bang(88, 92, K.tomato),
   paperOk: () => `<circle cx="50" cy="50" r="32" fill="${K.white}" ${st()}/><circle cx="50" cy="50" r="12" fill="${K.sun}" ${st(5)}/><circle cx="50" cy="50" r="4" fill="${K.ink}"/><path d="M50 82 H86 V70" fill="none" ${st()}/>`,
   upload: () => `<path d="M24 72 Q10 72 12 58 Q14 46 28 47 Q30 28 50 28 Q68 28 72 44 Q90 42 90 58 Q90 72 76 72 Z" fill="${K.white}" ${st()}/>` + ol("M50 76 V48 M40 58 L50 47 L60 58", K.sky, 8),
+  // First-run coach: a pointing hand (finger down, at the control to tap). Wordless.
+  point: () => `<g transform="rotate(-8 50 50)"><rect x="30" y="4" width="44" height="14" rx="5" fill="${K.sky}" ${st()}/>
+      <rect x="26" y="16" width="52" height="40" rx="15" fill="${K.white}" ${st()}/><path d="M60 28 H72 M60 40 H72" ${st(4.5)}/>
+      <path d="M28 30 Q14 38 22 50 Q30 58 42 50" fill="${K.white}" ${st()}/>
+      <rect x="40" y="40" width="18" height="54" rx="9" fill="${K.white}" ${st()}/></g>` + spark(84, 84, 0.8),
   party: () => `<polygon points="20,84 40,24 78,62" fill="${K.pink}" ${st()}/><path d="M30 54 L58 72 M35 39 L68 62" stroke="${K.sun}" stroke-width="6"/><polygon points="20,84 40,24 78,62" fill="none" ${st()}/>` + spark(70, 22, 1) + spark(88, 46, 0.6, K.sky) + `<circle cx="54" cy="12" r="5" fill="${K.mint}" ${st(3.5)}/>`,
 };
 
@@ -179,7 +184,7 @@ const OLD_STRIP = `<svg class="ico" viewBox="0 0 48 48" aria-hidden="true"><rect
 export const CLASSIC = {
   shutter: "📸", flip: "🔄", nocam: "🙈", gear: "⚙️", wait: "⏳", retake: "✖️", print: "🖨️", rotate: "↻", receipt: "🧾",
   minus: "➖", plus: "➕", again: "🔁", back: "✖️", queue: "⏳", done: "🎉", upload: "☁️", party: "🎉", paperOk: "🧻",
-  pReady: "😺", pPrinting: "😺", pOffline: "🔌", pPaperOut: "🧻", pPaperLow: "🧻", pCover: "🖨️", pError: "💥",
+  pReady: "😺", pPrinting: "😺", pOffline: "🔌", pPaperOut: "🧻", pPaperLow: "🧻", pCover: "🖨️", pError: "💥", point: "👆",
 };
 const CLASSIC_HTML = {
   one: `<span class="strip-ico one"><b></b></span>`,

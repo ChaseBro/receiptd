@@ -32,13 +32,46 @@ final class OrientationTests: XCTestCase {
         XCTAssertEqual(Upright.builtInAngle(.landscapeLeft, front: true), 0)
     }
 
+    /// The angle table the app falls back on agrees with the geometric model of the hardware
+    /// (SensorMount: which edge the sensor's top row faces, which way it looks), for every hold.
+    func testBuiltInAnglesMatchTheHardwareModel() {
+        for hold in Hold.allCases {
+            XCTAssertEqual(Upright.builtInAngle(hold, front: false), SensorMount.back.horizonAngle(hold), "back, \(hold)")
+            XCTAssertEqual(Upright.builtInAngle(hold, front: true), SensorMount.front.horizonAngle(hold), "front, \(hold)")
+        }
+        // A camera upright with the port at the bottom needs no turn held upright.
+        XCTAssertEqual(SensorMount.frontPortraitNative.horizonAngle(.portrait), 0)
+        XCTAssertEqual(SensorMount.frontPortraitNative.horizonAngle(.portraitUpsideDown), 180)
+        XCTAssertFalse(SensorMount.frontPortraitNative.landscapeBuffer)
+        // Front and back see landscape the other way round (they look in opposite directions).
+        XCTAssertEqual(SensorMount.front.horizonAngle(.landscapeRight), 180)
+        XCTAssertEqual(SensorMount.back.horizonAngle(.landscapeRight), 0)
+    }
+
+    func testFrameTurnAccountsForTheConnectionRotation() {
+        XCTAssertEqual(Upright.frameTurn(capture: 90, buffer: 0), 90)
+        // Spring 2024 iPads: the front camera's data output rotates buffers 180° by default.
+        XCTAssertEqual(Upright.frameTurn(capture: 90, buffer: 180), 270)
+        // A connection that already stood the buffer upright: no turn left to do.
+        XCTAssertEqual(Upright.frameTurn(capture: 90, buffer: 90), 0)
+        XCTAssertEqual(Upright.frameTurn(capture: 0, buffer: 270), 90)
+    }
+
     func testSlotAndStage() {
-        XCTAssertEqual(Upright.slotAspect(capture: 90), 0.8, accuracy: 1e-9, "upright phone: portrait 4:5")
-        XCTAssertEqual(Upright.slotAspect(capture: 0), 4.0 / 3, accuracy: 1e-9)
-        XCTAssertEqual(Upright.stageAspect(capture: 90, preview: 90), 0.8, accuracy: 1e-9)
-        XCTAssertEqual(Upright.stageAspect(capture: 180, preview: 180), 4.0 / 3, accuracy: 1e-9, "iPad landscape")
+        // Classic landscape buffer, upright phone: a quarter turn → portrait 4:5.
+        XCTAssertTrue(Upright.uprightIsPortrait(buffer: (1920, 1440), turn: 90))
+        XCTAssertFalse(Upright.uprightIsPortrait(buffer: (1920, 1440), turn: 180), "iPad landscape")
+        // A buffer that is already portrait (pre-rotated, or a portrait-native camera): no turn → still portrait.
+        XCTAssertTrue(Upright.uprightIsPortrait(buffer: (1440, 1920), turn: 0))
+        XCTAssertFalse(Upright.uprightIsPortrait(buffer: (1440, 1920), turn: 90))
+        XCTAssertTrue(Upright.uprightIsPortrait(buffer: nil, turn: 90), "no frame yet: assume a landscape sensor")
+        XCTAssertEqual(Upright.uprightSize(1920, 1440, turn: 270).w, 1440)
+        XCTAssertEqual(Upright.slotAspect(portrait: true), 0.8, accuracy: 1e-9, "upright phone: portrait 4:5")
+        XCTAssertEqual(Upright.slotAspect(portrait: false), 4.0 / 3, accuracy: 1e-9)
+        XCTAssertEqual(Upright.stageAspect(portrait: true, capture: 90, preview: 90), 0.8, accuracy: 1e-9)
+        XCTAssertEqual(Upright.stageAspect(portrait: false, capture: 180, preview: 180), 4.0 / 3, accuracy: 1e-9, "iPad landscape")
         // A rotation-locked phone (portrait UI) held sideways: a landscape photo, seen turned on screen.
-        XCTAssertEqual(Upright.stageAspect(capture: 0, preview: 90), 3.0 / 4, accuracy: 1e-9)
+        XCTAssertEqual(Upright.stageAspect(portrait: false, capture: 0, preview: 90), 3.0 / 4, accuracy: 1e-9)
         XCTAssertEqual(Upright.displayTurn(capture: 0, preview: 90), 90)
         XCTAssertEqual(Upright.displayTurn(capture: 180, preview: 90), 270)
         XCTAssertEqual(Upright.displayTurn(capture: 90, preview: 90), 0)

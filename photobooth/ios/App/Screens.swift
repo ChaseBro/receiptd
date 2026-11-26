@@ -23,12 +23,20 @@ struct BoothView: View {
             if let face = booth.celebrate { DoneOverlay(face: face) }
             if let m = booth.mine { MineOverlay(share: m) }
         }
+        // First-run coach: the hand + spotlight over whichever control it points at (no hit testing).
+        .overlayPreferenceValue(CoachTargets.self) { targets in
+            GeometryReader { g in
+                if let step = booth.coachStep, let a = targets[step] { CoachOverlay(step: step, target: g[a], size: g.size).environmentObject(booth) }
+            }
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
+        }
         .environmentObject(booth)
         .statusBarHidden()
         .persistentSystemOverlays(.hidden)
         .onOpenURL { url in if let p = Pairing(url: url) { booth.pair(server: p.server, pin: p.key) } }
         // Not on settings: a root tap gesture swallows Form row taps (buttons, links, ShareLink).
-        .simultaneousGesture(TapGesture().onEnded { booth.touched() }, including: booth.screen == .settings ? .subviews : .all)
+        .simultaneousGesture(TapGesture().onEnded { booth.touched(); booth.coachTapped() }, including: booth.screen == .settings ? .subviews : .all)
         .onChange(of: phase) { _, p in booth.phaseChanged(p) }
     }
 }
@@ -184,7 +192,7 @@ struct CameraScreen: View {
                 .disabled(booth.busy || booth.shutterLocked)
                 .scaleEffect(bounce ? 1.06 : 0.96)
                 .onAppear { withAnimation(.easeInOut(duration: 0.9).repeatForever()) { bounce = true } }
-                .accessibilityLabel("Take photo")
+                .accessibilityLabel("Take photo").coachTarget("shutter")
             Button { Sfx.shared.play("boop"); booth.camera.flip() } label: { IconView(name: "flip").frame(width: 60, height: 60).frame(width: 80, height: 80) }
                 .buttonStyle(StickerStyle(fill: .white, corner: 20, tilt: 6)).accessibilityLabel("Switch camera")
         }
@@ -421,7 +429,7 @@ struct ReviewScreen: View {
                 Button { booth.retake() } label: { IconView(name: "retake").frame(width: 86, height: 86).frame(width: 120, height: 120) }
                     .buttonStyle(StickerStyle(fill: .tomato, corner: 999, line: LINE_FAT)).accessibilityLabel("Retake")
                 Button { Task { await booth.printStrip() } } label: { IconView(name: "print").frame(width: 110, height: 110).frame(width: 150, height: 150) }
-                    .buttonStyle(StickerStyle(fill: .mint, corner: 999, line: LINE_FAT, shadow: 8)).accessibilityLabel("Print")
+                    .buttonStyle(StickerStyle(fill: .mint, corner: 999, line: LINE_FAT, shadow: 8)).accessibilityLabel("Print").coachTarget("print")
                     .disabled(booth.preview == nil)
                 ShareThisPhotoButton(size: 96)
             }
@@ -546,6 +554,7 @@ struct SettingsScreen: View {
     @State private var server = ""
     @State private var pending = (0, 0)
     @State private var retrying = false
+    @State private var uploadFailure: String?
     @State private var tick = 0
     var body: some View {
         let s = booth.settings
@@ -573,6 +582,8 @@ struct SettingsScreen: View {
                     Toggle(isOn: bind({ s.livePreview }, { s.livePreview = $0 })) { sub("Live print preview", "Camera shows the 1-bit print look (plain camera until settings close if the device can't keep up)") }
                     Toggle("Sounds", isOn: bind({ s.sound }, { s.sound = $0 }))
                     Toggle(isOn: bind({ s.flash }, { s.flash = $0 })) { sub("Screen flash", "White flash on capture") }
+                    Button { booth.showCoachAgain(); tick += 1 } label: { sub("Show the how-to again", "A pointing hand shows the next kid: tap the camera, then print (until a print goes out)") }
+                        .accessibilityIdentifier("showCoachAgain")
                 } header: { head("shutter", "Booth") }
 
                 Section {
@@ -633,7 +644,7 @@ struct SettingsScreen: View {
 
                 Section {
                     HStack {
-                        sub("Upload queue", pending.0 == 0 ? "Nothing waiting" : "\(pending.0) session\(pending.0 == 1 ? "" : "s") · \(pending.1 / 1024) KB\(retrying ? " · retrying" : "")")
+                        sub("Upload queue", pending.0 == 0 ? "Nothing waiting" : "\(pending.0) session\(pending.0 == 1 ? "" : "s") · \(pending.1 / 1024) KB\(retrying ? " · retrying" : "")\(uploadFailure.map { " · failing (\($0))" } ?? "")")
                         Spacer()
                         Button("Upload now") { Task { await booth.uploadNow(); await refreshQueue() } }.buttonStyle(.bordered).buttonBorderShape(.capsule).tint(Color.ink)
                     }
@@ -641,6 +652,12 @@ struct SettingsScreen: View {
                     TextField("https://booth.receiptd.sh", text: $server).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
                     Button("Use this server") { if let u = URL(string: server), u.scheme == "https" { booth.pair(server: u, pin: nil) } }
                 } header: { head("upload", "Archive & server") }
+
+                Section {
+                    CameraDiagnostics(camera: booth.camera)
+                } header: { head("gear", "About this booth") } footer: {
+                    Text("For troubleshooting: which way the camera thinks is up. Also logged once per camera start (Console, subsystem com.chasebro.booth).")
+                }
 
                 Section {
                     if s.bundledPin.isEmpty {
@@ -662,7 +679,7 @@ struct SettingsScreen: View {
         }
     }
 
-    func refreshQueue() async { pending = await booth.archive.pending(); retrying = await booth.archive.retrying() }
+    func refreshQueue() async { pending = await booth.archive.pending(); retrying = await booth.archive.retrying(); uploadFailure = await booth.archive.lastFailure }
 
     /// A setting binding that also redraws the form.
     func bind<T>(_ get: @escaping () -> T, _ set: @escaping (T) -> Void) -> Binding<T> {
@@ -693,7 +710,9 @@ struct SettingsScreen: View {
             : h!.paperOut ? ("pPaperOut", "Out of paper", "load a roll", true)
             : h!.coverOpen ? ("pCover", "Cover open", "close the lid", true)
             : h!.paperLow == true ? ("pPaperLow", "Paper low", "cover closed", false) : ("paperOk", "Paper OK", "cover closed", false)
-        let up: (String, String, String, Bool) = pending.0 == 0 ? ("upload", "All uploaded", "archive", false) : ("upload", "\(pending.0) waiting", retrying ? "retrying" : "to upload", retrying)
+        let up: (String, String, String, Bool) = pending.0 == 0 ? ("upload", "All uploaded", "archive", false)
+            : uploadFailure.map { ("upload", "Uploads failing", "\(pending.0) waiting · \($0)", true) }
+            ?? ("upload", "\(pending.0) waiting", retrying ? "retrying" : "to upload", retrying)
         return HStack(spacing: 10) { tile(printer); tile(paper); tile(up) }
             .accessibilityElement(children: .contain).accessibilityIdentifier("statusTiles")
     }
@@ -970,3 +989,70 @@ struct PhonePlusIcon: View {
         .accessibilityHidden(true)
     }
 }
+
+/// Settings → About this booth: the app's version and what the camera is doing (angles, buffer
+/// sizes, orientations), plain and small, so it can be read off a real device. Settings replaces the
+/// camera screen, so the camera-screen snapshot (taken as it left) comes first.
+struct CameraDiagnostics: View {
+    @ObservedObject var camera: BoothCamera
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { _ in
+            let now = camera.diagnostics(), last = camera.lastOnScreen
+            VStack(alignment: .leading, spacing: 3) {
+                if !last.isEmpty {
+                    Text("On the camera screen").font(.caption.bold())
+                    rows(last)
+                    Text("Now (settings open)").font(.caption.bold()).padding(.top, 6)
+                }
+                rows(now)
+            }
+            .textSelection(.enabled)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("cameraDiagnostics")
+        }
+    }
+    func rows(_ r: [(String, String)]) -> some View {
+        ForEach(Array(r.enumerated()), id: \.offset) { _, kv in
+            HStack(alignment: .firstTextBaseline) {
+                Text(kv.0).foregroundStyle(.secondary)
+                Spacer(minLength: 8)
+                Text(kv.1).multilineTextAlignment(.trailing)
+            }.font(.caption2.monospacedDigit())
+        }
+    }
+}
+
+// MARK: first-run coach (kids: wordless)
+
+/// Controls the first-run coach can point at, by name ("shutter", "print").
+struct CoachTargets: PreferenceKey {
+    static let defaultValue: [String: Anchor<CGRect>] = [:]
+    static func reduce(value: inout [String: Anchor<CGRect>], nextValue: () -> [String: Anchor<CGRect>]) { value.merge(nextValue()) { $1 } }
+}
+extension View {
+    func coachTarget(_ name: String) -> some View { anchorPreference(key: CoachTargets.self, value: .bounds) { [name: $0] } }
+}
+
+/// A soft spotlight on the control to tap and the drawn pointing hand poking down at it (DESIGN.md
+/// "First-run coach"). No words; taps pass straight through.
+struct CoachOverlay: View {
+    let step: String
+    let target: CGRect
+    let size: CGSize
+    @State private var poke = false
+    var body: some View {
+        let r = max(target.width, target.height) / 2 + 12, R = max(size.width, size.height) * 1.5
+        ZStack(alignment: .topLeading) {
+            RadialGradient(stops: [.init(color: .clear, location: r / R), .init(color: Color.ink.opacity(0.42), location: (r + 28) / R)],
+                           center: UnitPoint(x: target.midX / max(size.width, 1), y: target.midY / max(size.height, 1)), startRadius: 0, endRadius: R)
+                .frame(width: size.width, height: size.height)
+            IconView(name: "point").frame(width: 100, height: 100)
+                .position(x: target.midX, y: target.midY - r - 50 + 4)
+                .offset(y: poke ? 16 : 0)
+                .accessibilityElement().accessibilityIdentifier("coachHand").accessibilityLabel("Tap here").accessibilityValue(step)
+        }
+        .transition(.opacity)
+        .onAppear { withAnimation(.easeInOut(duration: 0.45).repeatForever(autoreverses: true)) { poke = true } }
+    }
+}
+

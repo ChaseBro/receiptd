@@ -1,6 +1,6 @@
 // Live print preview: the camera stage shows the photo as the printer will dot
 // it (index.html's #live canvas + preview.worker.js, natively). Each sensor
-// frame is stood upright with the capture angle (the same turn grab() gives the
+// frame is stood upright with the frame turn (the same turn grab() gives the
 // photo), cover-cropped to the photo slot the strip will use (Frames.swift
 // layout: 4:3 landscape / 4:5 portrait, at the width it prints for the current
 // theme), scaled on the GPU (Core Image), then run through BoothCore's toneMap
@@ -38,9 +38,10 @@ final class LivePreview: @unchecked Sendable {
     /// LiveDots on/off screen: frames are only processed while the camera screen shows them.
     func setActive(_ on: Bool) { lock.lock(); active = on; t0 = 0; lock.unlock() }
 
-    /// From the camera (any thread): a sensor frame (unmirrored) and the camera's angles
-    /// (BoothCamera / BoothCore Upright). Dropped when busy or off screen.
-    func offer(_ frame: @autoclosure () -> CIImage, capture: Int, preview: Int) {
+    /// From the camera (any thread): a delivered frame (unmirrored), the clockwise turn that stands
+    /// it upright (`Upright.frameTurn`) and the one that lines the upright dots up with the on-screen
+    /// video (`Upright.displayTurn`). Dropped when busy or off screen.
+    func offer(_ frame: @autoclosure () -> CIImage, turn: Int, display: Int) {
         lock.lock()
         guard active, !busy, Settings().livePreview else { lock.unlock(); return }
         let now = CACurrentMediaTime()
@@ -62,7 +63,7 @@ final class LivePreview: @unchecked Sendable {
         let img = frame()
         queue.async { [self] in
             let t = CACurrentMediaTime()
-            let cg = render(BoothCamera.upright(img, capture)).map { rotate($0, Upright.displayTurn(capture: capture, preview: preview)) }
+            let cg = render(BoothCamera.upright(img, turn)).map { rotate($0, display) }
             let dt = (CACurrentMediaTime() - t) * 1000
             lock.lock(); busy = false; if cg != nil { done += 1 }; ms = ms == 0 ? dt : 0.9 * ms + 0.1 * dt; let f = fps, m = ms; lock.unlock()
             guard let cg else { return }

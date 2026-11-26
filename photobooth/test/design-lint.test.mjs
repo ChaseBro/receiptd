@@ -130,6 +130,23 @@ test("adult hint layer: empty at rest, outside kid screens, only from taps, shor
   assert.match(css, /pointer-events:none/, "#adultHint never blocks a kid's tap");
 });
 
+// The first-run coach: a pointing hand + spotlight on the one control to tap. No words at all
+// (it is for kids), decorative to assistive tech (the control keeps its own label), never in the way.
+test("first-run coach: wordless, outside kid screens, never blocks a tap", () => {
+  const m = html.match(/<div id="coach"([^>]*)>([\s\S]*?)<\/div>\s*<\/div>/);
+  assert.ok(m, "#coach layer exists");
+  assert.match(m[1], /\bhidden\b/, "#coach starts hidden");
+  assert.match(m[1], /aria-hidden="true"/, "#coach is decorative");
+  assert.equal(m[2].replace(/<[^>]*>/g, "").trim(), "", "#coach has no text in the markup");
+  for (const id of KID_SCREENS) assert.ok(!screen(id).includes('id="coach"'), `#coach is not inside #${id}`);
+  const css = SHEETS["index.html"].match(/#coach \{([^}]*)\}/)[1];
+  assert.match(css, /pointer-events:none/, "#coach never blocks a kid's tap");
+  const script = html.slice(html.indexOf('<script type="module">'));
+  const body = script.slice(script.indexOf("function coachShow("), script.indexOf("\n}\n", script.indexOf("function coachShow(")));
+  assert.ok(!/textContent|innerText|HINTS|showHint/.test(body), "the coach shows no words");
+  assert.match(body, /ic\("point"\)/, "the coach is the pointing-hand icon");
+});
+
 test("drawn icons paint only token colours", () => {
   const root = SHEETS["index.html"].match(/:root\s*\{([^}]*)\}/)[1];
   const tokens = new Set([...root.matchAll(/#[0-9a-f]{6}\b/gi)].map((m) => m[0].toUpperCase()));

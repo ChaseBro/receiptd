@@ -15,8 +15,10 @@ final class BoothFlowUITests: XCTestCase {
 
     override func setUp() {
         continueAfterFailure = false
-        app.launchArguments += ["-booth.server", server, "-booth.count", "1", "-booth.sound", "NO"]
+        // The first-run coach is off unless a test turns it on (its dimming would skew screenshots).
+        app.launchArguments += ["-booth.server", server, "-booth.count", "1", "-booth.sound", "NO", "-booth.coachDone", "YES"]
     }
+    var base: [String] { ["-booth.server", server, "-booth.count", "1", "-booth.sound", "NO"] }
 
     /// No saved PIN and no bundled one (a Booth.local.xcconfig PIN is ignored): the lock screen.
     func launchLocked() {
@@ -33,6 +35,7 @@ final class BoothFlowUITests: XCTestCase {
     }
 
     func testUnlockShootReviewPrint() {
+        app.launchArguments += ["-booth.shots", "3", "-booth.coachDone", "YES"]
         launchLocked()
         let pin = app.secureTextFields["PIN"]
         XCTAssert(pin.waitForExistence(timeout: 10))
@@ -48,7 +51,7 @@ final class BoothFlowUITests: XCTestCase {
         app.buttons["feast theme"].tap()
         shot("2-camera")
 
-        // three shots (default), countdown 1 s each
+        // three shots (asked for: the default is one), countdown 1 s each
         shutter.tap()
         let printBtn = app.buttons["Print"]
         XCTAssert(printBtn.waitForExistence(timeout: 30))
@@ -338,10 +341,21 @@ final class BoothFlowUITests: XCTestCase {
     /// Portrait (upright phone / iPad): the plain preview, the live dots and the captured photo in the
     /// review strip all show the arrow pointing up; the selfie preview is mirrored, the photo isn't;
     /// the stage is the 4:5 portrait slot.
-    func testUpIsUpPortrait() {
+    func testUpIsUpPortrait() { upIsUpPortrait(fake: "classic", dir: "orient-2") }
+
+    /// The fake front camera's data output pre-rotates every buffer 180° and keeps it (AVCaptureSession.h:
+    /// the default on the Spring 2024 iPads' front camera): the booth must allow for it, not assume 0°.
+    func testUpIsUpConnectionRotated() { upIsUpPortrait(fake: "connection180", dir: "orient-2") }
+
+    /// A front camera upright with the port at the bottom (AVCaptureDevice.h: "some cameras are upright
+    /// when the device is held with the port on the bottom"): portrait buffers, 0° to stand up.
+    func testUpIsUpPortraitNativeSensor() { upIsUpPortrait(fake: "portraitNative", dir: "orient-2") }
+
+    func upIsUpPortrait(fake: String, dir: String) {
         let device = UIDevice.current.userInterfaceIdiom == .pad ? "ipad" : "iphone"
+        let tag = fake == "classic" ? device : "\(device)-\(fake)"
         XCUIDevice.shared.orientation = .portrait
-        let base = app.launchArguments + ["-booth.pin", "1234", "-booth.shots", "1", "-booth.mirror", "YES"]
+        let base = app.launchArguments + ["-booth.pin", "1234", "-booth.shots", "1", "-booth.mirror", "YES", "-booth.fakeCamera", fake]
         app.launchArguments = base + ["-booth.livePreview", "NO"]
         app.launch()
         XCTAssert(app.buttons["Take photo"].waitForExistence(timeout: 10))
@@ -349,8 +363,8 @@ final class BoothFlowUITests: XCTestCase {
         XCTAssert(plain.waitForExistence(timeout: 10))
         sleep(2)
         XCTAssertEqual(plain.frame.width / plain.frame.height, 4.0 / 5, accuracy: 0.03, "portrait stage: 4:5 \(plain.frame)")
-        var s = shotTo("fix-orient", "\(device)-portrait-1-plain-preview")
-        assertUpright(ink(s, plain.frame), marker: "left", "\(device) plain preview (selfie, mirrored)")
+        var s = shotTo(dir, "\(tag)-portrait-1-plain-preview")
+        assertUpright(ink(s, plain.frame), marker: "left", "\(tag) plain preview (selfie, mirrored)")
 
         // Live print preview on (settings → Booth): the same frames, dithered.
         app.terminate()
@@ -362,8 +376,8 @@ final class BoothFlowUITests: XCTestCase {
         wait(for: [expectation(for: NSPredicate(format: "value CONTAINS ' fps'"), evaluatedWith: dots)], timeout: 15)
         sleep(2)
         XCTAssertEqual(dots.frame.width / dots.frame.height, 4.0 / 5, accuracy: 0.03, "portrait stage: 4:5 \(dots.frame)")
-        s = shotTo("fix-orient", "\(device)-portrait-2-live-preview")
-        assertUpright(ink(s, dots.frame), marker: "left", "\(device) live dots (selfie, mirrored)")
+        s = shotTo(dir, "\(tag)-portrait-2-live-preview")
+        assertUpright(ink(s, dots.frame), marker: "left", "\(tag) live dots (selfie, mirrored)")
 
         // Capture → review: the photo on the strip is upright and unmirrored.
         app.buttons["Take photo"].tap()
@@ -372,8 +386,8 @@ final class BoothFlowUITests: XCTestCase {
         XCTAssert(photo.waitForExistence(timeout: 10))
         sleep(1)
         XCTAssertLessThan(photo.frame.width / photo.frame.height, 1, "a portrait photo slot \(photo.frame)")
-        s = shotTo("fix-orient", "\(device)-portrait-3-review")
-        assertUpright(ink(s, photo.frame), marker: "right", "\(device) review photo (unmirrored)")
+        s = shotTo(dir, "\(tag)-portrait-3-review")
+        assertUpright(ink(s, photo.frame), marker: "right", "\(tag) review photo (unmirrored)")
     }
 
     /// A rotation-locked iPhone (the app is portrait-only) held sideways: the photo is upright to
@@ -392,7 +406,7 @@ final class BoothFlowUITests: XCTestCase {
         XCTAssertEqual(dots.frame.width / dots.frame.height, 3.0 / 4, accuracy: 0.03, "landscape slot turned to a portrait screen \(dots.frame)")
         let cam = app.descendants(matching: .any)["cameraPreview"]
         XCTAssertEqual(cam.value as? String, "capture 180, preview 90", "front camera, Home button right: capture from gravity, preview from the portrait UI")
-        var s = shotTo("fix-orient", "iphone-sideways-1-live-preview")
+        var s = shotTo("orient-2", "iphone-sideways-1-live-preview")
         var k = ink(s, dots.frame)
         print("orientation iphone sideways live: \(k)")
         XCTAssertGreaterThan(k.pointsRight, 1.25, "held sideways (top to the left): on screen the arrow points right = up for the holder (\(k))")
@@ -401,10 +415,117 @@ final class BoothFlowUITests: XCTestCase {
         let photo = app.descendants(matching: .any)["reviewPhoto1"]
         XCTAssert(photo.waitForExistence(timeout: 10))
         sleep(1)
-        s = shotTo("fix-orient", "iphone-sideways-2-review")
+        s = shotTo("orient-2", "iphone-sideways-2-review")
         XCTAssertGreaterThan(photo.frame.width / photo.frame.height, 1, "a landscape photo slot \(photo.frame)")
         k = ink(s, photo.frame)
         assertUpright(k, marker: "right", "iphone sideways review photo")
+    }
+
+    /// Settings → About this booth: version, camera, coordinator, angles, buffer sizes, orientations.
+    func testAboutThisBoothDiagnostics() {
+        app.launchArguments += ["-booth.pin", "1234", "-booth.livePreview", "YES"]
+        app.launch()
+        XCTAssert(app.buttons["Take photo"].waitForExistence(timeout: 10))
+        sleep(2)
+        app.buttons["Settings"].press(forDuration: 1.7)
+        XCTAssert(app.navigationBars["Booth settings"].waitForExistence(timeout: 5))
+        let diag = app.descendants(matching: .any)["cameraDiagnostics"]
+        for _ in 0..<12 where !(diag.exists && diag.isHittable) { app.swipeUp() }
+        XCTAssert(diag.waitForExistence(timeout: 5))
+        app.swipeUp(); sleep(2)
+        let text = diag.label
+        print("about this booth: \(text)")
+        for want in ["App", "Camera", "Rotation coordinator", "Capture angle", "Preview angle", "Raw buffer", "Upright frame", "Interface orientation", "Device orientation"] {
+            XCTAssert(text.contains(want), "shows \(want): \(text)")
+        }
+        XCTAssert(text.contains("On the camera screen"), "the camera-screen snapshot: \(text)")
+        _ = shotTo("orient-2", "about-this-booth")
+    }
+
+    // MARK: first-run coach
+
+    /// A device that never printed: the pointing hand pokes the shutter, then Print (not share-this-
+    /// photo); once a print went out it doesn't come back, this visit or the next launch.
+    func testFirstRunCoach() {
+        app.launchArguments = base + ["-booth.pin", "1234", "-booth.shots", "1", "-booth.coachDone", "NO"]
+        app.launch()
+        let shutter = app.buttons["Take photo"]
+        XCTAssert(shutter.waitForExistence(timeout: 10))
+        let hand = app.descendants(matching: .any)["coachHand"]
+        XCTAssert(hand.waitForExistence(timeout: 5), "fresh device: the hand shows")
+        XCTAssertEqual(hand.value as? String, "shutter")
+        XCTAssertEqual(hand.frame.midX, shutter.frame.midX, accuracy: 6, "over the shutter \(hand.frame) vs \(shutter.frame)")
+        XCTAssertLessThan(hand.frame.maxY, shutter.frame.midY, "above it, pointing down")
+        sleep(1); _ = shotTo("coach", "1-camera-hand-on-shutter")
+        shutter.tap()
+        XCTAssert(hand.waitForNonExistence(timeout: 3), "gone for the countdown + flash")
+        let printBtn = app.buttons["Print"]
+        XCTAssert(printBtn.waitForExistence(timeout: 30))
+        XCTAssert(hand.waitForExistence(timeout: 10), "review: the hand again")
+        XCTAssertEqual(hand.value as? String, "print")
+        XCTAssertEqual(hand.frame.midX, printBtn.frame.midX, accuracy: 6, "over Print \(hand.frame) vs \(printBtn.frame)")
+        sleep(1); _ = shotTo("coach", "2-review-hand-on-print")
+        printBtn.tap()
+        XCTAssert(hand.waitForNonExistence(timeout: 3))
+        // The local booth takes the job (no printer polls): back to the camera by hand.
+        sleep(3)
+        XCTAssertFalse(app.buttons["Try again"].exists, "the print request went out")
+        app.terminate()
+        app.launchArguments = base + ["-booth.pin", "1234", "-booth.shots", "1"]   // the app's own saved "done"
+        app.launch()
+        XCTAssert(app.buttons["Take photo"].waitForExistence(timeout: 10))
+        sleep(2)
+        XCTAssertFalse(app.descendants(matching: .any)["coachHand"].exists, "after a print: no hand")
+        _ = shotTo("coach", "3-camera-after-print")
+    }
+
+    // MARK: bundled PIN, fresh install
+
+    /// A build with a bundled PIN (Booth.local.xcconfig BOOTH_PIN = 1234 for the local booth), no saved
+    /// PIN: opens straight to the camera, shoots, prints (no error face), and the session reaches the
+    /// local booth's archive with its originals, the strip and printed: true. Skipped without a bundled PIN.
+    func testBundledPinShootPrintArchive() throws {
+        let start = Date()
+        app.launchArguments = base + ["-booth.pin", "", "-booth.shots", "1", "-booth.coachDone", "YES"]
+        app.launch()
+        let shutter = app.buttons["Take photo"]
+        if !shutter.waitForExistence(timeout: 10) {
+            throw XCTSkip("no bundled PIN in this build (lock screen): build with a Booth.local.xcconfig BOOTH_PIN for the local booth")
+        }
+        sleep(2)
+        shutter.tap()
+        let printBtn = app.buttons["Print"]
+        XCTAssert(printBtn.waitForExistence(timeout: 30))
+        sleep(1)
+        printBtn.tap()
+        XCTAssert(app.buttons["Retake"].waitForNonExistence(timeout: 5))
+        sleep(4)
+        _ = shotTo("bundled-pin", "printing")
+        XCTAssertFalse(app.buttons["Try again"].exists, "print accepted (no 😕 + retry)")
+        XCTAssertFalse(app.secureTextFields["PIN"].exists, "not bounced to the lock screen")
+        // The archive: poll the local booth's /api/photos for a session from this test.
+        var ny = Calendar(identifier: .gregorian); ny.timeZone = TimeZone(identifier: "America/New_York")!
+        let c = ny.dateComponents([.year, .month, .day], from: start)
+        let day = String(format: "%04d-%02d-%02d", c.year!, c.month!, c.day!)
+        var found: [String: Any]?
+        for _ in 0..<45 where found == nil {
+            var req = URLRequest(url: URL(string: "\(server)/api/photos?day=\(day)")!)
+            req.setValue("1234", forHTTPHeaderField: "x-booth-pin")
+            let done = expectation(description: "photos")
+            URLSession.shared.dataTask(with: req) { data, _, _ in
+                defer { done.fulfill() }
+                guard let data, let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let ss = o["sessions"] as? [[String: Any]] else { return }
+                found = ss.first { s in
+                    guard let id = s["id"] as? String, let t = Int(id.split(separator: "-")[0], radix: 36), Double(t) / 1000 >= start.timeIntervalSince1970 - 5 else { return false }
+                    let files = s["files"] as? [String: Any] ?? [:], meta = s["meta"] as? [String: Any] ?? [:]
+                    return files["orig-1.jpg"] != nil && files["strip.png"] != nil && meta["printed"] as? Bool == true
+                }
+            }.resume()
+            wait(for: [done], timeout: 10)
+            if found == nil { sleep(2) }
+        }
+        print("bundled-pin archive: \(found.map { "\($0["id"] ?? "?") \(($0["files"] as? [String: Any])?.keys.sorted() ?? [])" } ?? "none")")
+        XCTAssertNotNil(found, "the session reached the archive with orig-1.jpg + strip.png, printed")
     }
 
     /// Live print preview off: the plain test pattern, no dot layer.
